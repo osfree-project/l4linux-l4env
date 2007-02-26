@@ -1,0 +1,243 @@
+/* ld script to make ARM Linux kernel
+ * taken from the i386 version by Russell King
+ * Written by Martin Mares <mj@atrey.karlin.mff.cuni.cz>
+ */
+
+#include <asm-generic/vmlinux.lds.h>
+#include <asm/thread_info.h>
+#include <asm/memory.h>
+	
+OUTPUT_ARCH(arm)
+ENTRY(_start)
+
+#ifndef __ARMEB__
+jiffies = jiffies_64;
+#else
+jiffies = jiffies_64 + 4;
+#endif
+
+SECTIONS
+{
+#ifdef CONFIG_XIP_KERNEL
+	. = XIP_VIRT_ADDR(CONFIG_XIP_PHYS_ADDR);
+#else
+	/*. = PAGE_OFFSET + TEXT_OFFSET; */
+	. = 0x200000;
+#endif
+	.init : {			/* Init code and data		*/
+		_stext = .;
+			_sinittext = .;
+			*(.init.text)
+			_einittext = .;
+		__proc_info_begin = .;
+			*(.proc.info.init)
+		__proc_info_end = .;
+		__arch_info_begin = .;
+			*(.arch.info.init)
+		__arch_info_end = .;
+		__tagtable_begin = .;
+			*(.taglist.init)
+		__tagtable_end = .;
+		. = ALIGN(16);
+		__setup_start = .;
+			*(.init.setup)
+		__setup_end = .;
+		__early_begin = .;
+			*(.early_param.init)
+		__early_end = .;
+		__initcall_start = .;
+			INITCALLS
+		__initcall_end = .;
+		__con_initcall_start = .;
+			*(.con_initcall.init)
+		__con_initcall_end = .;
+		__security_initcall_start = .;
+			*(.security_initcall.init)
+		__security_initcall_end = .;
+		. = ALIGN(32);
+		__initramfs_start = .;
+			usr/built-in.o(.init.ramfs)
+		__initramfs_end = .;
+		. = ALIGN(64);
+		__per_cpu_start = .;
+			*(.data.percpu)
+		__per_cpu_end = .;
+#ifndef CONFIG_XIP_KERNEL
+		__init_begin = _stext;
+		*(.init.data)
+		. = ALIGN(4096);
+		__init_end = .;
+#endif
+	}
+
+	/DISCARD/ : {			/* Exit code and data		*/
+		*(.exit.text)
+		*(.exit.data)
+		*(.exitcall.exit)
+#ifndef CONFIG_MMU
+		*(.fixup)
+		*(__ex_table)
+#endif
+	}
+
+	. = ALIGN(4096);
+	_upage_start = .;
+	.upage : { *(.upage) }
+	. = ALIGN(4096);
+
+	.text : {			/* Real text segment		*/
+		_text = .;		/* Text and read-only data	*/
+			*(.text)
+			SCHED_TEXT
+			LOCK_TEXT
+#ifdef CONFIG_MMU
+			*(.fixup)
+#endif
+			*(.gnu.warning)
+			*(.rodata)
+			*(.rodata.*)
+			*(.glue_7)
+			*(.glue_7t)
+	}
+
+        .rel.plt       : { *(.rel.plt) }
+
+
+	RODATA
+
+	_etext = .;			/* End of text and rodata section */
+
+#ifdef CONFIG_XIP_KERNEL
+	__data_loc = ALIGN(4);		/* location in binary */
+	. = PAGE_OFFSET + TEXT_OFFSET;
+#else
+	. = ALIGN(THREAD_SIZE);
+	__data_loc = .;
+#endif
+
+
+	_sdata = .;
+	.data : AT(__data_loc) {
+		__data_start = .;	/* address in memory */
+
+		/*
+		 * first, the init task union, aligned
+		 * to an 8192 byte boundary.
+		 */
+  		*(.data.init_task)
+		*(.init.task)
+
+#ifdef CONFIG_XIP_KERNEL
+		. = ALIGN(4096);
+		__init_begin = .;
+		*(.init.data)
+		. = ALIGN(4096);
+		__init_end = .;
+#endif
+
+		. = ALIGN(4096);
+		__nosave_begin = .;
+		*(.data.nosave)
+		. = ALIGN(4096);
+		__nosave_end = .;
+
+		/*
+		 * then the cacheline aligned data
+		 */
+		. = ALIGN(32);
+		*(.data.cacheline_aligned)
+
+		/*
+		 * The exception fixup table (might need resorting at runtime)
+		 */
+		. = ALIGN(32);
+		__start___ex_table = .;
+#ifdef CONFIG_MMU
+		*(__ex_table)
+#endif
+		__stop___ex_table = .;
+
+		/*
+		 * and the usual data section
+		 */
+		*(.data)
+		CONSTRUCTORS
+
+		_edata = .;
+	}
+
+	/* This is needed for L4Env --
+	 *   copy out of l4/pkg/crtx/lib/src/ARCH-x86/main_stat.ld */
+	.ctors :
+	{
+	  LONG(0)
+	  /* traverse this list backwards (see __attribute__((init_priority)) */
+	  KEEP (*(.mark_beg_ctors))
+	  KEEP (*(.ctors))
+	  KEEP (*(SORT(.ctors.*)))
+	  KEEP (*(.mark_end_ctors))
+	  /* traverse this list forwards */
+	  KEEP (*(.mark_beg_c_ctors))
+	  #define QM1c() .c_ctors.?
+	  #define QM2c() .c_ctors.??
+	  #define QM3c() .c_ctors.???
+	  #define QM4c() .c_ctors.????
+	  #define QM5c() .c_ctors.?????
+	  KEEP (*(SORT(QM1c())))
+	  KEEP (*(SORT(QM2c())))
+	  KEEP (*(SORT(QM3c())))
+	  KEEP (*(SORT(QM4c())))
+	  KEEP (*(SORT(QM5c())))
+	  KEEP (*(.c_ctors))
+	  KEEP (*(.mark_end_c_ctors))
+	}
+	.dtors :
+	{
+	  LONG(0)
+	  /* traverse this list backwards (see __attribute__((init_priority)) */
+	  KEEP (*(.mark_beg_dtors))
+	  KEEP (*(.dtors))
+	  KEEP (*(SORT(.dtors.*)))
+	  KEEP (*(.mark_end_dtors))
+	  /* traverse this list forwards */
+	  KEEP (*(.mark_beg_c_dtors))
+	  #define QM1d() .c_dtors.?
+	  #define QM2d() .c_dtors.??
+	  #define QM3d() .c_dtors.???
+	  #define QM4d() .c_dtors.????
+	  #define QM5d() .c_dtors.?????
+	  KEEP (*(SORT(QM1d())))
+	  KEEP (*(SORT(QM2d())))
+	  KEEP (*(SORT(QM3d())))
+	  KEEP (*(SORT(QM4d())))
+	  KEEP (*(SORT(QM5d())))
+	  KEEP (*(.c_dtors))
+	  KEEP (*(.mark_end_c_dtors))
+	}
+
+	__bss_start = .;
+	.bss : {
+		__bss_start = .;	/* BSS				*/
+		*(.bss)
+		*(COMMON)
+	}
+	. = ALIGN(4096);
+	_end = .;
+  	__bss_stop = .; 
+					/* Stabs debugging sections.	*/
+	.stab 0 : { *(.stab) }
+	.stabstr 0 : { *(.stabstr) }
+	.stab.excl 0 : { *(.stab.excl) }
+	.stab.exclstr 0 : { *(.stab.exclstr) }
+	.stab.index 0 : { *(.stab.index) }
+	.stab.indexstr 0 : { *(.stab.indexstr) }
+	.comment 0 : { *(.comment) }
+}
+
+/*
+ * These must never be empty
+ * If you have to comment these two assert statements out, your
+ * binutils is too old (for other reasons as well)
+ */
+ASSERT((__proc_info_end - __proc_info_begin), "missing CPU support")
+ASSERT((__arch_info_end - __arch_info_begin), "no machine record defined")

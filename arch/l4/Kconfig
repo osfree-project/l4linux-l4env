@@ -1,0 +1,394 @@
+#
+# Kernel configuration file
+#
+
+menu "L4Linux configuration"
+
+# We're running on top of L4, always true
+config L4
+	bool
+	default y
+
+# We're L4Linux, always true
+config L4_LINUX
+	bool
+	default y
+
+config L4_OBJ_TREE
+	string "L4 tree build directory"
+	default "/home/user/l4/obj-config"
+	help
+	  This path needs to point to an L4 build directory tree.
+
+config L4_L4ENV
+	bool
+	default y
+
+choice
+	prompt "Target architecture"
+	default L4_ARCH_X86
+
+	config L4_ARCH_X86
+		bool "i386/x86 architecture"
+	config L4_ARCH_ARM
+		bool "ARM architecture"
+		select L4_IRQ_MULTI
+endchoice
+
+config HZ
+	int
+	default 100
+
+config PHYSICAL_START
+	hex
+	default 0x0
+
+config L4_USERPRIV_ONLY
+	bool "Run L4Linux in userland only (for Fiasco-UX)"
+	default n
+	depends on L4_ARCH_X86
+	select L4_EXTERNAL_RTC
+	help
+	  L4Linux can run under Fiasco-UX. In this environment it really
+	  cannot access any hardware (e.g. do port-I/O, access the PCI bus
+	  etc.). If you want to run L4Linux under Fiasc-UX enable this
+	  option and do not enable any option/driver which may touch the
+	  hardware.
+
+choice
+	prompt "Platform"
+	default L4_ARM_PLATFORM_GENERIC
+	depends on L4_ARCH_ARM
+
+	config L4_ARM_PLATFORM_GENERIC
+		bool "Generic only"
+	config L4_ARM_PLATFORM_INTEGRATOR
+		bool "ARM Integrator"
+	config L4_ARM_PLATFORM_ISG
+		bool "ISG"
+endchoice
+
+config L4_L4ENV_MEMSIZE
+	int "Kernel default memory size"
+	default 32
+	help
+	  Default memory size in MByte. Configureable with the usual "mem="
+	  kernel parameter.
+
+config L4_TAMED
+	bool "Use tamed mode"
+	default y
+	help
+	The normal Linux server uses simple means like cli and sti
+	to protect critical sections. If you say Y here the Linux server
+	uses a queued lock to implement synchronization.
+
+	Note: This works only with recent versions of Fiasco! The Fiasco
+	config option "Deceit bit disables switch" must be enabled!
+
+
+if L4_ARM_PLATFORM_ISG
+source arch/l4/Kconfig.isg
+endif
+
+menu "L4 build options"
+
+config L4_MK_CPU_X86
+	string "DROPS subarchitecture for i386"
+	depends on L4_ARCH_X86
+	default 586
+	help
+	  Subarchitecture name your DROPS source tree was built for. If
+	  unsure, leave the default setting.
+
+config L4_MK_CPU_ARM
+	string "DROPS subarchitecture for ARM"
+	depends on L4_ARCH_ARM
+	default sa
+	help
+	  Subarchitecture name your DROPS source tree was built for. If
+	  unsure, leave the default setting.
+
+endmenu # L4 build options
+
+menu "IRQ Handling"
+
+choice
+
+	prompt "IRQ Handling"
+	default L4_IRQ_SINGLE
+
+	config L4_IRQ_SINGLE
+	  bool "Use one thread per IRQ"
+	  depends on L4_ARCH_X86
+	  help
+	    Use traditional one thread per Interrupt style.
+
+	config L4_IRQ_OMEGA0
+	  bool "Use l4io (omega0) for interrupt handling"
+	  depends on L4_ARCH_X86
+	  help
+	    Uses an Omega0 service like l4io for interrupt handling.
+
+	config L4_IRQ_MULTI
+	  bool "Use multi IRQ attach"
+	  help
+	    Uses only one IRQ thread to attach to multiple interrupts.
+
+endchoice # IRQ Handling
+
+endmenu # IRQ Handling
+
+menu "Stub drivers"
+
+config L4_EXTERNAL_RTC
+	bool "Use the rtc server"
+	depends on L4_ARCH_X86
+	help
+	  Use the "rtc" server as the source for the clock. This option has
+	  to be enabled for the UX mode.
+
+config L4_BLK_DRV
+	bool "Block driver for the generic_blk interface"
+	default n
+	help
+	  Build block driver for the generic_blk interface of DROPS.
+	  It does not harm to include this driver, it needs to be
+	  explicitely enabled with "l4bd.l4blk_name=BLKNAME".
+
+config L4_PDSPBLK_DRV
+	bool "Block driver for the persistent dataspace interface"
+	default n
+	help
+	  This driver implements a block device which is backed by the
+	  persistent dataspace service.
+
+config L4_FB_DRIVER
+	bool "Framebuffer driver for l4con and DOpE (input/output)."
+	default y
+	select FB_CFB_FILLRECT
+	select FB_CFB_COPYAREA
+	select FB_CFB_IMAGEBLIT
+	depends on FRAMEBUFFER_CONSOLE
+	help
+	  Framebuffer driver that can use "l4con" or "DOpE" for input/output.
+
+config L4_FB_DRIVER_XF86IF
+	bool "Support for the X Window System driver"
+	default n
+	depends on L4_FB_DRIVER
+	help
+	  This enables the compile of support for the X Window System driver
+	  for the console.
+
+config L4_OSHKOSH_DRV
+	bool "Network driver for oshkosh."
+	default n
+	depends on L4_ARCH_X86
+	select L4_NEED_DSI
+	select L4_NEED_INET_NTOA
+	help
+	  Network driver for the oshkosh network server.
+
+config L4_ORE_DRV
+	bool "Network driver for ORe"
+	default n
+	help
+	  Network driver for the ORe network service.
+
+config L4_SERIAL
+	bool "Pseudo serial driver for console"
+	default y
+	select SERIAL_CORE
+	select SERIAL_CORE_CONSOLE
+	help
+	  Serial type driver used for console.
+
+config L4_SERIAL_CONSOLE
+	bool "Serial console support"
+	default y
+	depends on L4_SERIAL
+	help
+	  If you say Y here, you will be able to use the pseudo serial
+	  interface as a system console.
+
+endmenu # stub drivers
+
+config L4_NEED_DSI
+	bool #"Enable DSI support"
+	default n
+	help
+	  Enables support to be able to use DSI.
+
+config L4_NEED_INET_NTOA
+	bool
+	default n
+
+config L4_DROPSCON
+	bool #"Connect to DROPS console (con or DOpE)"
+	depends on EXPERIMENTAL
+	default n
+	help
+	  Connect to dropscon/dope interface for output.
+
+config L4_DROPSCON_LIB
+	string #"Lib-name as -lNAME (without -l)"
+	depends on L4_DROPSCON
+	default linux26-con-stub
+	help
+	  Specify alternative library name for the dropscon library.
+
+menu "Priority configuration"
+
+config L4_PRIO_USER_PROCESS
+	int "L4 priority of user processes"
+	default 10
+	help
+	  Define the L4 priority of user processes.
+
+config L4_PRIO_IRQ_OFFSET
+	int "Start of L4 priorities for IRQs"
+	default 129
+	help
+	  This value defines the offset where the IRQ priorities are
+	  starting.
+
+config L4_PRIO_SERVER
+	int "L4 priority of the Linux server"
+	default 100
+	help
+	  This value defines the L4 priority of the Linux server.
+
+endmenu # priority configuration
+
+menu "Debugging options"
+
+config L4_DEBUG
+	bool "Debugging options"
+	default n
+	help
+	  Show possible debugging options.
+
+config L4_DEBUG_REGISTER_NAMES
+	bool "Register Linux program names in the kernel debugger"
+	depends on L4_DEBUG
+	default n
+	help
+	  The program names of Linux programs can be registered so that they
+	  show up in various debugging aids that are displaying thread
+	  information.
+
+config L4_DEBUG_SEGFAULTS
+	bool "Print error information on user program sefaults"
+	depends on L4_DEBUG
+	default n
+	help
+	  When this option is turned on additional information is printed
+	  when a program causes a page fault that cannot be resolved (a
+	  segementation fault).
+
+config L4_DEBUG_STATS
+	bool "Do some statistics"
+	depends on L4_DEBUG
+	default n
+	help
+	  Count some statistics.
+
+config L4_DEBUG_IRQ_WHEELS
+	bool "IRQ spinning wheels in VGA mode"
+	depends on L4_DEBUG && L4_ARCH_X86
+	default n
+	help
+	  Display spinning wheels for IRQs, available in VGA mode.
+
+config L4_DEBUG_IRQ_WHEELS_FULL_REDRAW
+	bool "Redraw all IRQ wheels every time"
+	depends on L4_DEBUG_IRQ_WHEELS && L4_ARCH_X86
+	default n
+	help
+	  Redraw all IRQ wheels every time.
+
+config L4_DEBUG_IRQ_WHEELS_PIC
+	bool "Also display PIC status in wheels"
+	depends L4_DEBUG_IRQ_WHEELS && L4_ARCH_X86
+	default n
+	help
+	  Also read and display the PIC status for IRQs.
+
+config L4_DEBUG_TAMED_COUNT_INTERRUPT_DISABLE
+	bool "Count interrupt disables"
+	default n
+	depends on L4_DEBUG && L4_TAMED
+	help
+	  Counts the interrupts disabled events.
+
+endmenu # debugging options
+
+menu "Monitoring options (ferret)"
+
+config L4_FERRET
+	bool
+
+config L4_FERRET_USER
+	bool "Generic ferret sensor for L4Linux user-mode programs"
+	depends on L4_ARCH_X86
+	select L4_FERRET
+	help
+	  The L4Linux kernel asks the ferret sensor directory for a
+	  list sensor and maps this sensor into the address space of
+	  every L4Linux user-mode program.  This is useful for
+	  monitoring across virtual machine boundaries.
+
+	  If you don't know what this is or don't have 'ferret', say
+	  NO here.
+
+config L4_FERRET_USER_CONFIG
+	string "Configuration of generic user-mode sensor"
+	default "64:50000"
+	depends on L4_FERRET_USER
+	help
+          Ferret configuration parameter.
+
+config L4_FERRET_KERNEL
+	bool "Generic ferret sensor for L4Linux kernel tracing"
+	depends on L4_ARCH_X86
+	select L4_FERRET
+	help
+	  As with the userland sensor, a new ferret sensor is
+	  introduced that can be used to generate events from
+	  inside the L4Linux kernel.
+
+	  As for the userland sensor, you should not turn this
+	  on, if you do not know what you're doing.
+
+config L4_FERRET_TAMER_ATOMIC
+	bool "Tamers atomic sequence"
+	depends on L4_FERRET_KERNEL
+	select L4_FERRET
+	help
+	  Wrap the tamer thread's atomic section into events for
+	  verifying its atomic execution with an external monitor.
+
+	  Do not use, unless you know what you're doing.
+
+config L4_FERRET_SYSCALL_COUNTER
+	bool "L4Linux system call counter"
+	depends on L4_ARCH_X86
+	select L4_FERRET
+	help
+	  Introduces a sensor to the kernel that counts
+	  system calls and inserts data into a Ferret
+	  histogram sensor.
+
+	  Do not use, unless you know what you're doing.
+
+endmenu # monitoring options
+
+endmenu # l4linux options
+
+
+
+# some delimiter (for .config)
+comment ""
+source "arch/l4/Kconfig.arch"
+

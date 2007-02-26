@@ -1,0 +1,18 @@
+# Makefile to extract option for the L4Linux build from the
+# L4 BID configuration. Separated in this Makefile to avoid pollution of the
+# kernel make system.
+
+-include $(L4OBJ)/source/mk/Makeconf
+
+PHONY := all
+
+all:: $(OUTPUT)
+
+$(OUTPUT): $(srctree)/arch/l4/Makefile.l4conf
+	@if [ -n "$(USE_LDSO)" ]; then                                                      \
+	  echo "  GEN     $@" ;                                                             \
+	  echo "L4BID_CONF_AVAILABLE=yes"                          > $@ ;                   \
+	  echo "L4BID_USE_LDSO=$(USE_LDSO)"                       >> $@ ;                   \
+	  echo "L4BID_CPPFLAGS_SYSCALLS-$(L4_ABS_SYSCALLS)=$(BID_CPPFLAGS_SYSCALLS)" >> $@ ;\
+	  echo "L4BID_DICEDIR=$(DICEDIR)"                         >> $@ ;                   \
+	fi
