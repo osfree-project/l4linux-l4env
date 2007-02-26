@@ -4,14 +4,75 @@
 #include <linux/mm.h>
 #include <asm/processor.h>
 
+#ifdef CONFIG_PARAVIRT
+#include <asm/paravirt.h>
+#else
 /*
  * L4Linux does not handle TLB flushing
  */
 #define __flush_tlb()			do { } while (0)
 #define __flush_tlb_global()		do { } while (0)
-#define __flush_tlb_all()		do { } while (0)
+//#define __flush_tlb_all()		do { } while (0)
 #define __flush_tlb_single(addr)	do { } while (0)
-#define __flush_tlb_one(addr)		do { } while (0)
+//#define __flush_tlb_one(addr)		do { } while (0)
+#endif
+
+#define __native_flush_tlb()						\
+	do {								\
+		unsigned int tmpreg;					\
+									\
+		__asm__ __volatile__(					\
+			"movl %%cr3, %0;              \n"		\
+			"movl %0, %%cr3;  # flush TLB \n"		\
+			: "=r" (tmpreg)					\
+			:: "memory");					\
+	} while (0)
+
+/*
+ * Global pages have to be flushed a bit differently. Not a real
+ * performance problem because this does not happen often.
+ */
+#define __native_flush_tlb_global()					\
+	do {								\
+		unsigned int tmpreg, cr4, cr4_orig;			\
+									\
+		__asm__ __volatile__(					\
+			"movl %%cr4, %2;  # turn off PGE     \n"	\
+			"movl %2, %1;                        \n"	\
+			"andl %3, %1;                        \n"	\
+			"movl %1, %%cr4;                     \n"	\
+			"movl %%cr3, %0;                     \n"	\
+			"movl %0, %%cr3;  # flush TLB        \n"	\
+			"movl %2, %%cr4;  # turn PGE back on \n"	\
+			: "=&r" (tmpreg), "=&r" (cr4), "=&r" (cr4_orig)	\
+			: "i" (~X86_CR4_PGE)				\
+			: "memory");					\
+	} while (0)
+
+#define __native_flush_tlb_single(addr) 				\
+	__asm__ __volatile__("invlpg (%0)" ::"r" (addr) : "memory")
+
+# define __flush_tlb_all()						\
+	do {								\
+		if (cpu_has_pge)					\
+			__flush_tlb_global();				\
+		else							\
+			__flush_tlb();					\
+	} while (0)
+
+#define cpu_has_invlpg	(boot_cpu_data.x86 > 3)
+
+#ifdef CONFIG_X86_INVLPG
+# define __flush_tlb_one(addr) __flush_tlb_single(addr)
+#else
+# define __flush_tlb_one(addr)						\
+	do {								\
+		if (cpu_has_invlpg)					\
+			__flush_tlb_single(addr);			\
+		else							\
+			__flush_tlb();					\
+	} while (0)
+#endif
 
 /*
  * TLB flushing:

@@ -43,7 +43,9 @@ endif
 
 BASEENV		:= l4env
 
-LDFLAGS_vmlinux_i386 :=
+ifdef CONFIG_RELOCATABLE
+LDFLAGS_vmlinux_i386 := --emit-relocs
+endif
 LDFLAGS_vmlinux_arm  := --no-warn-mismatch
 LDFLAGS_vmlinux	:= $(LDFLAGS_vmlinux_$(BASEARCH))
 
@@ -61,8 +63,6 @@ CFLAGS += $(call cc-option,-mpreferred-stack-boundary=2,)
 
 # CPU-specific tuning. Anything which can be shared with UML should go here.
 include $(srctree)/arch/i386/Makefile.cpu
-
-cflags-$(CONFIG_REGPARM) += -mregparm=3
 
 # temporary until string.h is fixed
 cflags-y += -ffreestanding
@@ -118,6 +118,12 @@ $(error SMP mode not supported, send patches!)
 endif
 ifeq ($(CONFIG_PREEMPT),y)
 $(error PREEMPT must not be enabled)
+endif
+ifeq ($(CONFIG_PCI_GOANY),y)
+$(error PCI Any access method must not be used)
+endif
+ifeq ($(CONFIG_PCI_GOBIOS),y)
+$(error PCI BIOS access method must not be used)
 endif
 
 # Extra Libs

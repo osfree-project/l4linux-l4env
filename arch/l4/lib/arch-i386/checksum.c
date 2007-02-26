@@ -26,7 +26,7 @@
  * computes a partial checksum, e.g. for TCP/UDP fragments
  */
 
-asmlinkage unsigned int csum_partial(const unsigned char * buff, int len, unsigned int sum) {
+asmlinkage __wsum csum_partial(const void *buff, int len, __wsum sum) {
      /*
       * Experiments with ethernet and slip connections show that buff
       * is aligned on either a 2-byte or 4-byte boundary.  We get at
@@ -110,8 +110,8 @@ asmlinkage unsigned int csum_partial(const unsigned char * buff, int len, unsign
  * copy from ds while checksumming, otherwise like csum_partial
  */
 
-unsigned int csum_partial_copy(const char *src, char *dst, 
-			       int len, int sum) {
+__wsum csum_partial_copy(const void *src, void *dst, 
+			 int len, __wsum sum) {
      long dummy1, dummy2, dummy3;
      __asm__(
 	"	testl $2, %%edi		\n" /* Check alignment. */
@@ -216,8 +216,8 @@ add_with_carry(unsigned int x, unsigned int y)
      return temp;
 }
 
-unsigned int csum_partial_copy_from_user(const char *src, char *dst, 
-					 int len, int _sum, int *err_ptr)
+__wsum csum_partial_copy_from_user(const void *src, void *dst,
+				   int len, __wsum _sum, int *err_ptr)
 {
      unsigned long page, offset;
      unsigned long len1, len2;

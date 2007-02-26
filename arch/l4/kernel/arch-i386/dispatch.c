@@ -138,6 +138,7 @@ void fastcall l4x_switch_to(struct task_struct *prev, struct task_struct *next)
 
 	__unlazy_fpu(prev);
 	l4x_current_process = next;
+	write_pda(pcurrent, next);
 }
 
 static inline l4_umword_t l4x_parse_ptabs(struct task_struct *p,
@@ -430,7 +431,7 @@ static int l4x_hybrid_begin(struct task_struct *p,
 		/* PF pending? */
 		if (t->hybrid_pf) {
 			int ret;
-			l4_umword_t data0, data1;
+			l4_umword_t data0, data1 = 0;
 			l4_msgdope_t dummydope;
 
 			if (unlikely(l4x_handle_page_fault(p,
@@ -544,7 +545,7 @@ void l4x_idle(void)
 	int error;
 	l4_umword_t data0, data1;
 	l4_msgdope_t dummydope;
-	l4_utcb_t *utcb = l4_utcb_get();
+	l4_utcb_t *utcb = l4_utcb_get_l4lx();
 
 	idler_thread = l4lx_thread_create(idler_func, NULL, NULL, 0,
 	                                  CONFIG_L4_PRIO_SERVER + 1,
@@ -608,7 +609,7 @@ static inline void dispatch_system_call(l4_utcb_t *utcb)
 	struct thread_struct *t = &current->thread;
 	register struct pt_regs *regsp = &t->regs;
 	unsigned int syscall;
-	syscall_t syscall_fn;
+	syscall_t syscall_fn = NULL;
 
 	//syscall_count++;
 
@@ -1040,9 +1041,11 @@ asmlinkage void l4x_user_dispatcher(void)
 	int error = 0;
 	l4_threadid_t src_id;
 	l4_msgdope_t dummydope;
-	l4_utcb_t *utcb = l4_utcb_get();
+	l4_utcb_t *utcb = l4_utcb_get_l4lx();
 	void *msg_desc;
 	int ret;
+
+	utcb->rcv_size = L4_UTCB_EXCEPTION_REGS_SIZE;
 
 	/* Start L4 activity */
 restart_loop:

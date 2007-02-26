@@ -20,10 +20,12 @@
 #include <l4/sys/syscalls.h>
 #include <l4/log/log_printf.h>
 
+#include <asm/generic/kthreads.h>
 #include <asm/l4x/iodb.h>
 
-static l4_uint8_t l4x_iobitmap[65536 / 8];
+static l4_uint8_t l4x_iobitmap[L4X_IODB_NUMBER_IO_PORTS / 8];
 static int l4x_ioprot_enabled;
+static int l4x_ioprot_level;
 
 /**
  * Returnes allocated size of the iodb.
@@ -372,7 +374,7 @@ asmlinkage int sys_ioperm(unsigned long from, unsigned long num, int turn_on)
 	DBG_IODB("%s(%s, %04lx, %04lx, %d)\n", __func__, task->comm,
 	                                       from, num, turn_on);
 
-	if (from + num <= from || from + num > L4X_IODB_MAX_IO_PORT)
+	if ((from + num <= from) || (from + num > L4X_IODB_NUMBER_IO_PORTS))
 		return -EINVAL;
 
 	if (turn_on && !capable(CAP_SYS_RAWIO))
@@ -404,7 +406,6 @@ asmlinkage int sys_iopl(unsigned long level)
 {
 	struct task_struct *task = current;
 	int old, ret;
-	unsigned long my_iopl;
 
 	DBG_IODB("%s(%s, %ld)\n", __func__, task->comm, level);
 
@@ -415,9 +416,7 @@ asmlinkage int sys_iopl(unsigned long level)
 		return 0;
 
 	// trying to gain more privileges than _we_ have?
-	asm volatile ("pushf; popl %0; shrl $12,%0; andl $3,%0"
-	              : "=r"(my_iopl));
-	if (level > my_iopl)
+	if (level > l4x_ioprot_level)
 		return -EINVAL;
 
 	// Trying to gain more privileges?
@@ -435,45 +434,52 @@ asmlinkage int sys_iopl(unsigned long level)
 	return 0;
 }
 
+static int call_iopager(l4_fpage_t iofp)
+{
+	int error;
+	l4_msgdope_t result;
+	l4_umword_t dummy1 = 0, dummy2 = 0;
+
+	error = l4_ipc_call(l4x_start_thread_pager_id, L4_IPC_SHORT_MSG,
+	                    iofp.raw, ~0xeUL,
+	                    L4_IPC_IOMAPMSG(0, L4_WHOLE_IOADDRESS_SPACE),
+	                    &dummy1, &dummy2, L4_IPC_NEVER, &result);
+	if (error == 0
+	    && ((dummy1 == 1 && dummy2 == 1)|| result.md.fpage_received))
+		return 1;
+
+	return 0;
+}
+
 void l4x_iodb_init(void)
 {
-	int i, c, error;
-	l4_fpage_t iofp = l4_iofpage (0, 0, 0);
-	l4_msgdope_t result;
-	l4_umword_t dummy1, dummy2, flags;
+	int i, c;
+	l4_fpage_t iofp = l4_iofpage(0, L4_WHOLE_IOADDRESS_SPACE, 0);
 
-	for (i = 0, c = 0; i < L4_IOPORT_MAX; i++) {
-		l4_threadid_t pager;
-		iofp.iofp.iopage = i;
-
-		pager = l4_myself();
-		pager.id.lthread = 0; /* hacky */
-
-		dummy1 = dummy2 = 0;
-
-		error = l4_ipc_call(pager, L4_IPC_SHORT_MSG,
-		                    iofp.raw, 0,
-		                    L4_IPC_IOMAPMSG(0, L4_WHOLE_IOADDRESS_SPACE),
-		                    &dummy1, &dummy2, L4_IPC_NEVER, &result);
-		if (error == 0
-		    && ((dummy1 == 1 && dummy2 == 1)|| result.md.fpage_received)) {
-			c++;
-			l4x_iobitmap[i / 8] |= 1 << (i % 8);
+	/* Get whole IO address space */
+	if (call_iopager(iofp)) {
+		memset(l4x_iobitmap, 0xff, sizeof(l4x_iobitmap));
+		c = 1 << L4_WHOLE_IOADDRESS_SPACE;
+	} else {
+		/* Did not work, look for single ports */
+		iofp = l4_iofpage(0, 0, 0);
+		for (i = 0, c = 0; i < L4_IOPORT_MAX; i++) {
+			iofp.iofp.iopage = i;
+			if (call_iopager(iofp)) {
+				c++;
+				l4x_iobitmap[i / 8] |= 1 << (i % 8);
+			}
 		}
 	}
 
-	// If we are running at IOPL 3 then we have _all_ IO flexpages
-	asm volatile ("pushf ; pop %0" : "=r"(flags));
-	if ((flags & 0x3000) == 0x3000) {
-		memset(l4x_iobitmap, 0xff, sizeof(l4x_iobitmap));
-		c = 1 << L4_WHOLE_IOADDRESS_SPACE;
-	}
 	LOG_printf("Got %d out of %d I/O ports\n",
 	           c, 1 << L4_WHOLE_IOADDRESS_SPACE);
+
 	if (c == 1 << L4_WHOLE_IOADDRESS_SPACE)
 		asm volatile ("cli; sti");
 	asm volatile ("pushf ; pop %0" : "=rm"(i));
-	LOG_printf("Running at IOPL %d\n", (i & 0x3000) >> 12);
+	l4x_ioprot_level = (i & 0x3000) >> 12;
+	LOG_printf("Running at IOPL %d\n", l4x_ioprot_level);
 
 	l4x_ioprot_enabled = 1;
 }

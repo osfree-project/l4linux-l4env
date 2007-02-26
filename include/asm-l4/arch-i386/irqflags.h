@@ -10,6 +10,9 @@
 #ifndef __ASM_L4__ARCH_I386__IRQFLAGS_H__
 #define __ASM_L4__ARCH_I386__IRQFLAGS_H__
 
+#ifdef CONFIG_PARAVIRT
+#include <asm/paravirt.h>
+#else
 #ifndef __ASSEMBLY__
 
 #if defined(CONFIG_L4_USERPRIV_ONLY) || defined(CONFIG_L4_TAMED)
@@ -27,9 +30,6 @@ static inline unsigned long __raw_local_save_flags(void)
 {
 	return l4x_global_save_flags();
 }
-
-#define raw_local_save_flags(flags) \
-		do { (flags) = __raw_local_save_flags(); } while (0)
 
 static inline void raw_local_irq_restore(unsigned long flags)
 {
@@ -53,9 +53,6 @@ static inline unsigned long __raw_local_save_flags(void)
 {
 	return l4x_local_save_flags();
 }
-
-#define raw_local_save_flags(flags) \
-		do { (flags) = __raw_local_save_flags(); } while (0)
 
 static inline void raw_local_irq_restore(unsigned long flags)
 {
@@ -82,14 +79,8 @@ static inline void l4x_real_irq_enable(void)
 	__asm__ __volatile__("sti" : : : "memory");
 }
 
-#endif
-
-static inline int raw_irqs_disabled_flags(unsigned long flags)
-{
-	return flags == L4_IRQ_DISABLED;
-}
-
-#else
+#endif /* CONFIG_TAMED */
+#else /* ! L4 */
 
 static inline unsigned long __raw_local_save_flags(void)
 {
@@ -103,9 +94,6 @@ static inline unsigned long __raw_local_save_flags(void)
 
 	return flags;
 }
-
-#define raw_local_save_flags(flags) \
-		do { (flags) = __raw_local_save_flags(); } while (0)
 
 static inline void raw_local_irq_restore(unsigned long flags)
 {
@@ -144,20 +132,7 @@ static inline void halt(void)
 {
 	__asm__ __volatile__("hlt": : :"memory");
 }
-
-static inline int raw_irqs_disabled_flags(unsigned long flags)
-{
-	return !(flags & (1 << 9));
-}
-
-#endif
-
-static inline int raw_irqs_disabled(void)
-{
-	unsigned long flags = __raw_local_save_flags();
-
-	return raw_irqs_disabled_flags(flags);
-}
+#endif /* ! L4 */
 
 /*
  * For spinlocks, etc:
@@ -171,9 +146,37 @@ static inline unsigned long __raw_local_irq_save(void)
 	return flags;
 }
 
+#else
+#define DISABLE_INTERRUPTS(clobbers)	cli
+#define ENABLE_INTERRUPTS(clobbers)	sti
+#define ENABLE_INTERRUPTS_SYSEXIT	sti; sysexit
+#define INTERRUPT_RETURN		iret
+#define GET_CR0_INTO_EAX		movl %cr0, %eax
+#endif /* __ASSEMBLY__ */
+#endif /* CONFIG_PARAVIRT */
+
+#ifndef __ASSEMBLY__
+#define raw_local_save_flags(flags) \
+		do { (flags) = __raw_local_save_flags(); } while (0)
+
 #define raw_local_irq_save(flags) \
 		do { (flags) = __raw_local_irq_save(); } while (0)
 
+static inline int raw_irqs_disabled_flags(unsigned long flags)
+{
+#if defined(CONFIG_L4_USERPRIV_ONLY) || defined(CONFIG_L4_TAMED)
+	return flags == L4_IRQ_DISABLED;
+#else
+	return !(flags & (1 << 9));
+#endif
+}
+
+static inline int raw_irqs_disabled(void)
+{
+	unsigned long flags = __raw_local_save_flags();
+
+	return raw_irqs_disabled_flags(flags);
+}
 #endif /* __ASSEMBLY__ */
 
 /*

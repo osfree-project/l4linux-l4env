@@ -1,4 +1,3 @@
-#warning WARNING: this is broken due to struct pid changes!
 /*
  * Kernel part of the xf86 driver
  */
@@ -19,7 +18,7 @@
 extern struct proc_dir_entry *l4_proc_dir;
 
 typedef struct {
-	atomic_t pid;
+	struct pid *pid;
 	unsigned long active;
 } client_t;
 
@@ -29,11 +28,11 @@ static struct fasync_struct *fasync;
 static struct task_struct   *sig_proc;
 static client_t              client_list[8];
 
-static client_t* client_find(int pid)
+static client_t* client_find(struct pid *pid)
 {
 	int i;
 	for (i=0; i<sizeof(client_list)/sizeof(client_list[0]); i++)
-		if (atomic_read(&client_list[i].pid) == pid)
+		if (client_list[i].pid == pid)
 			/* found */
 			return client_list + i;
 
@@ -41,12 +40,9 @@ static client_t* client_find(int pid)
 	return NULL;
 }
 
-static void client_activate(int pid)
+static void client_activate(struct pid *pid)
 {
 	client_t *c;
-
-	if (pid == 0)
-		enter_kdebug("pid==0");
 
 	if ((c = client_find(pid))) {
 		/* already in list */
@@ -57,7 +53,7 @@ static void client_activate(int pid)
 	}
 	/* still no entry */
 	if ((c = client_find(0))) {
-		atomic_set(&c->pid, pid);
+		c->pid = get_pid(pid);
 		set_bit(0, &c->active);
 		atomic_inc(&xf86used);
 		l4fb_refresh_status_set(L4FB_REFRESH_DISABLED);
@@ -67,12 +63,9 @@ static void client_activate(int pid)
 	enter_kdebug("client_list too small");
 }
 
-static client_t* client_deactivate(int pid)
+static client_t* client_deactivate(struct pid *pid)
 {
 	client_t *c;
-
-	if (pid == 0)
-		enter_kdebug("pid==0");
 
 	if ((c = client_find(pid))) {
 		/* already in list */
@@ -87,13 +80,15 @@ static client_t* client_deactivate(int pid)
 		enter_kdebug("spurious client");
 }
 
-static void client_kill(int pid)
+static void client_kill(struct pid *pid)
 {
-	atomic_set(&client_deactivate(pid)->pid, 0);
+	client_t *client = client_deactivate(pid);
+	client->pid = NULL;
+	put_pid(pid);
 }
 
 static int l4fb_xf86if_handle_redraw_event(void)
-{ 
+{
 	if (fasync && atomic_read(&xf86used)) {
 		xf86arg = 1; /* map FB, redraw X screen */
 		kill_fasync(&fasync, SIGIO, 0);
@@ -132,7 +127,7 @@ static int l4fb_xf86if_input_hook_function(long type, long code)
 static int l4fb_xf86if_f_open(struct inode *i, struct file *f)
 {
 	l4fb_input_event_hook_register(l4fb_xf86if_input_hook_function);
-	client_activate(current->pid);
+	client_activate(task_pid(current));
 	sig_proc = current;
 	return 0;
 }
@@ -159,7 +154,7 @@ static int l4fb_xf86if_f_ioctl(struct inode *i, struct file *f,
 				return -EFAULT;
 			ctu.vc_id = l4fb_con_vc_id_get();
 			ctu.ds_id = l4fb_con_ds_id_get();
-		    	l4dm_share(&ctu.ds_id, ctu.x_id, L4DM_RW);
+			l4dm_share(&ctu.ds_id, ctu.x_id, L4DM_RW);
 			if (copy_to_user((void *)arg, &ctu, sizeof(ctu)))
 				return -EFAULT;
 			break;

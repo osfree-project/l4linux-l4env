@@ -8,6 +8,7 @@
 #include <linux/mm.h>
 #include <linux/string.h>
 
+#include <asm/elf.h>
 #include <asm/page.h>
 #include <asm/procinfo.h>
 #include <asm/tlbflush.h>
@@ -29,7 +30,7 @@ extern unsigned long fastcall l4x_set_pte(pte_t pteptr, pte_t pteval);
 extern void          fastcall l4x_pte_clear(pte_t ptep);
 
 
-void cpu_sa1100_set_pte(pte_t *pteptr, pte_t pteval)
+void cpu_sa1100_set_pte_ext(pte_t *pteptr, pte_t pteval, unsigned int ext)
 {
 	//LOG_printf("%s: for %08x pteptr = %p\n", __func__, (unsigned int)pte_val(pteval), pteptr);
 	if ((pte_val(*pteptr) & (L_PTE_PRESENT | L_PTE_MAPPED)) == (L_PTE_PRESENT | L_PTE_MAPPED)) {
@@ -148,7 +149,7 @@ static void l4x_dma_cache_foo_range(unsigned long start, unsigned long stop)
 #undef cpu_reset
 #undef cpu_do_idle
 #undef cpu_dcache_clean_area
-#undef cpu_set_pte
+#undef cpu_set_pte_ext
 #undef cpu_do_switch_mm
 #include <asm/cpu-multi32.h>
 #include <asm/cacheflush.h>
@@ -161,7 +162,7 @@ static struct processor l4_proc_fns = {
 	._do_idle            = cpu_sa1100_do_idle,
 	.dcache_clean_area   = cpu_sa1100_dcache_clean_area,
 	.switch_mm           = cpu_sa1100_switch_mm,
-	.set_pte             = cpu_sa1100_set_pte,
+	.set_pte_ext         = cpu_sa1100_set_pte_ext,
 };
 
 static struct cpu_tlb_fns l4_tlb_fns = {

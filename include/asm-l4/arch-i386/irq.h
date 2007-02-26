@@ -36,8 +36,13 @@ static __inline__ int irq_canonicalize(int irq)
 extern int irqbalance_disable(char *str);
 #endif
 
+extern void quirk_intel_irqbalance(void);
+
 #ifdef CONFIG_HOTPLUG_CPU
 extern void fixup_irqs(cpumask_t map);
 #endif
+
+void init_IRQ(void);
+void __init native_init_IRQ(void);
 
 #endif /* __ASM_L4__ARCH_I386__IRQ_H__ */

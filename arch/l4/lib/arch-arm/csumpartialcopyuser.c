@@ -20,8 +20,8 @@ add_with_carry(unsigned int x, unsigned int y)
      return temp;
 }
 
-unsigned int csum_partial_copy_from_user(const char *src, char *dst, 
-					 int len, int _sum, int *err_ptr)
+__wsum csum_partial_copy_from_user(const void *src, void *dst, 
+                                   int len, __wsum _sum, int *err_ptr)
 {
      unsigned long page, offset;
      unsigned long len1, len2;
@@ -29,7 +29,7 @@ unsigned int csum_partial_copy_from_user(const char *src, char *dst,
      unsigned long sum = _sum;
 
      if (segment_eq(get_fs(),KERNEL_DS)) {
-	  return csum_partial_copy(src, dst, len, _sum);
+	  return csum_partial_copy_nocheck(src, dst, len, _sum);
      }
 
      page = parse_ptabs_read((unsigned long)src, &offset);
@@ -44,7 +44,7 @@ unsigned int csum_partial_copy_from_user(const char *src, char *dst,
 #ifdef DEBUG_PARTIAL_CSUM_FROM_USER
 	       herc_printf("unaligned checksumming src=%p, len=%x, len1=%x, len2=%x\n", src, len, len1, len2);
 #endif
-	       sum = csum_partial_copy((char *)(page + offset), dst, len1 - 1, sum);
+	       sum = csum_partial_copy_nocheck((char *)(page + offset), dst, len1 - 1, sum);
 	       chksumgap = ((unsigned char*)page)[PAGE_SIZE - 1];
 	    
 	       src += len1 + 1;
@@ -60,7 +60,7 @@ unsigned int csum_partial_copy_from_user(const char *src, char *dst,
 	       sum = add_with_carry(sum, chksumgap);
 	       len -= len1 + 1;
 	  } else {
-	       sum = csum_partial_copy((char *)(page + offset), dst, len1, sum);
+	       sum = csum_partial_copy_nocheck((char *)(page + offset), dst, len1, sum);
 
 	       src += len1;
 	       dst += len1;

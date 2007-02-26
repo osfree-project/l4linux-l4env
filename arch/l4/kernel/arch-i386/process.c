@@ -134,6 +134,8 @@ void show_regs(struct pt_regs * regs)
 		regs->eax,regs->ebx,regs->ecx,regs->edx);
 	printk("ESI: %08lx EDI: %08lx EBP: %08lx\n",
 		regs->esi, regs->edi, regs->ebp);
+	printk(" DS: %04x ES: %04x GS: %04x\n",
+	       0xffff & regs->xds,0xffff & regs->xes, 0xffff & regs->xgs);
 
 	//show_trace(NULL, &regs->esp);
 	{
@@ -157,6 +159,7 @@ int kernel_thread(int (*fn)(void *), void * arg, unsigned long flags)
 
 	regs.xds = __USER_DS;
 	regs.xes = __USER_DS;
+	regs.xgs = __KERNEL_PDA;
 	regs.orig_eax = -1;
 	//regs.eip = (unsigned long) kernel_thread_helper;
 	regs.xcs = __KERNEL_CS | get_kernel_rpl();
@@ -415,6 +418,7 @@ void dump_thread(struct pt_regs * regs, struct user * dump)
 	dump->regs.edi = regs->edi;
 	dump->regs.ebp = regs->ebp;
 	dump->regs.eax = regs->eax;
+	dump->regs.gs = regs->xgs;
 	dump->regs.orig_eax = regs->orig_eax;
 	dump->regs.eip = regs->eip;
 	dump->regs.eflags = regs->eflags;

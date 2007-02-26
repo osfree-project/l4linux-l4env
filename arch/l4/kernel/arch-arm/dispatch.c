@@ -1102,6 +1102,7 @@ asmlinkage void l4x_user_dispatcher(void)
 	/* XXX: only setup snd for exception reply... */
 	l4x_setup_ipc_descriptor(&msg, utcb);
 	msg_desc = &msg;
+	//utcb->rcv_size = L4_UTCB_EXCEPTION_REGS_SIZE;
 
 restart_loop:
 	l4x_start_thread_really();

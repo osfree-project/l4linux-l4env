@@ -17,7 +17,7 @@
 	pr_reg[7] = 0; /* fake */			\
 	pr_reg[8] = 0; /* fake */			\
 	pr_reg[9] = 0; /* fake */			\
-	pr_reg[10] = 0; /* fake */			\
+	pr_reg[10] = regs->xgs;				\
 	pr_reg[11] = regs->orig_eax;			\
 	pr_reg[12] = regs->eip;				\
 	pr_reg[13] = 0; /* fake */			\

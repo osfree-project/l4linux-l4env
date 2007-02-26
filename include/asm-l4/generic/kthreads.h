@@ -12,4 +12,7 @@ extern l4_threadid_t linux_server_thread_id;
 /* thread id of the starter thread, also pager for all other threads */
 extern l4_threadid_t l4x_start_thread_id;
 
+/* pager of the starter thread */
+extern l4_threadid_t l4x_start_thread_pager_id;
+
 #endif /* ! __ASM_L4__GENERIC__KTHREADS_H__ */

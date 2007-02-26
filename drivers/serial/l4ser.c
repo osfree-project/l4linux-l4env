@@ -22,12 +22,13 @@
 
 #include <asm/irq.h>
 #include <l4/sys/kdebug.h>
+#include <asm/generic/setup.h>
 
 /* This is the same major as the sa1100 one */
 #define SERIAL_L4SER_MAJOR	204
 #define MINOR_START		5
 
-static unsigned int vkey_irq;
+static unsigned int vkey_enable;
 
 static void l4ser_stop_tx(struct uart_port *port)
 {
@@ -137,8 +138,8 @@ static void l4ser_shutdown(struct uart_port *port)
 		free_irq(port->irq, port);
 }
 
-static void l4ser_set_termios(struct uart_port *port, struct termios *termios,
-                              struct termios *old)
+static void l4ser_set_termios(struct uart_port *port, struct ktermios *termios,
+                              struct ktermios *old)
 {
 }
 
@@ -196,8 +197,8 @@ static void __init l4ser_init_ports(void)
 
 	printk("%s\n", __func__);
 
-	if (!vkey_irq)
-		printk(KERN_WARNING "l4ser: vkey_irq not set - input disabled!\n");
+	if (!vkey_enable)
+		printk(KERN_WARNING "l4ser: input not enabled!\n");
 
 	if (!first)
 		return;
@@ -207,7 +208,7 @@ static void __init l4ser_init_ports(void)
 	l4ser_port.ops       = &l4ser_pops;
 	l4ser_port.fifosize  = 8;
 	l4ser_port.line      = 0;
-	l4ser_port.irq       = vkey_irq;
+	l4ser_port.irq       = vkey_enable ? l4lx_kinfo->vkey_irq : 0;
 	l4ser_port.iotype    = UPIO_MEM;
 	l4ser_port.membase   = (void *)1;
 	l4ser_port.mapbase   = 1;
@@ -293,5 +294,5 @@ MODULE_DESCRIPTION("L4 serial driver");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS_CHARDEV_MAJOR(SERIAL_L4SER_MAJOR);
 
-module_param(vkey_irq, uint, 0);
-MODULE_PARM_DESC(vkey_irq, "IRQ number of the virtual key interrupt");
+module_param(vkey_enable, uint, 0);
+MODULE_PARM_DESC(vkey_enable, "Enable virtual key input");

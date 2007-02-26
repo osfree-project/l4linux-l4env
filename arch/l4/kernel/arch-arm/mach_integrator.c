@@ -46,8 +46,7 @@ void __init l4x_arm_integrator_map_io(void)
 
 void __init l4x_arm_integrator_irq_init(void)
 {
-	l4x_setup_virt_irq(IRQ_CP_ETHINT);
-
-	/* Virtual key interrupt */
-	l4x_setup_virt_irq(48);
+	int i;
+	for (i = 1; i < NR_IRQS; i++)
+		l4x_setup_virt_irq(i);
 }

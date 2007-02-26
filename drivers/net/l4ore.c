@@ -130,7 +130,7 @@ static void l4x_ore_irq_thread(void *data)
 	l4x_prepare_irq_thread(ctx);
 
 	while (1) {
-		unsigned int size = ETH_FRAME_LEN;
+		unsigned int size = ETH_HLEN + netdev->mtu;
 		ret = l4ore_recv_blocking(priv->handle,
 		                          (char **)&priv->pkt_buffer, &size,
 		                          L4_IPC_NEVER);
@@ -164,6 +164,8 @@ struct hw_interrupt_type l4x_ore_irq_type = {
 	.shutdown	= l4x_ore_irq_dummy_void,
 	.enable		= l4x_ore_irq_dummy_void,
 	.disable	= l4x_ore_irq_dummy_void,
+	.mask		= l4x_ore_irq_dummy_void,
+	.unmask		= l4x_ore_irq_dummy_void,
 	.ack		= l4x_ore_irq_dummy_void,
 	.end		= l4x_ore_irq_dummy_void,
 };
@@ -194,7 +196,7 @@ static int l4x_ore_open(struct net_device *netdev)
 		goto err_out_close;
 	}
 
-	priv->pkt_buffer = kmalloc(ETH_FRAME_LEN, GFP_KERNEL);
+	priv->pkt_buffer = kmalloc(ETH_HLEN + netdev->mtu, GFP_KERNEL);
 	if (!priv->pkt_buffer) {
 		printk("%s: kmalloc error\n", netdev->name);
 		goto err_out_close;

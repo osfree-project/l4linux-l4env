@@ -96,14 +96,14 @@ static struct irq_chip l4_irq_timer_chip = {
 void __init l4x_setup_virt_irq(unsigned int irq)
 {
 	set_irq_chip   (irq, &l4_irq_virt_chip);
-	set_irq_handler(irq, do_simple_IRQ);
+	set_irq_handler(irq, handle_simple_irq);
 	set_irq_flags  (irq, IRQF_VALID);
 }
 
 void __init l4x_setup_dev_irq(unsigned int irq)
 {
 	set_irq_chip   (irq, &l4_irq_dev_chip);
-	set_irq_handler(irq, do_simple_IRQ);
+	set_irq_handler(irq, handle_simple_irq);
 	set_irq_flags  (irq, IRQF_VALID);
 }
 
@@ -150,7 +150,7 @@ unsigned int fastcall do_IRQ(int irq, struct pt_regs *regs)
 static void __init l4x_timer_init(void)
 {
 	set_irq_chip   (0, &l4_irq_timer_chip);
-	set_irq_handler(0, do_simple_IRQ);
+	set_irq_handler(0, handle_simple_irq);
 	set_irq_flags  (0, IRQF_VALID);
 
 	setup_irq(0, &timer_irq);

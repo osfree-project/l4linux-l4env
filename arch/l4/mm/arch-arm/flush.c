@@ -21,13 +21,13 @@
 
 #define ALIAS_FLUSH_START	0xffff4000
 
+#if 0
 static void flush_pfn_alias(unsigned long pfn, unsigned long vaddr)
 {
-#if 0
 	unsigned long to = ALIAS_FLUSH_START + (CACHE_COLOUR(vaddr) << PAGE_SHIFT);
 	const int zero = 0;
 
-	set_pte(TOP_PTE(to), pfn_pte(pfn, PAGE_KERNEL));
+	set_pte_ext(TOP_PTE(to), pfn_pte(pfn, PAGE_KERNEL), 0);
 	flush_tlb_kernel_page(to);
 
 	asm(	"mcrr	p15, 0, %1, %0, c14\n"
@@ -36,8 +36,8 @@ static void flush_pfn_alias(unsigned long pfn, unsigned long vaddr)
 	    :
 	    : "r" (to), "r" (to + PAGE_SIZE - L1_CACHE_BYTES), "r" (zero)
 	    : "cc");
-#endif
 }
+#endif
 
 void flush_cache_mm(struct mm_struct *mm)
 {
@@ -148,9 +148,9 @@ void __flush_dcache_page(struct address_space *mapping, struct page *page)
 #endif
 }
 
+#if 0
 static void __flush_dcache_aliases(struct address_space *mapping, struct page *page)
 {
-#if 0
 	struct mm_struct *mm = current->active_mm;
 	struct vm_area_struct *mpnt;
 	struct prio_tree_iter iter;
@@ -179,8 +179,8 @@ static void __flush_dcache_aliases(struct address_space *mapping, struct page *p
 		flush_cache_page(mpnt, mpnt->vm_start + offset, page_to_pfn(page));
 	}
 	flush_dcache_mmap_unlock(mapping);
-#endif
 }
+#endif
 
 /*
  * Ensure cache coherency between kernel mapping and userspace mapping
@@ -202,6 +202,7 @@ static void __flush_dcache_aliases(struct address_space *mapping, struct page *p
  */
 void flush_dcache_page(struct page *page)
 {
+#if 0
 	struct address_space *mapping = page_mapping(page);
 
 #ifndef CONFIG_SMP
@@ -214,5 +215,47 @@ void flush_dcache_page(struct page *page)
 		if (mapping && cache_is_vivt())
 			__flush_dcache_aliases(mapping, page);
 	}
+#endif
 }
 EXPORT_SYMBOL(flush_dcache_page);
+
+/*
+ * Flush an anonymous page so that users of get_user_pages()
+ * can safely access the data.  The expected sequence is:
+ *
+ *  get_user_pages()
+ *    -> flush_anon_page
+ *  memcpy() to/from page
+ *  if written to page, flush_dcache_page()
+ */
+void __flush_anon_page(struct vm_area_struct *vma, struct page *page, unsigned long vmaddr)
+{
+#if 0
+	unsigned long pfn;
+
+	/* VIPT non-aliasing caches need do nothing */
+	if (cache_is_vipt_nonaliasing())
+		return;
+
+	/*
+	 * Write back and invalidate userspace mapping.
+	 */
+	pfn = page_to_pfn(page);
+	if (cache_is_vivt()) {
+		flush_cache_page(vma, vmaddr, pfn);
+	} else {
+		/*
+		 * For aliasing VIPT, we can flush an alias of the
+		 * userspace address only.
+		 */
+		flush_pfn_alias(pfn, vmaddr);
+	}
+
+	/*
+	 * Invalidate kernel mapping.  No data should be contained
+	 * in this mapping of the page.  FIXME: this is overkill
+	 * since we actually ask for a write-back and invalidate.
+	 */
+	__cpuc_flush_dcache_page(page_address(page));
+#endif
+}

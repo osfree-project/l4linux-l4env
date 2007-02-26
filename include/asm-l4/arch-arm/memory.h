@@ -228,6 +228,7 @@ static inline __deprecated void *bus_to_virt(unsigned long x)
  *  virt_addr_valid(k)	indicates whether a virtual address is valid
  */
 #ifndef CONFIG_DISCONTIGMEM
+
 #define ARCH_PFN_OFFSET		PHYS_PFN_OFFSET
 #define pfn_valid(pfn)		((pfn) >= PHYS_PFN_OFFSET && (pfn) < (PHYS_PFN_OFFSET + max_mapnr))
 
@@ -243,6 +244,7 @@ static inline __deprecated void *bus_to_virt(unsigned long x)
  * around in memory.
  */
 #include <linux/numa.h>
+
 #define arch_pfn_to_nid(pfn)	PFN_TO_NID(pfn)
 #define arch_local_page_offset(pfn, nid) LOCAL_MAP_NR((pfn) << PAGE_SHIFT)
 

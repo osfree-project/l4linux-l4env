@@ -26,8 +26,8 @@ void __save_processor_state(struct saved_context *ctxt)
 	/*
 	 * descriptor tables
 	 */
- 	store_gdt(&ctxt->gdt_limit);
- 	store_idt(&ctxt->idt_limit);
+ 	store_gdt(&ctxt->gdt);
+ 	store_idt(&ctxt->idt);
  	store_tr(ctxt->tr);
 
 	/*
@@ -95,14 +95,14 @@ void __restore_processor_state(struct saved_context *ctxt)
 	write_cr4(ctxt->cr4);
 	write_cr3(ctxt->cr3);
 	write_cr2(ctxt->cr2);
-	write_cr2(ctxt->cr0);
+	write_cr0(ctxt->cr0);
 
 	/*
 	 * now restore the descriptor tables to their proper values
 	 * ltr is done i fix_processor_context().
 	 */
- 	load_gdt(&ctxt->gdt_limit);
- 	load_idt(&ctxt->idt_limit);
+ 	load_gdt(&ctxt->gdt);
+ 	load_idt(&ctxt->idt);
 
 	/*
 	 * segment registers

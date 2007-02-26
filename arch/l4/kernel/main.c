@@ -50,13 +50,14 @@
 
 #include <asm/generic/dispatch.h>
 #include <asm/generic/ferret.h>
-#include <asm/generic/upage.h>
+#include <asm/generic/kthreads.h>
 #include <asm/generic/memory.h>
 #include <asm/generic/setup.h>
 #include <asm/generic/stack_id.h>
 #include <asm/generic/stats.h>
 #include <asm/generic/tamed.h>
 #include <asm/generic/task.h> /* for l4x_id2task */
+#include <asm/generic/upage.h>
 
 #include <asm/l4x/iodb.h>
 #include <asm/l4x/exception.h>
@@ -69,6 +70,8 @@
 struct desc_struct cpu_gdt_table[GDT_ENTRIES];
 
 unsigned l4x_fiasco_gdt_entry_offset;
+struct desc_struct boot_gdt;
+l4_utcb_t *l4_utcb_l4lx_server;
 #endif
 #ifdef ARCH_arm
 unsigned long cr_alignment;
@@ -128,7 +131,7 @@ const int l4thread_max_threads = 128;
 static struct l4env_phys_virt_mem l4env_phys_virt_addrs[L4ENV_PHYS_VIRT_ADDRS_MAX_ITEMS] __nosavedata;
 int l4env_phys_virt_addr_items;
 
-static const unsigned long required_kernel_abi_version = 7;
+static const unsigned long required_kernel_abi_version = 8;
 static const char *required_kernel_features[] =
   { "exception_ipc",
     "pagerexregs",
@@ -766,8 +769,19 @@ static void __init l4env_linux_startup(void *data)
 #ifdef ARCH_x86
 	l4_utcb_exception_ipc_enable();
 	l4_utcb_get()->status |= L4_UTCB_EXCEPTION_FPU_INHERIT;
+	l4_utcb_l4lx_server = l4_utcb_get();
 	if (sizeof(l4_utcb_t) != 128)
 		enter_kdebug("Weird UTCB size");
+
+	{
+		extern struct i386_pda boot_pda;
+		pack_descriptor((u32 *)&boot_gdt.a, (u32 *)&boot_gdt.b,
+		                (unsigned long)&boot_pda, sizeof(boot_pda) - 1,
+			        0x80 | 0x10 | 0x3 | DESCTYPE_DPL3, 4);
+		fiasco_gdt_set(&boot_gdt, 8, 0, l4_myself());
+		asm volatile ("mov %0, %%gs" : : "r" (__KERNEL_PDA | 3)
+		                             : "memory");
+	}
 #endif
 	setup_stack();
 
@@ -1077,6 +1091,8 @@ int main(int argc, char **argv)
 	/* Initialize GDT entry offset */
 	l4x_fiasco_gdt_entry_offset = fiasco_gdt_get_entry_offset();
 
+	l4env_v2p_add_item(0xa0000, (void *)0xa0000, 0xfffff - 0xa0000);
+
 	l4_utcb_exception_ipc_enable();
 	l4_utcb_exception_ipc_set_exc_receive_size();
 
@@ -1201,7 +1217,9 @@ asmlinkage static void l4x_do_intra_iret(struct pt_regs regs)
 	 "popl %%edi		\t\n"
 	 "popl %%ebp		\t\n"
 	 "popl %%eax		\t\n"
-	 "addl $12, %%esp	\t\n" /* keep ds, es; skip orig_eax */
+	 "addl $8, %%esp	\t\n" /* keep ds, es; skip orig_eax */
+	 "popl %%gs		\t\n"
+	 "addl $4, %%esp	\t\n"
 	 "iret			\t\n"
 	 : : "r" (&regs));
 
@@ -1712,7 +1730,7 @@ static int l4x_power_mgmt_resume(struct platform_device *dev)
 	l4x_virtual_mem_handle_pages(L4X_VIRTUAL_MEM_TYPE_MAP);
 	l4x_suspend_resume_call_funcs(L4X_RESUME);
 
-	l4_utcb_get()->rcv_size = 0;
+	l4_utcb_get_l4lx()->rcv_size = 0;
 	for_each_process(p) {
 		int error;
 		l4_threadid_t src_id;
@@ -1897,6 +1915,27 @@ void l4x_prepare_irq_thread(struct thread_info *ti)
 
 	/* Set pager */
 	l4lx_thread_set_kernel_pager(l4_myself());
+
+#ifdef ARCH_x86
+	{
+		/* Configure PDA */
+		int cpu = smp_processor_id();
+		struct Xgt_desc_struct *cpu_gdt_descr
+		  = &per_cpu(cpu_gdt_descr, cpu);
+		struct desc_struct *gdt
+		  = (struct desc_struct *)cpu_gdt_descr->address;
+		struct i386_pda *pda = cpu_pda(cpu);
+
+		pack_descriptor((u32 *)&gdt[GDT_ENTRY_PDA].a,
+		                (u32 *)&gdt[GDT_ENTRY_PDA].b,
+		                (unsigned long)pda, sizeof(*pda) - 1,
+		                0x80 | 0x10 | 0x3 | DESCTYPE_DPL3, 4);
+
+		fiasco_gdt_set(&gdt[GDT_ENTRY_PDA], 8, 0, l4_myself());
+		asm volatile ("mov %0, %%gs" : : "r" (__KERNEL_PDA | 3)
+		                             : "memory");
+	}
+#endif
 }
 
 /* ----------------------------------------------------- */

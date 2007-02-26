@@ -6,6 +6,7 @@
 #include <asm/cpufeature.h>
 #include <linux/bitops.h> /* for LOCK_PREFIX */
 #include <l4/sys/utcb.h>
+#include <asm/l4x/exception.h> /* for l4_utcb_get_l4lx() */
 
 #ifdef __KERNEL__
 
@@ -90,6 +91,9 @@ __asm__ __volatile__ ("movw %%dx,%1\n\t" \
 #define savesegment(seg, value) \
 	asm volatile("mov %%" #seg ",%0":"=rm" (value))
 
+#ifdef CONFIG_PARAVIRT
+#include <asm/paravirt.h>
+#else
 #define read_cr0() ({ \
 	unsigned int __dummy; \
 	__asm__ __volatile__( \
@@ -141,16 +145,17 @@ __asm__ __volatile__ ("movw %%dx,%1\n\t" \
 #define write_cr4(x) \
 	__asm__ __volatile__("movl %0,%%cr4": :"r" (x))
 
-/*
- * Clear and set 'TS' bit respectively
- */
-#define clts() { l4_utcb_get()->status |= L4_UTCB_EXCEPTION_FPU_TRANSFER; }
-#define stts() { l4_utcb_get()->status &= ~L4_UTCB_EXCEPTION_FPU_TRANSFER; }
-
-#endif	/* __KERNEL__ */
-
 #define wbinvd() \
 	__asm__ __volatile__ ("wbinvd": : :"memory")
+
+/* Clear the 'TS' bit */
+#define clts() { l4_utcb_get_l4lx()->status |= L4_UTCB_EXCEPTION_FPU_TRANSFER; }
+#endif/* CONFIG_PARAVIRT */
+
+/* Set the 'TS' bit */
+#define stts() { l4_utcb_get_l4lx()->status &= ~L4_UTCB_EXCEPTION_FPU_TRANSFER; }
+
+#endif	/* __KERNEL__ */
 
 static inline unsigned long get_limit(unsigned long segment)
 {

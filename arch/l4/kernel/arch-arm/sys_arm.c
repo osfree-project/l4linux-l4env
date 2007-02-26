@@ -374,6 +374,18 @@ asmlinkage long sys_arm_fadvise64_64(int fd, int advice,
 	return sys_fadvise64_64(fd, offset, len, advice);
 }
 
+/*
+ * Yet more syscall fsckage - we can't fit sys_sync_file_range's
+ * arguments into the available registers with EABI.  So, let's
+ * create an ARM specific syscall for this which has _sane_
+ * arguments.  (This incidentally also has an ABI-independent
+ * argument layout.)
+ */
+asmlinkage long sys_arm_sync_file_range(int fd, unsigned int flags,
+					loff_t offset, loff_t nbytes)
+{
+	return sys_sync_file_range(fd, offset, nbytes, flags);
+}
 void sys_syscall(void)
 {
 	/* The dispatch loop should catch this syscall, so that we never get

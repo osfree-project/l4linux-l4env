@@ -22,11 +22,12 @@
 #include <linux/highmem.h>
 #include <linux/module.h>
 #include <linux/kprobes.h>
+#include <linux/uaccess.h>
 
 #include <asm/system.h>
-#include <asm/uaccess.h>
 #include <asm/desc.h>
 #include <asm/kdebug.h>
+#include <asm/segment.h>
 
 extern void die(const char *,struct pt_regs *,long);
 
@@ -83,6 +84,142 @@ void bust_spinlocks(int yes)
 	printk(" ");
 	console_loglevel = loglevel_save;
 }
+
+#if 0
+/*
+ * Return EIP plus the CS segment base.  The segment limit is also
+ * adjusted, clamped to the kernel/user address space (whichever is
+ * appropriate), and returned in *eip_limit.
+ *
+ * The segment is checked, because it might have been changed by another
+ * task between the original faulting instruction and here.
+ *
+ * If CS is no longer a valid code segment, or if EIP is beyond the
+ * limit, or if it is a kernel address when CS is not a kernel segment,
+ * then the returned value will be greater than *eip_limit.
+ * 
+ * This is slow, but is very rarely executed.
+ */
+static inline unsigned long get_segment_eip(struct pt_regs *regs,
+					    unsigned long *eip_limit)
+{
+	unsigned long eip = regs->eip;
+	unsigned seg = regs->xcs & 0xffff;
+	u32 seg_ar, seg_limit, base, *desc;
+
+	/* Unlikely, but must come before segment checks. */
+	if (unlikely(regs->eflags & VM_MASK)) {
+		base = seg << 4;
+		*eip_limit = base + 0xffff;
+		return base + (eip & 0xffff);
+	}
+
+	/* The standard kernel/user address space limit. */
+	*eip_limit = user_mode(regs) ? USER_DS.seg : KERNEL_DS.seg;
+	
+	/* By far the most common cases. */
+	if (likely(SEGMENT_IS_FLAT_CODE(seg)))
+		return eip;
+
+	/* Check the segment exists, is within the current LDT/GDT size,
+	   that kernel/user (ring 0..3) has the appropriate privilege,
+	   that it's a code segment, and get the limit. */
+	__asm__ ("larl %3,%0; lsll %3,%1"
+		 : "=&r" (seg_ar), "=r" (seg_limit) : "0" (0), "rm" (seg));
+	if ((~seg_ar & 0x9800) || eip > seg_limit) {
+		*eip_limit = 0;
+		return 1;	 /* So that returned eip > *eip_limit. */
+	}
+
+	/* Get the GDT/LDT descriptor base. 
+	   When you look for races in this code remember that
+	   LDT and other horrors are only used in user space. */
+	if (seg & (1<<2)) {
+		/* Must lock the LDT while reading it. */
+		down(&current->mm->context.sem);
+		desc = current->mm->context.ldt;
+		desc = (void *)desc + (seg & ~7);
+	} else {
+		/* Must disable preemption while reading the GDT. */
+ 		desc = (u32 *)get_cpu_gdt_table(get_cpu());
+		desc = (void *)desc + (seg & ~7);
+	}
+
+	/* Decode the code segment base from the descriptor */
+	base = get_desc_base((unsigned long *)desc);
+
+	if (seg & (1<<2)) { 
+		up(&current->mm->context.sem);
+	} else
+		put_cpu();
+
+	/* Adjust EIP and segment limit, and clamp at the kernel limit.
+	   It's legitimate for segments to wrap at 0xffffffff. */
+	seg_limit += base;
+	if (seg_limit < *eip_limit && seg_limit >= base)
+		*eip_limit = seg_limit;
+	return eip + base;
+}
+
+/* 
+ * Sometimes AMD Athlon/Opteron CPUs report invalid exceptions on prefetch.
+ * Check that here and ignore it.
+ */
+static int __is_prefetch(struct pt_regs *regs, unsigned long addr)
+{ 
+	unsigned long limit;
+	unsigned char *instr = (unsigned char *)get_segment_eip (regs, &limit);
+	int scan_more = 1;
+	int prefetch = 0; 
+	int i;
+
+	for (i = 0; scan_more && i < 15; i++) { 
+		unsigned char opcode;
+		unsigned char instr_hi;
+		unsigned char instr_lo;
+
+		if (instr > (unsigned char *)limit)
+			break;
+		if (probe_kernel_address(instr, opcode))
+			break; 
+
+		instr_hi = opcode & 0xf0; 
+		instr_lo = opcode & 0x0f; 
+		instr++;
+
+		switch (instr_hi) { 
+		case 0x20:
+		case 0x30:
+			/* Values 0x26,0x2E,0x36,0x3E are valid x86 prefixes. */
+			scan_more = ((instr_lo & 7) == 0x6);
+			break;
+			
+		case 0x60:
+			/* 0x64 thru 0x67 are valid prefixes in all modes. */
+			scan_more = (instr_lo & 0xC) == 0x4;
+			break;		
+		case 0xF0:
+			/* 0xF0, 0xF2, and 0xF3 are valid prefixes */
+			scan_more = !instr_lo || (instr_lo>>1) == 1;
+			break;			
+		case 0x00:
+			/* Prefetch instruction is 0x0F0D or 0x0F18 */
+			scan_more = 0;
+			if (instr > (unsigned char *)limit)
+				break;
+			if (probe_kernel_address(instr, opcode))
+				break;
+			prefetch = (instr_lo == 0xF) &&
+				(opcode == 0x0D || opcode == 0x18);
+			break;			
+		default:
+			scan_more = 0;
+			break;
+		} 
+	}
+	return prefetch;
+}
+#endif
 
 static inline int is_prefetch(struct pt_regs *regs, unsigned long addr,
 			      unsigned long error_code)

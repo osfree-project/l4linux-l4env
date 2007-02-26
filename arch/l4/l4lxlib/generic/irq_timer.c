@@ -88,7 +88,6 @@ void timer_irq_thread(void *data)
 #else
 		l4lx_sleep(10);
 #endif
-
 		l4x_do_IRQ(irq, ctx);
 	}
 } /* timer_irq_thread */

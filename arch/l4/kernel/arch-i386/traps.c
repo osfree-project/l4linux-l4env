@@ -29,6 +29,8 @@
 #include <linux/kexec.h>
 #include <linux/unwind.h>
 #include <linux/uaccess.h>
+#include <linux/nmi.h>
+#include <linux/bug.h>
 
 #ifdef CONFIG_EISA
 #include <linux/ioport.h>
@@ -55,6 +57,7 @@
 
 #include <linux/module.h>
 
+#include "mach_traps.h"
 
 int panic_on_unrecovered_nmi;
 #include <asm/api/ids.h>
@@ -96,12 +99,7 @@ void spurious_interrupt_bug(void);
 void machine_check(void);
 #endif
 
-static int kstack_depth_to_print = 24;
-#ifdef CONFIG_STACK_UNWIND
-static int call_trace = 1;
-#else
-#define call_trace (-1)
-#endif
+int kstack_depth_to_print = 24;
 ATOMIC_NOTIFIER_HEAD(i386die_chain);
 
 int register_die_notifier(struct notifier_block *nb)
@@ -155,25 +153,7 @@ static inline unsigned long print_context_stack(struct thread_info *tinfo,
 	return ebp;
 }
 
-struct ops_and_data {
-	struct stacktrace_ops *ops;
-	void *data;
-};
-
-static asmlinkage int
-dump_trace_unwind(struct unwind_frame_info *info, void *data)
-{
-	struct ops_and_data *oad = (struct ops_and_data *)data;
-	int n = 0;
-
-	while (unwind(info) == 0 && UNW_PC(info)) {
-		n++;
-		oad->ops->address(oad->data, UNW_PC(info));
-		if (arch_unw_user_mode(info))
-			break;
-	}
-	return n;
-}
+#define MSG(msg) ops->warning(data, msg)
 
 void dump_trace(struct task_struct *task, struct pt_regs *regs,
 	        unsigned long *stack,
@@ -184,39 +164,6 @@ void dump_trace(struct task_struct *task, struct pt_regs *regs,
 	if (!task)
 		task = current;
 
-	if (call_trace >= 0) {
-		int unw_ret = 0;
-		struct unwind_frame_info info;
-		struct ops_and_data oad = { .ops = ops, .data = data };
-
-		if (regs) {
-			if (unwind_init_frame_info(&info, task, regs) == 0)
-				unw_ret = dump_trace_unwind(&info, &oad);
-		} else if (task == current)
-			unw_ret = unwind_init_running(&info, dump_trace_unwind, &oad);
-		else {
-			if (unwind_init_blocked(&info, task) == 0)
-				unw_ret = dump_trace_unwind(&info, &oad);
-		}
-		if (unw_ret > 0) {
-			if (call_trace == 1 && !arch_unw_user_mode(&info)) {
-				ops->warning_symbol(data, "DWARF2 unwinder stuck at %s\n",
-					     UNW_PC(&info));
-				if (UNW_SP(&info) >= PAGE_OFFSET) {
-					ops->warning(data, "Leftover inexact backtrace:\n");
-					stack = (void *)UNW_SP(&info);
-					if (!stack)
-						return;
-					ebp = UNW_FP(&info);
-				} else
-					ops->warning(data, "Full inexact backtrace again:\n");
-			} else if (call_trace >= 1)
-				return;
-			else
-				ops->warning(data, "Full inexact backtrace again:\n");
-		} else
-			ops->warning(data, "Inexact backtrace:\n");
-	}
 	if (!stack) {
 		unsigned long dummy;
 		stack = &dummy;
@@ -249,6 +196,7 @@ void dump_trace(struct task_struct *task, struct pt_regs *regs,
 		stack = (unsigned long*)context->previous_esp;
 		if (!stack)
 			break;
+		touch_nmi_watchdog();
 	}
 }
 EXPORT_SYMBOL(dump_trace);
@@ -377,7 +325,7 @@ void show_registers(struct pt_regs *regs)
 	 * time of the fault..
 	 */
 	if (in_kernel) {
-		u8 __user *eip;
+		u8 *eip;
 		int code_bytes = 64;
 		unsigned char c;
 
@@ -386,22 +334,24 @@ void show_registers(struct pt_regs *regs)
 
 		printk(KERN_EMERG "Code: ");
 
-		eip = (u8 __user *)regs->eip - 43;
-		if (eip < (u8 __user *)PAGE_OFFSET || __get_user(c, eip)) {
+		eip = (u8 *)regs->eip - 43;
+		if (eip < (u8 *)PAGE_OFFSET ||
+			probe_kernel_address(eip, c)) {
 			/* try starting at EIP */
-			eip = (u8 __user *)regs->eip;
+			eip = (u8 *)regs->eip;
 			code_bytes = 32;
 		}
 		for (i = 0; i < code_bytes; i++, eip++) {
 #if 0
-			if (eip < (u8 __user *)PAGE_OFFSET || __get_user(c, eip)) {
+			if (eip < (u8 *)PAGE_OFFSET ||
+				probe_kernel_address(eip, c)) {
 				printk(" Bad EIP value.");
 				break;
 			}
 #else
 			c = *(unsigned char *)eip;
 #endif
-			if (eip == (u8 __user *)regs->eip)
+			if (eip == (u8 *)regs->eip)
 				printk("<%02x> ", c);
 			else
 				printk("%02x ", c);
@@ -410,43 +360,22 @@ void show_registers(struct pt_regs *regs)
 	printk("\n");
 }	
 
-static void handle_BUG(struct pt_regs *regs)
+int is_valid_bugaddr(unsigned long eip)
 {
-	unsigned long eip = regs->eip;
 	unsigned short ud2;
 
 	if (eip < PAGE_OFFSET)
-		return;
-	if (probe_kernel_address((unsigned short __user *)eip, ud2))
-		return;
-	if (ud2 != 0x0b0f)
-		return;
+		return 0;
+	if (probe_kernel_address((unsigned short *)eip, ud2))
+		return 0;
 
-	printk(KERN_EMERG "------------[ cut here ]------------\n");
-
-#ifdef CONFIG_DEBUG_BUGVERBOSE
-	do {
-		unsigned short line;
-		char *file;
-		char c;
-
-		if (probe_kernel_address((unsigned short __user *)(eip + 2),
-					line))
-			break;
-		if (__get_user(file, (char * __user *)(eip + 4)) ||
-		    (unsigned long)file < PAGE_OFFSET || __get_user(c, file))
-			file = "<bad filename>";
-
-		printk(KERN_EMERG "kernel BUG at %s:%d!\n", file, line);
-		return;
-	} while (0);
-#endif
-	printk(KERN_EMERG "Kernel BUG at [verbose debug info unavailable]\n");
+	return ud2 == 0x0b0f;
 }
 
-/* This is gone through when something in the kernel
- * has done something bad and is about to be terminated.
-*/
+/*
+ * This is gone through when something in the kernel has done something bad and
+ * is about to be terminated.
+ */
 void die(const char * str, struct pt_regs * regs, long err)
 {
 	static struct {
@@ -454,7 +383,7 @@ void die(const char * str, struct pt_regs * regs, long err)
 		u32 lock_owner;
 		int lock_owner_depth;
 	} die = {
-		.lock =			SPIN_LOCK_UNLOCKED,
+		.lock =			__SPIN_LOCK_UNLOCKED(die.lock),
 		.lock_owner =		-1,
 		.lock_owner_depth =	0
 	};
@@ -478,7 +407,8 @@ void die(const char * str, struct pt_regs * regs, long err)
 		unsigned long esp;
 		unsigned short ss;
 
-		handle_BUG(regs);
+		report_bug(regs->eip);
+
 		printk(KERN_EMERG "%s: %04lx [#%d]\n", str, err & 0xffff, ++die_counter);
 #ifdef CONFIG_PREEMPT
 		printk(KERN_EMERG "PREEMPT ");
@@ -624,7 +554,7 @@ void do_coprocessor_error(struct pt_regs * regs, long error_code)
 	math_error();
 }
 
-asmlinkage void math_state_restore(void/*struct pt_regs regs*/)
+asmlinkage void math_state_restore(void)
 {
 	struct thread_info *thread = current_thread_info();
 	struct task_struct *tsk = thread->task;
@@ -634,6 +564,7 @@ asmlinkage void math_state_restore(void/*struct pt_regs regs*/)
 		init_fpu(tsk);
 	restore_fpu(tsk);
 	thread->status |= TS_USEDFPU;	/* So we fnsave on switch_to() */
+	tsk->fpu_counter++;
 }
 
 /* Called from init/main.c */
@@ -731,19 +662,3 @@ static int __init kstack_setup(char *s)
 	return 1;
 }
 __setup("kstack=", kstack_setup);
-
-#ifdef CONFIG_STACK_UNWIND
-static int __init call_trace_setup(char *s)
-{
-	if (strcmp(s, "old") == 0)
-		call_trace = -1;
-	else if (strcmp(s, "both") == 0)
-		call_trace = 0;
-	else if (strcmp(s, "newfallback") == 0)
-		call_trace = 1;
-	else if (strcmp(s, "new") == 2)
-		call_trace = 2;
-	return 1;
-}
-__setup("call_trace=", call_trace_setup);
-#endif
