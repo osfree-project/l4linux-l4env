@@ -67,7 +67,7 @@ void cpu_sa1100_proc_init(void)
  */
 void cpu_sa1100_proc_fin(void)
 {
-	outstring("cpu_sa1100_proc_fin\n");
+	local_irq_disable();
 }
 
 void  __attribute__((noreturn)) l4x_cpu_reset(unsigned long addr)

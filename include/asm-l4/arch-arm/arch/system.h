@@ -5,6 +5,7 @@
 #define __ASM_L4__ARCH_ARM__ARCH__SYSTEM_H__
 
 #include <linux/kernel.h>
+#include <asm/generic/setup.h>
 
 static inline void arch_idle(void)
 {
@@ -13,6 +14,7 @@ static inline void arch_idle(void)
 
 static inline void arch_reset(char mode)
 {
-	printk("%s called.", __func__);
+	local_irq_disable();
+	l4x_exit_l4linux();
 }
 #endif /* ! __ASM_L4__ARCH_ARM__ARCH__SYSTEM_H__ */
