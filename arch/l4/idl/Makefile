@@ -1,6 +1,6 @@
 # ------------
 
-include Makeconf.l4conf
+-include Makeconf.l4conf
 
 DICE		= $(firstword $(wildcard $(L4BID_DICEDIR)/src/dice \
 	                                 $(shell which dice 2>/dev/null)) false)

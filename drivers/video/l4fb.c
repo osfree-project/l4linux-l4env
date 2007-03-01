@@ -59,6 +59,7 @@ static unsigned int dope_xpos = 120, dope_ypos = 60;
 static char *dope_window_title = "Linux console";
 static unsigned int nograb;
 static l4dm_dataspace_t fbds;
+static int disable;
 
 static enum mode mode = MODE_NONE;
 
@@ -767,6 +768,9 @@ static int __init l4fb_probe(struct platform_device *dev)
 	int dope_avail = 0, con_avail = 0;
 	int ret = -ENOMEM;
 
+	if (disable)
+		return -ENODEV;
+
 	/* Process module parameters */
 	if (refreshsleep >= 0)
 		l4fb_refresh_sleep = refreshsleep;
@@ -942,3 +946,5 @@ module_param(depth, uint, 0);
 MODULE_PARM_DESC(depth, "Color depth");
 module_param(nograb, uint, 0);
 MODULE_PARM_DESC(nograb, "Do not grab window focus with mouse (DOpE only)");
+module_param(disable, bool, 0);
+MODULE_PARM_DESC(disable, "Disable driver");
