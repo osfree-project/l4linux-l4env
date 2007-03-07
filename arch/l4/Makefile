@@ -101,30 +101,6 @@ L4DIR := $(shell readlink $(L4OBJ)/source)
 export L4OBJ
 export L4DIR
 
-## Check a few options that should not be enabled
-# gcc may call memset from our libs, so obey calling convention
-# this should probably be fixed
-ifeq ($(CONFIG_REGPARM),y)
-$(error CONFIG_REGPARM must not be enabled)
-endif
-ifeq ($(CONFIG_HIGHMEM4G),y)
-$(error HIGHMEM must not be enabled)
-endif
-ifeq ($(CONFIG_HIGHMEM64G),y)
-$(error HIGHMEM must not be enabled)
-endif
-ifeq ($(CONFIG_SMP),y)
-$(error SMP mode not supported, send patches!)
-endif
-ifeq ($(CONFIG_PREEMPT),y)
-$(error PREEMPT must not be enabled)
-endif
-ifeq ($(CONFIG_PCI_GOANY),y)
-$(error PCI Any access method must not be used)
-endif
-ifeq ($(CONFIG_PCI_GOBIOS),y)
-$(error PCI BIOS access method must not be used)
-endif
 
 # Extra Libs
 L4LX_E_L-$(CONFIG_L4_DROPSCON)  += -l$(patsubst "%",%,$(CONFIG_L4_DROPSCON_LIB)) -lnames
@@ -284,7 +260,7 @@ CLEAN_FILES	+= $(symlinks) Makeconf.l4conf
 Makeconf.l4conf: $(srctree)/arch/l4/Makefile.l4conf $(srctree)/arch/l4/Makefile
 	$(MAKE) -f $< O=$(L4OBJ) OUTPUT=$@
 
-archprepare: $(symlinks) Makeconf.l4conf
+archprepare: check_linux_config $(symlinks) Makeconf.l4conf
 
 # ----
 
@@ -297,7 +273,40 @@ chkl4conf:
 		echo \"$(L4OBJ)\" does not look like an L4 build directory!; \
 	fi
 
-PHONY += chkl4conf
+## Check a few options that should not be enabled
+# regparm: gcc may call memset from our libs, so obey calling convention
+#          this should probably be fixed
+check_linux_config:
+	@if [ "$(CONFIG_REGPARM)" = "y" ]; then           \
+	  echo CONFIG_REGPARM must not be enabled;        \
+	  exit 1;                                         \
+	fi
+	@if [ "$(CONFIG_HIGHMEM4G)" = "y" ]; then         \
+	  echo CONFIG_HIGHMEM4G must not be enabled;      \
+	  exit 1;                                         \
+	fi
+	@if [ "$(CONFIG_HIGHMEM64G)" = "y" ]; then        \
+	  echo CONFIG_HIGHMEM64G must not be enabled;     \
+	  exit 1;                                         \
+	fi
+	@if [ "$(CONFIG_SMP)" = "y" ]; then               \
+	  echo CONFIG_SMP must no be enabled;             \
+	  exit 1;                                         \
+	fi
+	@if [ "$(CONFIG_PREEMPT)" = "y" ]; then           \
+	  echo CONFIG_PREEMPT mode not supported;         \
+	  exit 1;                                         \
+	fi
+	@if [ "$(CONFIG_PCI_GOANY)" = "y" ]; then         \
+	  echo CONFIG_PCI_GOANY mode not supported;       \
+	  exit 1;                                         \
+	fi
+	@if [ "$(CONFIG_PCI_GOBIOS)" = "y" ]; then       \
+	  echo CONFIG_PCI_GOBIOS mode not supported;      \
+	  exit 1;                                         \
+	fi
+
+PHONY += chkl4conf check_linux_config
 
 define archhelp
   echo '* vmlinuz	- Compressed kernel image'
