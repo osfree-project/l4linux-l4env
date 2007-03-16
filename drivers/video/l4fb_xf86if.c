@@ -13,6 +13,8 @@
 #include <asm/generic/l4fb.h>
 
 #include <l4/l4con/l4con_ev.h>
+#include <l4/l4con/l4con-client.h>
+#include <l4/env/errno.h>
 #include <l4/sys/kdebug.h>
 
 extern struct proc_dir_entry *l4_proc_dir;
@@ -147,6 +149,8 @@ static int l4fb_xf86if_f_ioctl(struct inode *i, struct file *f,
 		l4dm_dataspace_t ds_id;
 	} ctu;
 	l4_threadid_t t;
+	int res;
+	DICE_DECLARE_ENV(_env);
 
 	switch (_IOC_NR(cmd)) {
 		case 1:
@@ -155,6 +159,10 @@ static int l4fb_xf86if_f_ioctl(struct inode *i, struct file *f,
 			ctu.vc_id = l4fb_con_vc_id_get();
 			ctu.ds_id = l4fb_con_ds_id_get();
 			l4dm_share(&ctu.ds_id, ctu.x_id, L4DM_RW);
+			if ((res = con_vc_share_call(&ctu.vc_id, &ctu.x_id, &_env))
+			    || DICE_HAS_EXCEPTION(&_env))
+				printk("%s: Error sharing console: %s(%d)\n",
+				       __func__, l4env_errstr(res), res);
 			if (copy_to_user((void *)arg, &ctu, sizeof(ctu)))
 				return -EFAULT;
 			break;
