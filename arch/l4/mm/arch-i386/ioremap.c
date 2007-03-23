@@ -372,14 +372,15 @@ void __iomem * __ioremap(unsigned long phys_addr, unsigned long size, unsigned l
 	//printk("%s: whole region %08lx - %08lx (%06x)\n", __func__, reg_start, reg_start + reg_len - 1, reg_len);
 
 	if ((addr = (void *)l4io_request_mem_region(reg_start, reg_len,
-	                                            0, &offset)) == 0) {
+	                                            0)) == 0) {
 		enter_kdebug("l4io_request_mem_region error");
 		return NULL;
 	}
+	offset = 0;
 
 	/* Save whole region */
 	set_ioremap_entry((unsigned long)addr,
-	                  ((unsigned long)addr) + offset,
+	                  (unsigned long)addr,
 	                  reg_start,
 	                  reg_len);
 

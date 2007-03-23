@@ -94,7 +94,7 @@ CFLAGS += $(cflags-y)
 
 # -----------------------------------------------
 
--include Makeconf.l4conf
+-include $(objtree)/Makeconf.l4conf
 
 L4OBJ := $(patsubst "%",%,$(CONFIG_L4_OBJ_TREE))
 L4DIR := $(shell readlink $(L4OBJ)/source)
@@ -257,10 +257,10 @@ symlinks      = include/asm-l4/api \
 #MRPROPER_FILES	+= $(symlinks)
 CLEAN_FILES	+= $(symlinks) Makeconf.l4conf
 
-Makeconf.l4conf: $(srctree)/arch/l4/Makefile.l4conf $(srctree)/arch/l4/Makefile
-	$(MAKE) -f $< O=$(L4OBJ) OUTPUT=$@
+$(objtree)/Makeconf.l4conf: $(srctree)/arch/l4/Makefile.l4conf $(srctree)/arch/l4/Makefile
+	$(Q)$(MAKE) $(if $(L4DIR),-C $(L4DIR),) -f $< O=$(L4OBJ) OUTPUT=$@
 
-archprepare: check_linux_config $(symlinks) Makeconf.l4conf
+archprepare: check_linux_config $(symlinks) $(objtree)/Makeconf.l4conf
 
 # ----
 
