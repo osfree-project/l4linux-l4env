@@ -23,7 +23,6 @@ alternative-y	:= $(b)/alternative.o
 ldt-y		:= $(b)/ldt.o
 module-y	:= $(b)/module.o
 pci-dma-y	:= $(b)/pci-dma.o
-stacktrace-y	:= $(b)/stacktrace.o
 sys_i386-y	:= $(b)/sys_i386.o
 topology-y	:= $(b)/topology.o
 i387-y		:= $(b)/i387.o

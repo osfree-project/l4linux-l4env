@@ -162,11 +162,10 @@ L4INC		= -I$(L4OBJ)/include/$(L4_MK_ARCH)/$(L4_MK_API) \
 MACH_INC_i386	:= -Iinclude/asm-l4/$(BASEARCH)-arch/asm/mach-default
 MACH_INC_arm	:= -Iinclude/asm-l4/$(BASEARCH)-arch
 
-LDFLAGS_LDSO-$(L4BID_USE_LDSO) = \
-		   --dynamic-linker libld-l4.s.so \
+LDFLAGS_LDSO	= --dynamic-linker libld-l4.s.so \
 		   $(L4OBJ)/lib/$(L4_MK_ARCH)_$(L4_MK_CPU)/crt0.o
 
-LDFLAGS_vmlinux	+= $(LDFLAGS_LDSO-y) $(L4LIBS) -z now
+LDFLAGS_vmlinux	+= $(LDFLAGS_LDSO) $(L4LIBS) -z now
 CPPFLAGS	+= -Iinclude/asm-l4/l4-arch -Iinclude/asm-l4/$(BASEARCH)-arch \
 		   $(MACH_INC_$(BASEARCH)) $(L4INC) $(CPPFLAGS_SYSENTER-y) \
 		   $(L4BID_CPPFLAGS_SYSCALLS-y)

@@ -25,22 +25,21 @@ static __STACKS_ARRAY_ELEM_TYPE l4lx_thread_stacks_used[__STACKS_ARRAY_ELEMS];
 /* If the thread is L4_NIL_ID the corresponding stacks isn't used */
 static l4_threadid_t l4lx_thread_stack_to_thread_no[L4LX_THREAD_NO_THREADS];
 
-static DEFINE_SPINLOCK(l4lx_thread_stack_lock);
-
 /* Storage for thread names */
 struct l4lx_thread_name_struct l4lx_thread_names[L4LX_THREAD_NO_THREADS] __nosavedata;
 
 void *l4lx_thread_stack_get(void)
 {
 	int n;
+	unsigned long flags;
 
-	spin_lock(&l4lx_thread_stack_lock);
+	local_irq_save(flags);
 
 	n = find_first_zero_bit(l4lx_thread_stacks_used,
 				L4LX_THREAD_NO_THREADS);
 	set_bit(n, l4lx_thread_stacks_used);
 
-	spin_unlock(&l4lx_thread_stack_lock);
+	local_irq_restore(flags);
 
 	if (n >= L4LX_THREAD_NO_THREADS)
 		return NULL;
