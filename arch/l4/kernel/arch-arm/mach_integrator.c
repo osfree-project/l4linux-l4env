@@ -11,6 +11,8 @@
 
 #define IRQ_CP_ETHINT			27
 
+#if 0
+// QEmu integrator
 static struct resource smc91x_resources[] = {
 	[0] = {
 		.start  = INTCP_PA_ETH_BASE,
@@ -23,6 +25,23 @@ static struct resource smc91x_resources[] = {
 		.flags  = IORESOURCE_IRQ,
 	},
 };
+#endif
+
+#if 1
+// QEmu realview / EB
+static struct resource smc91x_resources[] = {
+	[0] = {
+		.start  = 0x4e000000,
+		.end    = 0x4e000fff,
+		.flags  = IORESOURCE_MEM,
+	},
+	[1] = {
+		.start  = 28,
+		.end    = 28,
+		.flags  = IORESOURCE_IRQ,
+	},
+};
+#endif
 
 static struct platform_device smc91x_device = {
 	.name           = "smc91x",
@@ -46,7 +65,4 @@ void __init l4x_arm_integrator_map_io(void)
 
 void __init l4x_arm_integrator_irq_init(void)
 {
-	int i;
-	for (i = 1; i < NR_IRQS; i++)
-		l4x_setup_virt_irq(i);
 }

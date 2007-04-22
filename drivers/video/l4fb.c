@@ -103,8 +103,6 @@ static struct fb_fix_screeninfo l4fb_fix __initdata = {
 
 static u32 pseudo_palette[17];
 
-int atexit(void (*f)(void));
-
 /* -- implementations -------------------------------------------------- */
 
 static void vesa_setpalette(int regno, unsigned red, unsigned green,

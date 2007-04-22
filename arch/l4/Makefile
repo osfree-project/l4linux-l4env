@@ -276,10 +276,6 @@ chkl4conf:
 # regparm: gcc may call memset from our libs, so obey calling convention
 #          this should probably be fixed
 check_linux_config:
-	@if [ "$(CONFIG_REGPARM)" = "y" ]; then           \
-	  echo CONFIG_REGPARM must not be enabled;        \
-	  exit 1;                                         \
-	fi
 	@if [ "$(CONFIG_HIGHMEM4G)" = "y" ]; then         \
 	  echo CONFIG_HIGHMEM4G must not be enabled;      \
 	  exit 1;                                         \
@@ -300,8 +296,20 @@ check_linux_config:
 	  echo CONFIG_PCI_GOANY mode not supported;       \
 	  exit 1;                                         \
 	fi
-	@if [ "$(CONFIG_PCI_GOBIOS)" = "y" ]; then       \
+	@if [ "$(CONFIG_PCI_GOBIOS)" = "y" ]; then        \
 	  echo CONFIG_PCI_GOBIOS mode not supported;      \
+	  exit 1;                                         \
+	fi
+	@if [ "$(HPET_TIMER)" = "y" ]; then               \
+	  echo HPET timer must not be enabled;            \
+	  exit 1;                                         \
+	fi
+	@if [ "$(CONFIG_X86_MCE)" = "y" ]; then           \
+	  echo MCE must not be enabled;                   \
+	  exit 1;                                         \
+	fi
+	@if [ "$(CONFIG_MTRR)" = "y" ]; then              \
+	  echo MTRR support must not be enabled;          \
 	  exit 1;                                         \
 	fi
 

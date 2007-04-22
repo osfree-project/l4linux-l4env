@@ -19,12 +19,16 @@
 #include <asm/generic/task.h>
 #include <asm/generic/do_irq.h>
 
+#include <l4/log/l4log.h>
 #include <l4/sys/kdebug.h>
 #include <l4/omega0/client.h>
 
 /* bitmap containing '1' if the corresponding irq was requested from
  *  * Omega0 but not yet unmasked. */
-static unsigned long irq_masked_at_omega0 = 0;
+static unsigned long irq_masked_at_omega0;
+
+/* Bitmask of omega0 IRQs */
+static unsigned long omega0_irqs;
 
 /* This is a copy of the prios in l4lxlib/V2/irq.c
  * XXX: Join this in a sane way! */
@@ -33,14 +37,63 @@ static char irq_prio[NR_IRQS] =
      { 1, 0,15, 6, 5, 4, 3, 2,14,13,12,11,10, 9, 8, 7};
 
 static int irq_handle[NR_IRQS];
+static l4_threadid_t detach_thread;
 
 DEFINE_SPINLOCK(l4_irq_lock);
+
+static void l4lx_irq_omega0_detach_call(void)
+{
+	int i, e;
+	l4_threadid_t me = l4_myself();
+	l4_msgdope_t dope;
+
+	for (i = 0; i < NR_IRQS; i++) {
+		if (l4_thread_equal(me, irq_id[i])) {
+			omega0_irqdesc_t desc;
+
+			desc.s.num = i + 1;
+			if (omega0_detach(desc))
+				LOG_printf("Error detaching IRQ %d\n", i);
+
+			e = l4_ipc_send(detach_thread, L4_IPC_SHORT_MSG, 0, 0,
+			                L4_IPC_NEVER, &dope);
+			if (e)
+				LOG_printf("Error sending IPC: %x\n", e);
+		}
+	}
+
+	l4_sleep_forever();
+}
+
+static void l4lx_irq_omega0_detach(void)
+{
+	int i, e;
+	l4_threadid_t inv_id = L4_INVALID_ID;
+	l4_msgdope_t dope;
+	l4_umword_t d;
+
+	detach_thread = l4_myself();
+
+	for (i = 0; i < NR_IRQS; i++) {
+		if (!test_bit(i, &omega0_irqs) || l4_is_nil_id(irq_id[i]))
+			continue;
+
+		l4_thread_ex_regs(irq_id[i],
+		                  (l4_umword_t)l4lx_irq_omega0_detach_call,
+		                  ~0UL, &inv_id, &inv_id, &d, &d, &d);
+
+		e = l4_ipc_receive(irq_id[i], L4_IPC_SHORT_MSG, &d, &d,
+		                   L4_IPC_NEVER, &dope);
+		if (e)
+			LOG_printf("Error receiving IPC: %x\n", e);
+	}
+}
 
 void l4lx_irq_init(void)
 {
 	l4lx_irq_max = NR_IRQS;
+	atexit(l4lx_irq_omega0_detach);
 }
-
 
 int l4lx_irq_prio_get(unsigned int irq)
 {
@@ -66,20 +119,14 @@ static int acquire_irq(unsigned int irq)
 	desc.s.shared = 1;
 	desc.s.num = irq + 1;
 
-	if ((irq_handle[irq] = omega0_attach(desc)) >= 0) {
-		set_bit(irq, &irq_masked_at_omega0);
-
-		/* XXX: We initially enable each attached IRQ! Is this a
-		 *      problem for some drivers? */
-		//enable_irq_hard(irq);
-	} else {
+	if ((irq_handle[irq] = omega0_attach(desc)) < 0) {
 		/* failure to attach to IRQ */
-
-		printk("%s: Error attaching to IRQ %d\n",
-		       __func__, irq);
-		//enter_kdebug("Error attaching to IRQ");
+		LOG_printf("%s: Error attaching to IRQ %d\n", __func__, irq);
 		return 0;
 	}
+
+	set_bit(irq, &irq_masked_at_omega0);
+	set_bit(irq, &omega0_irqs);
 
 	return 1;
 }
@@ -98,18 +145,16 @@ static inline void wait_for_irq_message(unsigned int irq)
 	int err;
 
 	for (;;) {
-		if (irq_masked_at_omega0 & (1 << irq)) {
-			request = OMEGA0_RQ(OMEGA0_WAIT | OMEGA0_UNMASK,
-					    irq + 1);
-			clear_bit(irq, &irq_masked_at_omega0);
-		} else
+		if (test_and_clear_bit(irq, &irq_masked_at_omega0))
+			request = OMEGA0_RQ(OMEGA0_WAIT | OMEGA0_UNMASK, irq + 1);
+		else
 			request = OMEGA0_RQ(OMEGA0_WAIT, irq + 1);
 
 		if ((err = omega0_request(irq_handle[irq], request)) >= 0)
 			break;
 
-		printk("%s: irq %u receive failed, code = 0x%x\n",
-		       __func__, irq, (unsigned) err);
+		LOG_printf("%s: irq %u receive failed, code = 0x%x\n",
+		           __func__, irq, (unsigned) err);
 	}
 }
 
@@ -143,8 +188,8 @@ unsigned int l4lx_irq_dev_startup_hw(unsigned int irq)
 
 	/* first time? */
 	if (!test_and_set_bit(irq, &irq_threads_started)) {
-		printk("%s: Starting IRQ thread for IRQ %d.\n",
-		       __func__, irq);
+		LOG_printf("%s: Starting IRQ thread for IRQ %d.\n",
+		           __func__, irq);
 
 		/* Create IRQ thread */
 		sprintf(thread_name, "IRQ%d", irq);
@@ -189,34 +234,34 @@ void l4lx_irq_dev_end_hw(unsigned int irq)
  */
 unsigned int l4lx_irq_dev_startup_virt(unsigned int irq)
 {
-	printk("%s(%d) unimplemented\n", __func__, irq);
+	LOG_printf("%s(%d) unimplemented\n", __func__, irq);
 	return 0;
 }
 void l4lx_irq_dev_shutdown_virt(unsigned int irq)
 {
-	printk("%s(%d) unimplemented\n", __func__, irq);
+	LOG_printf("%s(%d) unimplemented\n", __func__, irq);
 }
 void l4lx_irq_dev_ack_virt(unsigned int irq)
 {
-	printk("%s(%d) unimplemented\n", __func__, irq);
+	LOG_printf("%s(%d) unimplemented\n", __func__, irq);
 }
 void l4lx_irq_dev_mask_virt(unsigned int irq)
 {
-	printk("%s(%d) unimplemented\n", __func__, irq);
+	LOG_printf("%s(%d) unimplemented\n", __func__, irq);
 }
 void l4lx_irq_dev_unmask_virt(unsigned int irq)
 {
-	printk("%s(%d) unimplemented\n", __func__, irq);
+	LOG_printf("%s(%d) unimplemented\n", __func__, irq);
 }
 void l4lx_irq_dev_end_virt(unsigned int irq)
 {
-	printk("%s(%d) unimplemented\n", __func__, irq);
+	LOG_printf("%s(%d) unimplemented\n", __func__, irq);
 }
 void l4lx_irq_dev_enable_virt(unsigned int irq)
 {
-	printk("%s(%d) unimplemented\n", __func__, irq);
+	LOG_printf("%s(%d) unimplemented\n", __func__, irq);
 }
 void l4lx_irq_dev_disable_virt(unsigned int irq)
 {
-	printk("%s(%d) unimplemented\n", __func__, irq);
+	LOG_printf("%s(%d) unimplemented\n", __func__, irq);
 }

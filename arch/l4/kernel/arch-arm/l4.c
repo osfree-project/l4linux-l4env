@@ -109,13 +109,12 @@ void __init l4x_setup_dev_irq(unsigned int irq)
 
 static void __init init_irq_l4(void)
 {
+	int i;
 	/* Call our generic IRQ handling code */
 	l4lx_irq_init();
 
-#ifdef CONFIG_L4_ARM_PLATFORM_GENERIC
-	/* Possible virtual IRQs */
-	l4x_setup_virt_irq(27);
-#endif
+	for (i = 1; i < NR_IRQS; i++)
+		l4x_setup_virt_irq(i);
 
 #ifdef CONFIG_L4_ARM_PLATFORM_ISG
 	l4x_arm_isg_irq_init();

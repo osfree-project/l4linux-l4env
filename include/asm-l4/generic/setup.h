@@ -26,4 +26,6 @@ void __attribute__((noreturn)) l4x_exit_l4linux(void);
 
 void l4x_thread_set_pc(l4_threadid_t thread, void *pc);
 
+int atexit(void (*f)(void));
+
 #endif /* ! __ASM_L4__GENERIC__SETUP_H__ */
