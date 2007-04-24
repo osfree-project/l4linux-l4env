@@ -5,25 +5,6 @@
 
 #include <l4/sys/utcb.h>
 
-struct l4x_exception_msg {
-	l4_fpage_t fp;
-	l4_msgdope_t size_dope;
-	l4_msgdope_t send_dope;
-	l4_umword_t words[3];
-	l4_strdope_t excp_regs;
-};
-
-static inline void l4x_setup_ipc_descriptor(struct l4x_exception_msg *msg,
-                                            l4_utcb_t *utcb)
-{
-	msg->size_dope          = L4_IPC_DOPE(3, 1);
-	msg->send_dope          = L4_IPC_DOPE(3, 1);
-	msg->excp_regs.rcv_size = sizeof(struct l4_utcb_exception);
-	msg->excp_regs.rcv_str  = (unsigned long)utcb;
-	msg->excp_regs.snd_size = sizeof(struct l4_utcb_exception);
-	msg->excp_regs.snd_str  = (unsigned long)utcb;
-}
-
 enum l4x_cpu_modes {
 	L4X_MODE_KERNEL = SYSTEM_MODE,
 	L4X_MODE_USER   = USR_MODE,
@@ -92,6 +73,11 @@ static inline void ptregs_to_utcb(struct pt_regs *ptregs, l4_utcb_t *utcb)
 	utcb->exc.ulr   = ptregs->ARM_lr;
 	utcb->exc.pc    = ptregs->ARM_pc;
 	utcb->exc.cpsr  = ptregs->ARM_cpsr;
+}
+
+static inline l4_utcb_t *l4_utcb_get_l4lx(void)
+{
+	return l4_utcb_get();
 }
 
 #endif /* ! __ASM_L4__L4X_ARM__EXCEPTION_H__ */

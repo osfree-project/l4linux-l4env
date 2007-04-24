@@ -227,6 +227,7 @@ static inline unsigned long l4x_handle_dev_mem(unsigned long phy)
 {
 	unsigned long devmem;
 
+#ifdef ARCH_x86
 	if (phy > 0x80000000U) {
 		if (!(devmem = find_ioremap_entry(phy))
 		    && !(devmem = (unsigned long)ioremap(phy & L4_PAGEMASK,
@@ -235,7 +236,9 @@ static inline unsigned long l4x_handle_dev_mem(unsigned long phy)
 			return 0;
 		}
 		devmem |= phy & (L4_PAGESIZE - 1);
-	} else {
+	} else
+#endif
+	{
 		if (!l4lx_memory_page_mapped(phy))
 			return 0;
 		devmem = phy;
@@ -367,9 +370,9 @@ static inline void utcb_to_thread_struct(l4_utcb_t *utcb,
 	t->error_code = utcb->exc.err;
 }
 
-static void thread_struct_to_utcb(struct thread_struct *t,
-                                  l4_utcb_t *utcb,
-                                  unsigned int send_size)
+static inline void thread_struct_to_utcb(struct thread_struct *t,
+                                         l4_utcb_t *utcb,
+                                         unsigned int send_size)
 {
 	ptregs_to_utcb(&t->regs, utcb);
 	utcb->exc.gs   = t->gs;
@@ -393,7 +396,7 @@ static int l4x_hybrid_begin(struct task_struct *p,
 	    || t->hybrid_sc_in_prog)
 		return 0;
 
-	TBUF_LOG_HYB_BEGIN(fiasco_tbuf_log_3val("hyb-beg", TBUF_TID(t->user_thread_id), utcb->exc.eip, intnr));
+	TBUF_LOG_HYB_BEGIN(fiasco_tbuf_log_3val("hyb-beg", TBUF_TID(t->user_thread_id), l4_utcb_exc_pc(utcb), intnr));
 
 	t->hybrid_sc_in_prog = 1;
 
@@ -499,7 +502,7 @@ static void l4x_hybrid_return(l4_threadid_t src_id,
 		utcb_to_thread_struct(utcb, t);
 	}
 
-	TBUF_LOG_HYB_RETURN(fiasco_tbuf_log_3val("hyb-ret", TBUF_TID(t->user_thread_id), utcb->exc.eip, t->hybrid_pf_addr));
+	TBUF_LOG_HYB_RETURN(fiasco_tbuf_log_3val("hyb-ret", TBUF_TID(t->user_thread_id), l4_utcb_exc_pc(utcb), t->hybrid_pf_addr));
 
 	/* Wake up hybrid task h and reschedule */
 	wake_up_process(h);
@@ -512,7 +515,7 @@ out_fail:
 	           "%p, %lx, %lx, %d, %lx)!\n",
 	           __func__, PRINTF_L4TASK_ARG(src_id),
 	           h, utcb->exc.trapno, utcb->exc.err, l4x_l4syscall_get_nr(utcb),
-	           utcb->exc.eip);
+	           l4_utcb_exc_pc(utcb));
 	LOG_printf("%s: Currently running: " PRINTF_L4TASK_FORM "\n",
 	           __func__, PRINTF_L4TASK_ARG(current->thread.user_thread_id));
 	enter_kdebug("hybrid_return failed");
@@ -977,12 +980,12 @@ static inline void l4x_dispatch_page_fault(struct task_struct *p,
 {
 	TBUF_LOG_USER_PF(fiasco_tbuf_log_3val("U-PF   ",
 	                 TBUF_TID(p->thread.user_thread_id),
-	                 utcb->exc.pfa, utcb->exc.eip));
+	                 utcb->exc.pfa, l4_utcb_exc_pc(utcb)));
 
 	utcb_to_thread_struct(utcb, t);
 
 	if (l4x_handle_page_fault(p, l4x_l4pfa(utcb),
-	                          utcb->exc.eip, d0, d1)) {
+	                          l4_utcb_exc_pc(utcb), d0, d1)) {
 
 		if (!signal_pending(p))
 			force_sig(SIGSEGV, p);
@@ -1020,8 +1023,7 @@ void l4x_suspend_user(struct task_struct *p)
 	pager_id = preempter_id = L4_INVALID_ID;
 
 	l4_inter_task_ex_regs(p->thread.user_thread_id,
-	                      (l4_umword_t)-1,
-	                      (l4_umword_t)-1,
+	                      ~0UL, ~0UL,
 	                      &preempter_id, &pager_id,
 	                      &o_efl, &o_ip, &o_sp,
 	                      L4_THREAD_EX_REGS_NO_CANCEL

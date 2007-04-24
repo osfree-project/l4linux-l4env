@@ -766,8 +766,9 @@ static void __init l4env_linux_startup(void *data)
 
 	l4lx_thread_pager_change(linux_server_thread_id, caller_id);
 
-#ifdef ARCH_x86
 	l4_utcb_exception_ipc_enable();
+
+#ifdef ARCH_x86
 	l4_utcb_get()->status |= L4_UTCB_EXCEPTION_FPU_INHERIT;
 	l4_utcb_l4lx_server = l4_utcb_get();
 	if (sizeof(l4_utcb_t) != 128)
