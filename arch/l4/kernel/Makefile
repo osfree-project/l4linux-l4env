@@ -14,3 +14,4 @@ obj-$(CONFIG_L4_FERRET)		+= ferret.o
 
 export CPPFLAGS_vmlinux.lds += -U$(BASEARCH) -DARCH_$(L4_MK_ARCH)
 
+main.o: l4xi-server.h l4xi-client.h
