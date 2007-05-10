@@ -14,16 +14,16 @@
 	pr_reg[4] = regs->edi;				\
 	pr_reg[5] = regs->ebp;				\
 	pr_reg[6] = regs->eax;				\
-	pr_reg[7] = 0; /* fake */			\
-	pr_reg[8] = 0; /* fake */			\
-	pr_reg[9] = 0; /* fake */			\
-	pr_reg[10] = regs->xgs;				\
+	pr_reg[7] = 0; /* fake ds */			\
+	pr_reg[8] = 0; /* fake es */			\
+	pr_reg[9] = regs->xfs; ;			\
+	pr_reg[10] = 0; /* fake gs */			\
 	pr_reg[11] = regs->orig_eax;			\
 	pr_reg[12] = regs->eip;				\
-	pr_reg[13] = 0; /* fake */			\
+	pr_reg[13] = 0; /* fake cs */			\
 	pr_reg[14] = regs->eflags;			\
 	pr_reg[15] = regs->esp;				\
-	pr_reg[16] = 0; /* fake */
+	pr_reg[16] = 0; /* fake ss */
 
 #include <asm/api/config.h>
 

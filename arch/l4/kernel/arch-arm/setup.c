@@ -81,6 +81,9 @@ struct cpu_user_fns cpu_user;
 #ifdef MULTI_CACHE
 struct cpu_cache_fns cpu_cache;
 #endif
+#ifdef CONFIG_OUTER_CACHE
+struct outer_cache_fns outer_cache;
+#endif
 
 struct stack {
 	u32 irq[3];
@@ -99,7 +102,7 @@ unsigned long phys_initrd_size __initdata = 0;
 static struct meminfo meminfo __initdata = { 0, };
 static const char *cpu_name;
 static const char *machine_name;
-static char command_line[COMMAND_LINE_SIZE];
+static char __initdata command_line[COMMAND_LINE_SIZE];
 
 static char default_command_line[COMMAND_LINE_SIZE] __initdata = CONFIG_CMDLINE;
 static union { char c[4]; unsigned long l; } endian_test __initdata = { { 'l', '?', '?', 'b' } };
@@ -807,16 +810,16 @@ void __init setup_arch(char **cmdline_p)
 	init_mm.end_data   = (unsigned long) &_edata;
 	init_mm.brk	   = (unsigned long) &_end;
 
-	setup_l4env_memory(saved_command_line, &mem_start, &mem_size,
+	setup_l4env_memory(boot_command_line, &mem_start, &mem_size,
 	                   &dummy, &dummy);
 	/* Needs to start from 0 to include the image as well */
 	/* Also see in arch_adjust_zones() in arch/memory.h */
 	arm_add_memory(0,         mem_start);
 	arm_add_memory(mem_start, mem_size);
 
-	//memcpy(saved_command_line, from, COMMAND_LINE_SIZE);
-	from = saved_command_line;
-	saved_command_line[COMMAND_LINE_SIZE-1] = '\0';
+	//memcpy(boot_command_line, from, COMMAND_LINE_SIZE);
+	from = boot_command_line;
+	boot_command_line[COMMAND_LINE_SIZE-1] = '\0';
 	parse_cmdline(cmdline_p, from);
 	paging_init(&meminfo, mdesc);
 	request_standard_resources(&meminfo, mdesc);
@@ -850,8 +853,11 @@ static int __init topology_init(void)
 {
 	int cpu;
 
-	for_each_possible_cpu(cpu)
-		register_cpu(&per_cpu(cpu_data, cpu).cpu, cpu);
+	for_each_possible_cpu(cpu) {
+		struct cpuinfo_arm *cpuinfo = &per_cpu(cpu_data, cpu);
+		cpuinfo->cpu.hotpluggable = 1;
+		register_cpu(&cpuinfo->cpu, cpu);
+	}
 
 	return 0;
 }

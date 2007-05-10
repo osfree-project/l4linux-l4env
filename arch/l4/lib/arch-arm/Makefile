@@ -1,6 +1,4 @@
 
-lib-y		:= io.o
-
 obj-y		+= memcpy.o memzero.o lib1funcs.o muldi3.o div64.o \
 		   memmove.o ucmpdi2.o \
 		   testsetbit.o ashldi3.o testclearbit.o ashrdi3.o \

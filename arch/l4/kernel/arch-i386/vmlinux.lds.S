@@ -26,6 +26,7 @@ OUTPUT_FORMAT("elf32-i386", "elf32-i386", "elf32-i386")
 OUTPUT_ARCH(i386)
 ENTRY(phys_startup_32)
 jiffies = jiffies_64;
+_proxy_pda = 1;
 
 #if 0
 PHDRS {
@@ -38,9 +39,14 @@ SECTIONS
 {
   . = 0x400000;
   phys_startup_32 = startup_32 - LOAD_OFFSET;
+
+  .text.head : AT(ADDR(.text.head) - LOAD_OFFSET) {
+  	_text = .;			/* Text and read-only data */
+	*(.text.head)
+  } /* :text */ = 0x9090
+
   /* read-only */
   startup_32 = .;
-  _text = .;			/* Text and read-only data */
   _stext = .;
   .text : AT(ADDR(.text) - LOAD_OFFSET) {
 	*(.text .text.*)
@@ -49,8 +55,7 @@ SECTIONS
 	KPROBES_TEXT
 	*(.fixup)
 	*(.gnu.warning)
-	} = 0x9090
-	/*} :text = 0x9090 */
+  } /* :text */ = 0x9090
 
   .rel.dyn : AT(ADDR(.rel.dyn) - LOAD_OFFSET) { *(.rel.dyn) }
   _etext = .;			/* End of text section */
@@ -195,12 +200,14 @@ SECTIONS
      from .altinstructions and .eh_frame */
   .exit.text : AT(ADDR(.exit.text) - LOAD_OFFSET) { *(.exit.text) }
   .exit.data : AT(ADDR(.exit.data) - LOAD_OFFSET) { *(.exit.data) }
+#if defined(CONFIG_BLK_DEV_INITRD)
   . = ALIGN(4096);
   .init.ramfs : AT(ADDR(.init.ramfs) - LOAD_OFFSET) {
 	__initramfs_start = .;
 	*(.init.ramfs)
 	__initramfs_end = .;
   }
+#endif
   . = ALIGN(L1_CACHE_BYTES);
   .data.percpu  : AT(ADDR(.data.percpu) - LOAD_OFFSET) {
 	__per_cpu_start = .;

@@ -423,8 +423,8 @@ struct thread_struct {
 
 #if 0
 #define start_thread(regs, new_eip, new_esp) do {		\
-	__asm__("movl %0,%%fs": :"r" (0));			\
-	regs->xgs = 0;						\
+	__asm__("movl %0,%%gs": :"r" (0));			\
+	regs->xfs = 0;						\
 	set_fs(USER_DS);					\
 	regs->xds = __USER_DS;					\
 	regs->xes = __USER_DS;					\

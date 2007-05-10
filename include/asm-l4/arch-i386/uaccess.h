@@ -55,10 +55,10 @@ extern struct movsl_mask {
  * This needs 33-bit arithmetic. We have a carry...
  */
 #define __range_ok(addr,size) ({ \
-	unsigned long flag,sum; \
+	unsigned long flag,roksum; \
 	__chk_user_ptr(addr); \
 	asm("addl %3,%1 ; sbbl %0,%0; cmpl %1,%4; sbbl $0,%0" \
-		:"=&r" (flag), "=r" (sum) \
+		:"=&r" (flag), "=r" (roksum) \
 		:"1" (addr),"g" ((int)(size)),"rm" (current_thread_info()->addr_limit.seg)); \
 	flag; })
 #endif
@@ -104,12 +104,6 @@ struct exception_table_entry
 };
 
 extern int fixup_exception(struct pt_regs *regs);
-
-/* We need to have our own sort_extable functions as we do not
- * want to write around in our _read-only_ text section by sorting
- * the table! Luckily we don't need the table either.
- */
-#define ARCH_HAS_SORT_EXTABLE
 
 /*
  * These are the main single-value transfer routines.  They automatically

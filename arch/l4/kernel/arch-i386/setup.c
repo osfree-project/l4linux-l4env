@@ -33,7 +33,6 @@
 #include <linux/initrd.h>
 #include <linux/bootmem.h>
 #include <linux/seq_file.h>
-#include <linux/platform_device.h>
 #include <linux/console.h>
 #include <linux/mca.h>
 #include <linux/root_dev.h>
@@ -60,6 +59,7 @@
 #include <asm/io_apic.h>
 #include <asm/ist.h>
 #include <asm/io.h>
+#include <asm/vmi.h>
 #include <setup_arch.h>
 #include <bios_ebda.h>
 
@@ -139,7 +139,7 @@ unsigned long saved_videomode;
 #define RAMDISK_PROMPT_FLAG		0x8000
 #define RAMDISK_LOAD_FLAG		0x4000	
 
-static char command_line[COMMAND_LINE_SIZE];
+static char __initdata command_line[COMMAND_LINE_SIZE];
 
 unsigned char __initdata boot_params[PARAM_SIZE];
 
@@ -481,7 +481,7 @@ void __init setup_bootmem_allocator(void)
 	numa_kva_reserve();
 #ifdef CONFIG_BLK_DEV_INITRD
 #ifdef CONFIG_L4_L4ENV
-	l4env_load_initrd(saved_command_line);
+	l4env_load_initrd(boot_command_line);
 #else
 	if (LOADER_TYPE && INITRD_START) {
 		if (INITRD_START + INITRD_SIZE <= (max_low_pfn << PAGE_SHIFT)) {
@@ -595,7 +595,7 @@ void __init setup_arch(char **cmdline_p)
 #ifdef CONFIG_L4_L4ENV
 		unsigned long mem_start, mem_size, isa_start, isa_size;
 
-		setup_l4env_memory(saved_command_line, &mem_start, &mem_size,
+		setup_l4env_memory(boot_command_line, &mem_start, &mem_size,
 		                   &isa_start, &isa_size);
 		add_memory_region(mem_start, mem_size, E820_RAM);
 		if (isa_size)
@@ -630,10 +630,18 @@ void __init setup_arch(char **cmdline_p)
 		print_memory_map("user");
 	}
 
-	strlcpy(command_line, saved_command_line, COMMAND_LINE_SIZE);
+	strlcpy(command_line, boot_command_line, COMMAND_LINE_SIZE);
 	*cmdline_p = command_line;
 
 	max_low_pfn = setup_memory();
+
+#ifdef CONFIG_VMI
+	/*
+	 * Must be after max_low_pfn is determined, and before kernel
+	 * pagetables are setup.
+	 */
+	vmi_init();
+#endif
 
 #if defined(CONFIG_L4_L4ENV) && !defined(CONFIG_L4_USERPRIV_ONLY)
 	l4x_l4io_init();
@@ -707,32 +715,5 @@ void __init setup_arch(char **cmdline_p)
 	conswitchp = &dummy_con;
 #endif
 #endif
-	tsc_init();
-
 	l4x_setup_threads();
 }
-
-static __init int add_pcspkr(void)
-{
-	struct platform_device *pd;
-	int ret;
-
-	pd = platform_device_alloc("pcspkr", -1);
-	if (!pd)
-		return -ENOMEM;
-
-	ret = platform_device_add(pd);
-	if (ret)
-		platform_device_put(pd);
-
-	return ret;
-}
-device_initcall(add_pcspkr);
-
-/*
- * Local Variables:
- * mode:c
- * c-file-style:"k&r"
- * c-basic-offset:8
- * End:
- */

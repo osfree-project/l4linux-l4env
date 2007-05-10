@@ -3,6 +3,7 @@
 #include <linux/sched.h>
 #include <linux/interrupt.h>
 #include <linux/ptrace.h>
+#include <linux/tick.h>
 
 #include <asm/processor.h>
 #include <asm/mmu_context.h>
@@ -561,6 +562,8 @@ void l4x_idle(void)
 
 	utcb->rcv_size = L4_UTCB_EXCEPTION_REGS_SIZE;
 
+	tick_nohz_stop_sched_tick();
+
 	while (1) {
 
 		/* &init_thread_info == current_thread_info() */
@@ -570,7 +573,11 @@ void l4x_idle(void)
 		if (need_resched()) {
 			l4x_current_proc_run = NULL;
 			current_thread_info()->status |= TS_POLLING;
+			tick_nohz_restart_sched_tick();
+			preempt_enable_no_resched();
 			schedule();
+			preempt_disable();
+			tick_nohz_stop_sched_tick();
 			continue;
 		}
 

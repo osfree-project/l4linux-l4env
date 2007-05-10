@@ -780,7 +780,7 @@ static void __init l4env_linux_startup(void *data)
 		                (unsigned long)&boot_pda, sizeof(boot_pda) - 1,
 			        0x80 | 0x10 | 0x3 | DESCTYPE_DPL3, 4);
 		fiasco_gdt_set(&boot_gdt, 8, 0, l4_myself());
-		asm volatile ("mov %0, %%gs" : : "r" (__KERNEL_PDA | 3)
+		asm volatile ("mov %0, %%fs" : : "r" (__KERNEL_PDA | 3)
 		                             : "memory");
 	}
 #endif
@@ -971,7 +971,7 @@ int main(int argc, char **argv)
 
 	l4_threadid_t main_id;
 	extern char _end[];
-	extern char saved_command_line[];
+	extern char boot_command_line[];
 	unsigned i;
 	char *p;
 
@@ -980,10 +980,10 @@ int main(int argc, char **argv)
 	LOG_printf("Binary name: %s\n", (*argv)?*argv:"NULL??");
 
 	argv++;
-	p = saved_command_line;
+	p = boot_command_line;
 	while (*argv) {
 		i = strlen(*argv);
-		if (p - saved_command_line + i >= COMMAND_LINE_SIZE) {
+		if (p - boot_command_line + i >= COMMAND_LINE_SIZE) {
 			LOG_printf("Command line too long!");
 			enter_kdebug("Command line too long!");
 		}
@@ -993,10 +993,16 @@ int main(int argc, char **argv)
 			*p++ = ' ';
 	}
 	LOG_printf("Kernel command line (%d args): %s\n",
-	           argc - 1, saved_command_line);
+	           argc - 1, boot_command_line);
+
+	if (strstr(boot_command_line, "noreplacement")) {
+		LOG_printf("Do not use the 'noreplacement' option "
+		           "or strange things may happen.\n");
+		enter_kdebug("noreplacement option found");
+	}
 
 	/* See if we find a showpfexc=1 in the command line */
-	if ((p = strstr(saved_command_line, "showpfexc=")))
+	if ((p = strstr(boot_command_line, "showpfexc=")))
 		l4x_debug_show_exceptions = simple_strtoul(p+10, NULL, 0);
 
 	l4lx_kinfo = l4sigma0_kip_map(L4_INVALID_ID);
@@ -1218,9 +1224,9 @@ asmlinkage static void l4x_do_intra_iret(struct pt_regs regs)
 	 "popl %%edi		\t\n"
 	 "popl %%ebp		\t\n"
 	 "popl %%eax		\t\n"
-	 "addl $8, %%esp	\t\n" /* keep ds, es; skip orig_eax */
-	 "popl %%gs		\t\n"
-	 "addl $4, %%esp	\t\n"
+	 "addl $8, %%esp	\t\n" /* keep ds, es */
+	 "popl %%fs		\t\n"
+	 "addl $4, %%esp	\t\n" /* keep orig_eax */
 	 "iret			\t\n"
 	 : : "r" (&regs));
 
@@ -1933,7 +1939,7 @@ void l4x_prepare_irq_thread(struct thread_info *ti)
 		                0x80 | 0x10 | 0x3 | DESCTYPE_DPL3, 4);
 
 		fiasco_gdt_set(&gdt[GDT_ENTRY_PDA], 8, 0, l4_myself());
-		asm volatile ("mov %0, %%gs" : : "r" (__KERNEL_PDA | 3)
+		asm volatile ("mov %0, %%fs" : : "r" (__KERNEL_PDA | 3)
 		                             : "memory");
 	}
 #endif
@@ -2033,13 +2039,35 @@ void l4x_print_vm_area_maps(struct task_struct *p)
 #endif
 
 #ifdef ARCH_x86
-void sort_extable(struct exception_table_entry *start,
-                  struct exception_table_entry *finish)
+
+#include <linux/clockchips.h>
+
+struct clock_event_device *global_clock_event;
+
+static void clock_init_l4_timer(enum clock_event_mode mode,
+                                struct clock_event_device *evt)
 {
-	/* We do not use the exception tables so do not sort it
-	 * and _do_ _not_ _write_ _around_ _in_ _the_ _text_ _section_!
-	 * (which is read-only!)
-	 */
+}
+
+static int clock_l4_next_event(unsigned long delta, struct clock_event_device *evt)
+{
+	return 0;
+}
+
+struct clock_event_device l4_clockevent = {
+	.name		= "l4",
+	.features	= CLOCK_EVT_FEAT_PERIODIC,
+	.set_mode	= clock_init_l4_timer,
+	.set_next_event	= clock_l4_next_event,
+	.shift		= 32,
+	.irq		= 0,
+};
+
+void __init setup_pit_timer(void)
+{
+	l4_clockevent.cpumask = cpumask_of_cpu(0);
+	clockevents_register_device(&l4_clockevent);
+	global_clock_event = &l4_clockevent;
 }
 #endif
 
@@ -2080,6 +2108,7 @@ EXPORT_SYMBOL(mmx_clear_page);
 EXPORT_SYMBOL(mmx_copy_page);
 #endif
 
+EXPORT_SYMBOL(_proxy_pda);
 
 /* Exports for L4 specific modules */
 EXPORT_SYMBOL(l4_sleep);
