@@ -1176,7 +1176,7 @@ static void l4x_setup_die_utcb(l4xi_msg_buffer_t *buf)
 	struct pt_regs regs;
 	unsigned long regs_addr;
 	extern void die(const char *msg, struct pt_regs *regs, int err);
-	char message[40];
+	static char message[40];
 	l4_utcb_t *utcb = l4_utcb_get();
 
 	snprintf(message, sizeof(message), "Trap: %ld", utcb->exc.trapno);
@@ -1408,7 +1408,7 @@ static void l4x_setup_die_utcb(l4xi_msg_buffer_t *buf)
 {
 	struct pt_regs regs;
 	extern void die(const char *msg, struct pt_regs *regs, int err);
-	char message[40];
+	static char message[40];
 	l4_utcb_t __utcb;
 	l4_utcb_t *utcb = &__utcb;
 
@@ -1453,11 +1453,6 @@ static inline int l4x_handle_int1(l4xi_msg_buffer_t *buf)
 static inline int l4x_handle_clisti(l4xi_msg_buffer_t *buf)
 {
 	return 1; /* Not handled */
-}
-
-static inline int l4_is_io_page_fault(l4_umword_t d)
-{
-	return 0;
 }
 
 static inline int l4x_handle_lxsyscall(l4xi_msg_buffer_t *buf)

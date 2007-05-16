@@ -479,12 +479,7 @@ void __init mem_init(void)
 
 void free_initmem(void)
 {
-/*
- * We cannot free the init memory as we only get the data space where
- * the init region is in read only.
- */
-	if (!machine_is_integrator() && !machine_is_cintegrator()
-	    && !machine_is_l4()) {
+	if (!machine_is_integrator() && !machine_is_cintegrator()) {
 		free_area((unsigned long)(&__init_begin),
 			  (unsigned long)(&__init_end),
 			  "init");
