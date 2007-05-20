@@ -274,13 +274,11 @@ int l4x_hybrid_list_seq_show(struct seq_file *m, void *v)
 static void l4x_hybrid_wakeup_task(struct task_struct *p)
 {
 	l4_threadid_t pager_id = L4_INVALID_ID, preempter_id = L4_INVALID_ID;
-	l4_umword_t dummy, o_pc;
+	l4_umword_t dummy;
 
-	l4_inter_task_ex_regs(p->thread.user_thread_id,
-	                      (l4_umword_t)-1,
-	                      (l4_umword_t)-1,
+	l4_inter_task_ex_regs(p->thread.user_thread_id, ~0UL, ~0UL,
 	                      &preempter_id, &pager_id,
-	                      &dummy, &o_pc, &dummy,
+	                      &dummy, &dummy, &dummy,
 	                      L4_THREAD_EX_REGS_ALIEN
 	                       | L4_THREAD_EX_REGS_RAISE_EXCEPTION);
 }

@@ -154,20 +154,10 @@ inline l4_threadid_t l4lx_thread_id_get(void)
  */
 void l4lx_thread_pager_change(l4_threadid_t thread, l4_threadid_t pager)
 {
-	l4_threadid_t _pager = L4_INVALID_ID, _preempter = L4_INVALID_ID;
+	l4_threadid_t _preempter = L4_INVALID_ID;
 	l4_umword_t o;
 
-	l4_thread_ex_regs(thread,
-	                  (l4_umword_t)-1,
-	                  (l4_umword_t)-1,
-	                  &_preempter, &_pager,
-	                  &o, &o, &o);
-
-	l4_thread_ex_regs(thread,
-	                  (l4_umword_t)-1,
-	                  (l4_umword_t)-1,
-	                  &_preempter, &pager,
-	                  &o, &o, &o);
+	l4_thread_ex_regs(thread, ~0UL, ~0UL, &_preempter, &pager, &o, &o, &o);
 }
 
 /*

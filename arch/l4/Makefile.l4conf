@@ -4,29 +4,32 @@
 
 ifeq ($(L4DIR),)
 
-dot_config := $(wildcard $(objtree)/.config)
-
-ifeq ($(dot_config),)
-$(error Kernel configuration missing)
-endif
+linux_dot_config := $(wildcard .config)
 
 ifneq ($(L4X_LOOP_CHECK),)
 $(error Recursive call of Makefile.l4conf, aborting, please check)
 endif
 
-include $(dot_config)
+include $(linux_dot_config)
 
 L4OBJ := $(patsubst "%",%,$(CONFIG_L4_OBJ_TREE))
 L4DIR := $(shell readlink $(L4OBJ)/source)
 export L4OBJ L4DIR
 
-ifeq ($(L4DIR),)
-$(error Could not determine L4 source directory. Configuration missing?)
-endif
-
+ifneq ($(L4DIR),)
 $(objtree)/Makeconf.l4conf:
 	@echo L4 source directory: $(L4DIR)
 	$(MAKE) -C $(L4DIR) -f $(srctree)/arch/l4/Makefile.l4conf O=$(L4OBJ) L4X_LOOP_CHECK=1 OUTPUT=$@
+else
+$(objtree)/Makeconf.l4conf:
+	@echo
+	@echo "ERROR:"
+	@echo "    Cannot determine L4 source directory"
+	@echo "    Please properly set the path to your L4 build directory"
+	@echo "    in the configuration menu."
+	@echo
+	@exit 1
+endif
 
 else
 
