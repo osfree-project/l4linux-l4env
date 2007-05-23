@@ -116,7 +116,7 @@ menu "IRQ Handling"
 choice
 
 	prompt "IRQ Handling"
-	default L4_IRQ_SINGLE
+	default L4_IRQ_OMEGA0
 
 	config L4_IRQ_SINGLE
 	  bool "Use one thread per IRQ"
