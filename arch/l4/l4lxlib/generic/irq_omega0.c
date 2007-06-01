@@ -23,6 +23,10 @@
 #include <l4/sys/kdebug.h>
 #include <l4/omega0/client.h>
 
+#ifdef CONFIG_L4_USE_L4VMM
+#include <l4/vmm/vmm-compat.h>
+#endif
+
 /* bitmap containing '1' if the corresponding irq was requested from
  *  * Omega0 but not yet unmasked. */
 static unsigned long irq_masked_at_omega0;

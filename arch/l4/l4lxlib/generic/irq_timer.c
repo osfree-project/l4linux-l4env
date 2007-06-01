@@ -20,7 +20,6 @@
 #include <asm/l4lxapi/misc.h>
 
 #include <l4/sys/syscalls.h>
-#include <l4/sys/timeout.h>
 
 /*
  * Show the current (directly into vidmem)
@@ -59,35 +58,32 @@ static inline void show_current(int cpu)
 void timer_irq_thread(void *data)
 {
 	int irq = TIMER_IRQ;
-#ifdef ARCH_x86
 	l4_timeout_t to;
 	l4_threadid_t me = l4_myself();
-	l4_kernel_clock_t pint = l4lx_kinfo->clock;
-#endif
+	l4_kernel_clock_t pint;
 	struct thread_info *ctx = current_thread_info();
 
 	l4x_prepare_irq_thread(ctx);
 
 	printk("%s: Starting timer IRQ thread.\n", __func__);
 
+	pint = l4lx_kinfo->clock;
 	for (;;) {
-#ifdef ARCH_x86
 		l4_msgdope_t result;
 		l4_umword_t d1, d2;
 
 		pint += 10000;
 
 		if (pint > l4lx_kinfo->clock) {
-			l4_timeout_abs(&me, pint, L4_TIMEOUT_ABS_RECV,
-				       L4_TIMEOUT_ABS_V64_ms, &to);
+			l4_rcv_timeout(l4_timeout_abs(pint,
+			                              L4_TIMEOUT_ABS_V64_ms),
+			               &to);
 			l4_ipc_receive(me, L4_IPC_SHORT_MSG, &d1, &d2,
 				       to, &result);
 		} else {
 			//printk("I'm too slow (%lld vs. %lld [%lld])!\n", l4lx_kinfo->clock, pint, l4lx_kinfo->clock - pint);
 		}
-#else
-		l4lx_sleep(10);
-#endif
+
 		l4x_do_IRQ(irq, ctx);
 	}
 } /* timer_irq_thread */

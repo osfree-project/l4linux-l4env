@@ -148,12 +148,14 @@ __asm__ __volatile__ ("movw %%dx,%1\n\t" \
 #define wbinvd() \
 	__asm__ __volatile__ ("wbinvd": : :"memory")
 
+extern int l4lx_fpu_enabled;
+
 /* Clear the 'TS' bit */
-#define clts() { l4_utcb_get_l4lx()->status |= L4_UTCB_EXCEPTION_FPU_TRANSFER; }
+#define clts() { l4lx_fpu_enabled = 1; }
 #endif/* CONFIG_PARAVIRT */
 
 /* Set the 'TS' bit */
-#define stts() { l4_utcb_get_l4lx()->status &= ~L4_UTCB_EXCEPTION_FPU_TRANSFER; }
+#define stts() { l4lx_fpu_enabled = 0; }
 
 #endif	/* __KERNEL__ */
 

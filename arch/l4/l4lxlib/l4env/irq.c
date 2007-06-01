@@ -161,8 +161,7 @@ static inline void attach_to_irq(unsigned irq, l4_threadid_t *irq_th)
 	code = l4_ipc_receive(*irq_th,
 			      0, /* receive descriptor */
 			      &dummy, &dummy,
-			      L4_IPC_TIMEOUT(0,0,0,1,0,0), /* rcv = 0,
-							      snd = inf */
+	                      L4_IPC_RECV_TIMEOUT_0,
 			      &dummydope);
 
 	if (code != L4_IPC_RETIMEOUT)
@@ -202,7 +201,7 @@ static void detach_from_interrupt(unsigned irq)
 	l4_ipc_receive(L4_NIL_ID,
 	               0, /* receive descriptor */
 	               &dummy, &dummy,
-	               L4_IPC_TIMEOUT(0,0,0,1,0,0), /* rcv = 0, snd = inf */
+	               L4_IPC_RECV_TIMEOUT_0,
 	               &dummydope);
 
 	if (rmgr_free_irq(irq))
@@ -337,7 +336,7 @@ static void send_ipc(unsigned int irq, enum irq_cmds cmd)
 		irq_disable_cmd_state[irq] = 1;
 		ret = l4_ipc_send(irq_id[irq], L4_IPC_SHORT_MSG,
 		                  cmd, 0,
-		                  L4_IPC_TIMEOUT(0, 1, 0, 0, 0, 0), &dope);
+		                  L4_IPC_SEND_TIMEOUT_0, &dope);
 		if (ret && ret != L4_IPC_SETIMEOUT)
 			LOG_printf("%s: dis-IPC failed with %x\n", __func__, ret);
 

@@ -110,8 +110,9 @@ void l4x_idle(void);
 
 int  l4x_deliver_signal(int exception_nr, int error_code);
 
-struct task_struct *l4x_current_process  = l4x_idle_task(0);
+struct task_struct *l4x_current_process = l4x_idle_task(0);
 struct thread_info *l4x_current_proc_run;
+static unsigned utcb_snd_size;
 
 static void l4x_setup_next_exec(struct task_struct *p, unsigned long f)
 {
@@ -134,7 +135,7 @@ void l4x_setup_user_dispatcher_after_fork(struct task_struct *p)
 
 void fastcall l4x_switch_to(struct task_struct *prev, struct task_struct *next)
 {
-	//printk("%s: %s(%d) -> %s(%d)\n", __func__, prev->comm, prev->pid, next->comm, next->pid);
+	//printk("%s: %s(%d)[%ld] -> %s(%d)[%ld]\n", __func__, prev->comm, prev->pid, prev->state, next->comm, next->pid, next->state);
 	TBUF_LOG_SWITCH(fiasco_tbuf_log_3val("SWITCH", TBUF_TID(prev->thread.user_thread_id), TBUF_TID(next->thread.user_thread_id), 0));
 
 	__unlazy_fpu(prev);
@@ -378,7 +379,7 @@ static inline void thread_struct_to_utcb(struct thread_struct *t,
 	ptregs_to_utcb(&t->regs, utcb);
 	utcb->exc.gs   = t->gs;
 	utcb->exc.fs   = t->fs;
-	utcb->snd_size = send_size;
+	utcb_snd_size = send_size;
 }
 
 /*
@@ -417,7 +418,7 @@ static int l4x_hybrid_begin(struct task_struct *p,
 	}
 
 	/* Let the user go on on the syscall instruction */
-	utcb->snd_size = 0; /* We haven't modified the UTCB, so nothing to send */
+	utcb_snd_size = 0; /* We haven't modified the UTCB, so nothing to send */
 	ret = l4_ipc_send(p->thread.user_thread_id,
 	                  L4_IPC_SHORT_MSG, L4_EXCEPTION_REPLY_DW0_DEALIEN, 0,
 	                  L4_IPC_SEND_TIMEOUT_0, &dummydope);
@@ -441,7 +442,6 @@ static int l4x_hybrid_begin(struct task_struct *p,
 			if (unlikely(l4x_handle_page_fault(p,
 			                                   t->hybrid_pf_addr, 0,
 			                                   &data0, &data1))) {
-			        enter_kdebug("segfault hybrid");
 				/* Umm, failed?!
 				 * XXX: call sighandler here */
 				force_sig(SIGKILL, p);
@@ -455,7 +455,7 @@ static int l4x_hybrid_begin(struct task_struct *p,
 				t->hybrid_pf = t->hybrid_pf_addr = 0;
 			}
 
-			utcb->snd_size = 0;
+			utcb_snd_size = 0;
 			ret = l4_ipc_send(p->thread.user_thread_id,
 			                  L4_IPC_SHORT_FPAGE, data0, data1,
 			                  L4_IPC_SEND_TIMEOUT_0, &dummydope);
@@ -477,7 +477,8 @@ static int l4x_hybrid_begin(struct task_struct *p,
 
 static void l4x_hybrid_return(l4_threadid_t src_id,
                               l4_utcb_t *utcb,
-                              l4_umword_t d0, l4_umword_t d1)
+                              l4_umword_t d0, l4_umword_t d1,
+                              l4_msgtag_t tag)
 {
 	struct task_struct *h = l4x_hybrid_list_get(src_id);
 	struct thread_struct *t;
@@ -487,7 +488,7 @@ static void l4x_hybrid_return(l4_threadid_t src_id,
 
 	t = &h->thread;
 
-	if (!l4_utcb_exc_is_exc_ipc(d0, d1)) {
+	if (l4_msgtag_is_page_fault(tag)) {
 		/* No exception IPC, it's a page fault */
 		t->hybrid_pf_addr = d0;
 		t->hybrid_pf      = 1;
@@ -549,6 +550,7 @@ void l4x_idle(void)
 	int error;
 	l4_umword_t data0, data1;
 	l4_msgdope_t dummydope;
+	l4_msgtag_t tag;
 	l4_utcb_t *utcb = l4_utcb_get_l4lx();
 
 	idler_thread = l4lx_thread_create(idler_func, NULL, NULL, 0,
@@ -559,8 +561,6 @@ void l4x_idle(void)
 		l4x_exit_l4linux();
 	}
 	l4lx_thread_pager_change(idler_thread, l4_myself());
-
-	utcb->rcv_size = L4_UTCB_EXCEPTION_REGS_SIZE;
 
 	tick_nohz_stop_sched_tick();
 
@@ -583,9 +583,9 @@ void l4x_idle(void)
 
 		TBUF_LOG_IDLE(fiasco_tbuf_log_3val("l4x_idle <", 0, 0, 0));
 
-		error = l4_ipc_wait(&src_id,
-		                    L4_IPC_SHORT_MSG, &data0, &data1,
-		                    L4_IPC_SEND_TIMEOUT_0, &dummydope);
+		error = l4_ipc_wait_tag(&src_id,
+		                        L4_IPC_SHORT_MSG, &data0, &data1,
+		                        L4_IPC_SEND_TIMEOUT_0, &dummydope, &tag);
 
 		l4x_current_proc_run = NULL;
 		current_thread_info()->status |= TS_POLLING;
@@ -610,7 +610,7 @@ void l4x_idle(void)
 				enter_kdebug("Uhh, no exc?!");
 			}
 		} else
-			l4x_hybrid_return(src_id, utcb, data0, data1);
+			l4x_hybrid_return(src_id, utcb, data0, data1, tag);
 	}
 }
 
@@ -883,6 +883,7 @@ static inline int l4x_dispatch_exception(struct task_struct *p,
 				}
 				t->task_start_fork = 0;
 			}
+
 			/* forced kernel entry upon task start, just fill in
 			 * the registers,
 			 * this will only happen for additional threads in an
@@ -1011,7 +1012,7 @@ static inline void l4x_dispatch_page_fault(struct task_struct *p,
 	thread_struct_to_utcb(t, utcb, L4_UTCB_EXCEPTION_REGS_SIZE);
 
 	*msg_desc = L4_IPC_SHORT_FPAGE;
-	utcb->snd_size = 0;
+	utcb_snd_size = 0;
 }
 
 /*
@@ -1051,10 +1052,9 @@ asmlinkage void l4x_user_dispatcher(void)
 	l4_threadid_t src_id;
 	l4_msgdope_t dummydope;
 	l4_utcb_t *utcb = l4_utcb_get_l4lx();
+	l4_msgtag_t tag;
 	void *msg_desc;
 	int ret;
-
-	utcb->rcv_size = L4_UTCB_EXCEPTION_REGS_SIZE;
 
 	/* Start L4 activity */
 restart_loop:
@@ -1086,12 +1086,16 @@ restart_loop:
 		   ((msg_desc != L4_IPC_SHORT_FPAGE) ? "DSP-inM" : "DSP-inF",
 		    TBUF_TID(current->thread.user_thread_id), data0, data1));
 		/* send the reply message and wait for a new request. */
-		error = l4_ipc_reply_and_wait(p->thread.user_thread_id,
-		                              msg_desc, data0, data1,
-		                              &src_id,
-		                              L4_IPC_SHORT_MSG, &data0, &data1,
-		                              L4_IPC_SEND_TIMEOUT_0,
-		                              &dummydope);
+		tag = l4_msgtag(0, utcb_snd_size, 0,
+		                l4lx_fpu_enabled ? 0x8000 : 0);
+		error = l4_ipc_reply_and_wait_tag(p->thread.user_thread_id,
+		                                  msg_desc, data0, data1,
+		                                  tag,
+		                                  &src_id,
+		                                  L4_IPC_SHORT_MSG,
+		                                  &data0, &data1,
+		                                  L4_IPC_SEND_TIMEOUT_0,
+		                                  &dummydope, &tag);
 after_IPC:
 		l4x_current_proc_run = NULL;
 
@@ -1113,9 +1117,10 @@ after_IPC:
 only_receive_IPC:
 			l4x_current_proc_run = current_thread_info();
 			TBUF_LOG_DSP_IPC_IN(fiasco_tbuf_log_3val("DSP-in (O) ", TBUF_TID(current->thread.user_thread_id), TBUF_TID(src_id), 0));
-			error = l4_ipc_wait(&src_id,
-			                    L4_IPC_SHORT_MSG, &data0, &data1,
-			                    L4_IPC_SEND_TIMEOUT_0, &dummydope);
+			error = l4_ipc_wait_tag(&src_id,
+			                        L4_IPC_SHORT_MSG, &data0, &data1,
+			                        L4_IPC_SEND_TIMEOUT_0,
+			                        &dummydope, &tag);
 			goto after_IPC;
 		} else if (unlikely(error)) {
 			LOG_printf("IPC error = 0x%x (context) (to = "
@@ -1129,7 +1134,7 @@ only_receive_IPC:
 
 		if (!l4_thread_equal(src_id, t->user_thread_id)) {
 			if (unlikely(!l4_thread_equal(src_id, idler_thread)))
-				l4x_hybrid_return(src_id, utcb, data0, data1);
+				l4x_hybrid_return(src_id, utcb, data0, data1, tag);
 			goto only_receive_IPC;
 		}
 	} /* endless loop */

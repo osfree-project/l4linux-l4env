@@ -20,6 +20,10 @@
 
 #include <l4/generic_io/libio.h>
 
+#ifdef CONFIG_L4_USE_L4VMM
+#include <l4/vmm/vmm-compat.h>
+#endif
+
 #define ISA_START_ADDRESS	0xa0000
 #define ISA_END_ADDRESS		0x100000
 

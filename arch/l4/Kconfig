@@ -68,24 +68,6 @@ choice
 		bool "ISG"
 endchoice
 
-config L4_L4ENV_MEMSIZE
-	int "Kernel default memory size"
-	default 32
-	help
-	  Default memory size in MByte. Configureable with the usual "mem="
-	  kernel parameter.
-
-config L4_TAMED
-	bool "Use tamed mode"
-	default y
-	help
-	The normal Linux server uses simple means like cli and sti
-	to protect critical sections. If you say Y here the Linux server
-	uses a queued lock to implement synchronization.
-
-	Note: This works only with recent versions of Fiasco! The Fiasco
-	config option "Deceit bit disables switch" must be enabled!
-
 
 if L4_ARM_PLATFORM_ISG
 source arch/l4/Kconfig.isg
@@ -120,7 +102,7 @@ choice
 
 	config L4_IRQ_SINGLE
 	  bool "Use one thread per IRQ"
-	  depends on L4_ARCH_X86
+	  depends on L4_ARCH_X86 && !L4_USE_L4VMM
 	  help
 	    Use traditional one thread per Interrupt style.
 
@@ -132,6 +114,7 @@ choice
 
 	config L4_IRQ_MULTI
 	  bool "Use multi IRQ attach"
+	  depends on !L4_USE_L4VMM
 	  help
 	    Uses only one IRQ thread to attach to multiple interrupts.
 
@@ -238,28 +221,6 @@ config L4_DROPSCON_LIB
 	help
 	  Specify alternative library name for the dropscon library.
 
-menu "Priority configuration"
-
-config L4_PRIO_USER_PROCESS
-	int "L4 priority of user processes"
-	default 10
-	help
-	  Define the L4 priority of user processes.
-
-config L4_PRIO_IRQ_OFFSET
-	int "Start of L4 priorities for IRQs"
-	default 129
-	help
-	  This value defines the offset where the IRQ priorities are
-	  starting.
-
-config L4_PRIO_SERVER
-	int "L4 priority of the Linux server"
-	default 100
-	help
-	  This value defines the L4 priority of the Linux server.
-
-endmenu # priority configuration
 
 menu "Debugging options"
 
@@ -324,6 +285,51 @@ config L4_DEBUG_TAMED_COUNT_INTERRUPT_DISABLE
 
 endmenu # debugging options
 
+menu "Advanced options"
+
+config L4_L4ENV_MEMSIZE
+	int "Kernel default memory size"
+	default 32
+	help
+	  Default memory size in MByte. Configureable with the usual "mem="
+	  kernel parameter.
+
+config L4_TAMED
+	bool
+	#bool "Use tamed mode"
+	default y
+	help
+	The normal Linux server uses simple means like cli and sti
+	to protect critical sections. If you say Y here the Linux server
+	uses a queued lock to implement synchronization.
+
+	Note: This works only with recent versions of Fiasco! The Fiasco
+	config option "Deceit bit disables switch" must be enabled!
+
+
+menu "Priority configuration"
+
+config L4_PRIO_USER_PROCESS
+	int "L4 priority of user processes"
+	default 10
+	help
+	  Define the L4 priority of user processes.
+
+config L4_PRIO_IRQ_OFFSET
+	int "Start of L4 priorities for IRQs"
+	default 129
+	help
+	  This value defines the offset where the IRQ priorities are
+	  starting.
+
+config L4_PRIO_SERVER
+	int "L4 priority of the Linux server"
+	default 100
+	help
+	  This value defines the L4 priority of the Linux server.
+
+endmenu # priority configuration
+
 menu "Monitoring options (ferret)"
 
 config L4_FERRET
@@ -383,6 +389,20 @@ config L4_FERRET_SYSCALL_COUNTER
 	  Do not use, unless you know what you're doing.
 
 endmenu # monitoring options
+
+config L4_USE_L4VMM
+	bool "Use L4VMM (EXPERIMENTAL)"
+	default n
+	depends on L4_ARCH_X86
+	help
+	  L4VMM can emulate hardware and provide access to virtual and
+	  physical host devices. For PCI, enable PCI support (choose direct
+	  access mode) and the required device drivers.
+
+	  Note: Don't use loader's allow_bios flag when enabling this
+	        option.
+
+endmenu # advanced
 
 endmenu # l4linux options
 

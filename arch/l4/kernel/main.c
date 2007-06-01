@@ -63,8 +63,9 @@
 #include <asm/l4x/exception.h>
 #include <asm/l4x/lx_syscalls.h>
 
-#include <l4xi-server.h>
-#include <l4xi-client.h>
+#ifdef CONFIG_L4_USE_L4VMM
+#include <l4/vmm/vmm.h>
+#endif
 
 #ifdef ARCH_x86
 struct desc_struct cpu_gdt_table[GDT_ENTRIES];
@@ -72,6 +73,7 @@ struct desc_struct cpu_gdt_table[GDT_ENTRIES];
 unsigned l4x_fiasco_gdt_entry_offset;
 struct desc_struct boot_gdt;
 l4_utcb_t *l4_utcb_l4lx_server;
+int l4lx_fpu_enabled;
 #endif
 #ifdef ARCH_arm
 unsigned long cr_alignment;
@@ -143,8 +145,10 @@ static const char *required_kernel_features[] =
 #endif
   };
 
-/* Only needed for environment, the Linux kernel isn't using errno anymore */
+/* Only needed for environment, the Linux kernel isn't using errno */
 int errno;
+
+static void l4x_server_loop(void);
 
 void __init l4env_v2p_init(void)
 {
@@ -226,7 +230,7 @@ struct cxa_atexit_item {
 	void *dso_handle;
 };
 
-static struct cxa_atexit_item at_exit_functions[5];
+static struct cxa_atexit_item at_exit_functions[10];
 static const int at_exit_nr_of_functions
 	= sizeof(at_exit_functions) / sizeof(at_exit_functions[0]);
 static int __current_exititem;
@@ -737,9 +741,6 @@ static void __init setup_stack(void)
 	l4x_stack_setup(ti);
 }
 
-/* Do not put this on the stack of its user */
-static CORBA_Server_Environment _server_env = dice_default_server_environment;
-
 /*
  * This is the panic blinking function, we misuse it to sleep forever.
  */
@@ -754,11 +755,14 @@ static long l4x_blink(long time)
 static void __init l4env_linux_startup(void *data)
 {
 	l4_threadid_t caller_id = *(l4_threadid_t *)data;
+	l4_msgdope_t result;
+	l4_umword_t w;
 
 	LOG_printf("%s thread %x.\n", __func__, l4_myself().id.lthread);
 
 	/* Wait for start signal */
-	l4xi_linux_main_startup_recv(&caller_id, &_server_env);
+	l4_ipc_receive(caller_id, L4_IPC_SHORT_MSG,
+	               &w, &w, L4_IPC_NEVER, &result);
 
 	LOG_printf("main thread: received startup message.\n");
 
@@ -769,11 +773,8 @@ static void __init l4env_linux_startup(void *data)
 	l4_utcb_exception_ipc_enable();
 
 #ifdef ARCH_x86
-	l4_utcb_get()->status |= L4_UTCB_EXCEPTION_FPU_INHERIT;
+	l4_utcb_get()->buffers[0] |= 2;
 	l4_utcb_l4lx_server = l4_utcb_get();
-	if (sizeof(l4_utcb_t) != 128)
-		enter_kdebug("Weird UTCB size");
-
 	{
 		extern struct i386_pda boot_pda;
 		pack_descriptor((u32 *)&boot_gdt.a, (u32 *)&boot_gdt.b,
@@ -821,7 +822,7 @@ static int __init fprov_load_initrd(const char *filename,
 {
 	int error;
 	l4_size_t size;
-	CORBA_Environment env = dice_default_environment;
+	DICE_DECLARE_ENV(env);
 
 	if (l4_thread_equal(l4env_infopage->fprov_id, L4_INVALID_ID)) {
 		LOG_printf("File provider not set!\n");
@@ -960,16 +961,49 @@ static void __init get_initial_cpu_capabilities(void)
 #endif
 }
 
+#ifdef CONFIG_L4_USE_L4VMM
+static l4vmm_config_t l4vmm_config = {
+	.flags             = L4VMM_DEFAULT_FLAGS,
+	.phys_to_virt_func = (l4_addr_t (*)(l4_addr_t))&l4env_phys_to_virt,
+};
+#endif
+
+static void l4x_l4vmm_init(void)
+{
+#ifdef CONFIG_L4_USE_L4VMM
+	char s[128];
+	char *p;
+
+	if ((p = strstr(boot_command_line, "l4vmm_config="))) {
+		char *e;
+		int l;
+
+		p += 13;
+
+		if ((e = strchr(p, ' ')))
+			l = e - p;
+		else
+			l = strlen(p);
+
+		if (l > sizeof(s) - 1) {
+			LOG_printf("l4vmm: configuration path too long, "
+			           "doing without config.\n");
+		} else {
+			memcpy(s, p, l);
+			s[l] = 0;
+			l4vmm_config.str = s;
+			l4vmm_config.flags |= L4VMM_INIT_STR_FILE;
+		}
+	}
+
+	l4vmm_init(&l4vmm_config);
+#endif
+}
+
 int main(int argc, char **argv)
 {
-	CORBA_Environment env = dice_default_environment;
-	CORBA_Server_Environment server_env = {
-	    .malloc = malloc,
-	    .free   = free,
-	    .timeout = L4_IPC_NEVER,
-	};
-
 	l4_threadid_t main_id;
+	l4_msgdope_t result;
 	extern char _end[];
 	extern char boot_command_line[];
 	unsigned i;
@@ -1033,6 +1067,8 @@ int main(int argc, char **argv)
 		LOG_printf("Couldn't get L4Env info page!\n");
 		enter_kdebug("Stop!");
 	}
+
+	l4x_l4vmm_init();
 
 	LOG_printf("Image: %08lx - %08lx [%u KiB].\n",
 	           (unsigned long)_stext, (unsigned long)_end,
@@ -1101,7 +1137,6 @@ int main(int argc, char **argv)
 	l4env_v2p_add_item(0xa0000, (void *)0xa0000, 0xfffff - 0xa0000);
 
 	l4_utcb_exception_ipc_enable();
-	l4_utcb_exception_ipc_set_exc_receive_size();
 
 #ifdef CONFIG_L4_FERRET
 	l4x_ferret_init();
@@ -1136,42 +1171,26 @@ int main(int argc, char **argv)
 	l4x_map_upage_myself();
 
 	/* Send start message to main thread. */
-	l4xi_linux_main_startup_send(&main_id, &env);
+	l4_ipc_send(main_id, L4_IPC_SHORT_MSG, 0, 0, L4_IPC_NEVER, &result);
 
 	LOG_printf("Main thread running, waiting...\n");
 
-	l4xi_server_loop(&server_env);
+	l4x_server_loop();
 
 	return 0;
 }
 
 void
-l4xi_linux_main_startup_component(CORBA_Object _dice_corba_obj,
-                                  CORBA_Server_Environment *_dice_corba_env)
-{
-	LOG_printf("L4Linux startup.\n");
-}
-
-void
-l4xi_linux_main_exit_component(CORBA_Object _dice_corba_obj,
-                               CORBA_Server_Environment *_dice_corba_env)
+l4x_linux_main_exit(void)
 {
 	extern void exit(int);
 	LOG_printf("Terminating L4Linux.\n");
 	exit(0);
 }
 
-void
-l4xi_large_enough_message_buffer_component(CORBA_Object _dice_corba_obj,
-                                           unsigned long v1,
-                                           unsigned long v2,
-                                           char *s,
-                                           CORBA_Server_Environment *_dice_corba_env)
-{}
-
 
 #ifdef ARCH_x86
-static void l4x_setup_die_utcb(l4xi_msg_buffer_t *buf)
+static void l4x_setup_die_utcb(void)
 {
 	struct pt_regs regs;
 	unsigned long regs_addr;
@@ -1208,8 +1227,6 @@ static void l4x_setup_die_utcb(l4xi_msg_buffer_t *buf)
 	*(unsigned long *)utcb->exc.esp = 0;
 	/* Set PC to die function */
 	utcb->exc.eip = (unsigned long)die;
-
-	utcb->snd_size = L4_UTCB_EXCEPTION_REGS_SIZE;
 }
 
 asmlinkage static void l4x_do_intra_iret(struct pt_regs regs)
@@ -1260,12 +1277,10 @@ static void l4x_setup_stack_for_traps(l4_utcb_t *utcb, struct pt_regs *regs,
 
 	/* Set PC to trap function */
 	utcb->exc.eip = (unsigned long)trap_func;
-
-	utcb->snd_size = L4_UTCB_EXCEPTION_REGS_SIZE;
 }
 
 #ifdef CONFIG_KPROBES
-static int l4x_handle_kprobes(l4xi_msg_buffer_t *buf)
+static int l4x_handle_kprobes(void)
 {
 	extern fastcall void do_int3(struct pt_regs *regs, long err);
 	struct pt_regs regs;
@@ -1291,13 +1306,13 @@ static int l4x_handle_kprobes(l4xi_msg_buffer_t *buf)
 	return 0;
 }
 #else
-static inline int l4x_handle_kprobes(l4xi_msg_buffer_t *buf)
+static inline int l4x_handle_kprobes(void)
 {
 	return 1; /* Not handled */
 }
 #endif
 
-static int l4x_handle_int1(l4xi_msg_buffer_t *buf)
+static int l4x_handle_int1(void)
 {
 	struct pt_regs regs;
 	extern fastcall void do_debug(struct pt_regs *regs, long err);
@@ -1310,7 +1325,7 @@ static int l4x_handle_int1(l4xi_msg_buffer_t *buf)
 	return 0;
 }
 
-static int l4x_handle_clisti(l4xi_msg_buffer_t *buf)
+static int l4x_handle_clisti(void)
 {
 	unsigned char opcode = *(unsigned char *)l4_utcb_exc_pc(l4_utcb_get());
 	extern void exit(int);
@@ -1345,7 +1360,7 @@ asm(
 "	call l4x_do_intra_iret\n\t"		/* return */
 );
 
-static int l4x_handle_lxsyscall(l4xi_msg_buffer_t *buf)
+static int l4x_handle_lxsyscall(void)
 {
 	void *pc = (void *)l4_utcb_exc_pc(l4_utcb_get());
 	extern char in_kernel_int80_helper[];
@@ -1390,12 +1405,17 @@ static int l4x_handle_lxsyscall(l4xi_msg_buffer_t *buf)
 	/* Set PC to helper */
 	l4_utcb_get()->exc.eip = (unsigned long)in_kernel_int80_helper;
 
-	l4_utcb_get()->snd_size = L4_UTCB_EXCEPTION_REGS_SIZE;
-
 	return 0;
 }
 
-static inline void l4x_print_exception(l4_threadid_t t, l4xi_msg_buffer_t *buf)
+#ifdef CONFIG_L4_USE_L4VMM
+static int l4x_l4vmm_handle_exception(void)
+{
+	return l4vmm_handle_exception(l4_utcb_get());
+}
+#endif
+
+static inline void l4x_print_exception(l4_threadid_t t)
 {
 	LOG_printf("EX: "l4util_idfmt": pc = "l4_addr_fmt" trapno = 0x%lx err = 0x%lx\n",
 	           l4util_idstr(t), l4_utcb_get()->exc.eip,
@@ -1404,18 +1424,15 @@ static inline void l4x_print_exception(l4_threadid_t t, l4xi_msg_buffer_t *buf)
 #endif /* ARCH_x86 */
 
 #ifdef ARCH_arm
-static void l4x_setup_die_utcb(l4xi_msg_buffer_t *buf)
+static void l4x_setup_die_utcb(void)
 {
 	struct pt_regs regs;
 	extern void die(const char *msg, struct pt_regs *regs, int err);
 	static char message[40];
-	l4_utcb_t __utcb;
-	l4_utcb_t *utcb = &__utcb;
+	l4_utcb_t *utcb = l4_utcb_get();
 
 	snprintf(message, sizeof(message), "Boom!");
 	message[sizeof(message) - 1] = 0;
-
-	*utcb = *(l4_utcb_t *)(DICE_GET_STRING(buf, 0));
 
 	utcb_to_ptregs(utcb, &regs);
 	l4x_set_kernel_mode(&regs);
@@ -1432,129 +1449,146 @@ static void l4x_setup_die_utcb(l4xi_msg_buffer_t *buf)
 	/* Set PC to die function */
 	utcb->exc.pc  = (unsigned long)die;
 	utcb->exc.ulr = 0;
-
-	DICE_SIZE_DOPE(buf) = L4_IPC_DOPE(3, 1);
-	DICE_SEND_DOPE(buf) = L4_IPC_DOPE(3, 1);
-	DICE_MARSHAL_STRING(buf, DICE_GET_STRING(buf, 0),
-	                    sizeof(l4_utcb_t), 0);
-	*(l4_utcb_t *)(DICE_GET_STRING(buf, 0)) = *utcb;
 }
 
-static inline int l4x_handle_kprobes(l4xi_msg_buffer_t *buf)
+static inline void l4x_print_exception(l4_threadid_t t)
 {
-	return 1; /* Not handled */
-}
-
-static inline int l4x_handle_int1(l4xi_msg_buffer_t *buf)
-{
-	return 1; /* Not handled */
-}
-
-static inline int l4x_handle_clisti(l4xi_msg_buffer_t *buf)
-{
-	return 1; /* Not handled */
-}
-
-static inline int l4x_handle_lxsyscall(l4xi_msg_buffer_t *buf)
-{
-	return 1; /* Not needed currently */
-}
-
-static inline void l4x_print_exception(l4_threadid_t t, l4xi_msg_buffer_t *buf)
-{
-	l4_utcb_t __utcb;
-	l4_utcb_t *utcb = &__utcb;
-
-	*utcb = *(l4_utcb_t *)(DICE_GET_STRING(buf, 0));
-
 	LOG_printf("EX: "l4util_idfmt": pc = "l4_addr_fmt" err = 0x%lx\n",
-	           l4util_idstr(t), utcb->exc.pc, utcb->exc.err);
+	           l4util_idstr(t),
+		   l4_utcb_get()->exc.pc, l4_utcb_get()->exc.err);
 }
 #endif /* ARCH_arm */
 
-int l4xi_linux_default_handle(CORBA_Object src_id, l4xi_msg_buffer_t *buf,
-                              CORBA_Server_Environment *env)
+struct l4x_exception_func_struct {
+	int (*f)(void);
+};
+static struct l4x_exception_func_struct l4x_exception_func_list[] = {
+#ifdef ARCH_x86
+	{ .f = l4x_handle_kprobes },
+	{ .f = l4x_handle_int1 },
+	{ .f = l4x_handle_clisti },
+	{ .f = l4x_handle_lxsyscall },
+#endif
+#ifdef CONFIG_L4_USE_L4VMM
+	{ .f = l4x_l4vmm_handle_exception },
+#endif
+};
+static const int l4x_exception_funcs
+	= sizeof(l4x_exception_func_list) / sizeof(l4x_exception_func_list[0]);
+
+static int l4x_default(l4_threadid_t *src_id, l4_umword_t *dw0,
+                       l4_umword_t *dw1, l4_msgtag_t *tag)
 {
-	l4_umword_t dw0, dw1;
-
-	dw0 = DICE_GET_DWORD(buf, 0);
-	dw1 = DICE_GET_DWORD(buf, 1);
-
-	if (!l4_utcb_exc_is_exc_ipc(dw0, dw1)
-	    && !l4_is_io_page_fault(dw0)) {
+	if (!l4_msgtag_is_exception(*tag)
+	    && !l4_msgtag_is_io_page_fault(*tag)) {
 		static unsigned long old_pf_addr = ~0UL, old_pf_pc = ~0UL;
-		if (unlikely(old_pf_addr == (dw0 & ~1) && old_pf_pc == dw1)) {
+		if (unlikely(old_pf_addr == (*dw0 & ~1) && old_pf_pc == *dw1)) {
 			LOG_printf("Double page fault dw0=%08lx dw1=%08lx\n",
-			           dw0, dw1);
+			           *dw0, *dw1);
 			enter_kdebug("Double pagefault");
 		}
-		old_pf_addr = dw0 & ~1;
-		old_pf_pc   = dw1;
+		old_pf_addr = *dw0 & ~1;
+		old_pf_pc   = *dw1;
 	}
 
 	if (unlikely(!l4_task_equal(*src_id, linux_server_thread_id))) {
 		LOG_printf("Invalid source for request: "l4util_idfmt"\n",
 		           l4util_idstr(*src_id));
-		return DICE_NO_REPLY;
+		return 1; // no-reply
 	}
 
-	if (l4_utcb_exc_is_exc_ipc(dw0, dw1)) {
+	if (l4_msgtag_is_exception(*tag)) {
+		int i;
 
 		if (l4x_debug_show_exceptions)
-			l4x_print_exception(*src_id, buf);
+			l4x_print_exception(*src_id);
 
-		if (l4x_handle_kprobes(buf))
-			if (l4x_handle_int1(buf))
-				if (l4x_handle_clisti(buf))
-					if (l4x_handle_lxsyscall(buf))
-						l4x_setup_die_utcb(buf);
+		for (i = 0; i < l4x_exception_funcs; i++)
+			if (!l4x_exception_func_list[i].f())
+				break;
+		if (i == l4x_exception_funcs)
+			l4x_setup_die_utcb();
 
-		DICE_GET_DWORD(buf, 0) = 0;
-		DICE_GET_DWORD(buf, 1) = 0;
-		DICE_SET_SHORTIPC_COUNT(buf);
-		return DICE_REPLY;
+		*tag = l4_msgtag(0, L4_UTCB_EXCEPTION_REGS_SIZE, 0, 0);
+		*dw0 = *dw1 = 0;
+		return 0; // reply
 	}
 
 	if (l4x_debug_show_exceptions)
-		LOG_printf("PF: "l4util_idfmt": pfaddr = "l4_addr_fmt
-		           " pc = "l4_addr_fmt" (%s%s)\n",
-		           l4util_idstr(*src_id), dw0, dw1,
-		           dw0 & 2 ? "rw" : "ro", dw0 & 1 ? ", T" : "");
+		LOG_printf("PF: " l4util_idfmt ": pfaddr = " l4_addr_fmt
+		           " pc = " l4_addr_fmt " (%s%s)\n",
+		           l4util_idstr(*src_id), *dw0, *dw1,
+		           *dw0 & 2 ? "rw" : "ro", *dw0 & 1 ? ", T" : "");
 
 #ifdef ARCH_x86
-	/* If it's CLI/STI, come back with an exception */
-	if (l4_is_io_page_fault(dw0)
-	    && ((l4_fpage_t)(dw0)).iofp.iopage == 0
-	    && ((l4_fpage_t)(dw0)).iofp.iosize == L4_WHOLE_IOADDRESS_SPACE) {
-		DICE_GET_DWORD(buf, 0) = -1;
-		DICE_SET_SHORTIPC_COUNT(buf);
-		return DICE_REPLY;
+	/* Make an exception out of a I/O page fault */
+	if (l4_is_io_page_fault(*dw0)) {
+		*dw0 = -1;
+		return 0; // reply
 	}
 #endif
 
 	/* For a 0 pointer deref, come back with an exception */
-	if ((dw0 & ~3) == 0)
-		DICE_GET_DWORD(buf, 0) = -1;
+	if ((*dw0 & ~3) == 0)
+		*dw0 = -1;
 	else {
 		/* Forward page fault to our pager */
-		l4x_forward_pf(dw0, dw1);
-		DICE_GET_DWORD(buf, 0) = 0;
+		l4x_forward_pf(*dw0, *dw1);
+		*dw0 = 0;
 	}
 
-	DICE_GET_DWORD(buf, 1) = 0;
-	DICE_SET_SHORTIPC_COUNT(buf);
+	*dw1 = 0;
+	return 0; // reply
+}
 
-	return DICE_REPLY;
+enum {
+	L4X_SERVER_EXIT = 0xd0000000,
+};
+
+static void l4x_server_loop(void)
+{
+	int do_wait = 1;
+	l4_msgtag_t tag = (l4_msgtag_t){0};
+	l4_umword_t w0 = 0, w1 = 0;
+	l4_msgdope_t result;
+	l4_threadid_t src;
+
+	while (1) {
+
+		while (do_wait)
+			do_wait = l4_ipc_wait_tag(&src, L4_IPC_SHORT_MSG,
+			                          &w0, &w1,
+			                          L4_IPC_NEVER, &result, &tag);
+
+		if (w0 == L4X_SERVER_EXIT) {
+			l4x_linux_main_exit(); // will not return anyway
+			do_wait = 1;
+			continue; // do not reply
+		}
+
+		if (l4x_default(&src, &w0, &w1, &tag))  {
+			do_wait = 1;
+			continue; // do not reply
+		}
+
+		do_wait = l4_ipc_reply_and_wait_tag(src, L4_IPC_SHORT_MSG,
+		                                    w0, w1, tag, &src,
+		                                    L4_IPC_SHORT_MSG,
+		                                    &w0, &w1,
+		                                    L4_IPC_SEND_TIMEOUT_0,
+		                                    &result, &tag);
+	}
 }
 
 
 void __attribute__((noreturn)) l4x_exit_l4linux(void)
 {
-	CORBA_Environment env = dice_default_environment;
+	l4_msgdope_t result;
 
 	__cxa_finalize(0);
 
-	l4xi_linux_main_exit_send(&l4x_start_thread_id, &env);
+	l4_ipc_send(l4x_start_thread_id, L4_IPC_SHORT_MSG,
+	             L4X_SERVER_EXIT, 0, L4_IPC_NEVER, &result);
 	l4_sleep_forever();
 }
 
@@ -1732,7 +1766,6 @@ static int l4x_power_mgmt_resume(struct platform_device *dev)
 	l4x_virtual_mem_handle_pages(L4X_VIRTUAL_MEM_TYPE_MAP);
 	l4x_suspend_resume_call_funcs(L4X_RESUME);
 
-	l4_utcb_get_l4lx()->rcv_size = 0;
 	for_each_process(p) {
 		int error;
 		l4_threadid_t src_id;
@@ -1759,7 +1792,6 @@ static int l4x_power_mgmt_resume(struct platform_device *dev)
 
 		LOG_printf("contacted %s(%d)\n", p->comm, p->pid);
 	}
-	l4_utcb_exception_ipc_set_exc_receive_size();
 
 	return 0;
 }

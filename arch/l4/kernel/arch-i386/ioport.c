@@ -475,11 +475,13 @@ void l4x_iodb_init(void)
 	LOG_printf("Got %d out of %d I/O ports\n",
 	           c, 1 << L4_WHOLE_IOADDRESS_SPACE);
 
+#if 0
 	if (c == 1 << L4_WHOLE_IOADDRESS_SPACE)
 		asm volatile ("cli; sti");
 	asm volatile ("pushf ; pop %0" : "=rm"(i));
 	l4x_ioprot_level = (i & 0x3000) >> 12;
 	LOG_printf("Running at IOPL %d\n", l4x_ioprot_level);
+#endif
 
 	l4x_ioprot_enabled = 1;
 }

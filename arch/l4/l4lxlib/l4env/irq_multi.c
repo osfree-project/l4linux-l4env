@@ -73,8 +73,7 @@ static void attach_to_IRQ(unsigned int irq)
 	code = l4_ipc_receive(irq_th,
 			      L4_IPC_SHORT_MSG,
 			      &dummy, &dummy,
-			      L4_IPC_TIMEOUT(0,0,0,1,0,0), /* rcv = 0,
-							      snd = inf */
+			      L4_IPC_RECV_TIMEOUT_0,
 			      &res);
 
 	if (code != L4_IPC_RETIMEOUT) {
@@ -109,7 +108,7 @@ static void send_msg_to_irq_thread(unsigned int irq, unsigned int cpu,
 
 		ret = l4_ipc_send(irq_ths[cpu], L4_IPC_SHORT_MSG,
 		                  cmd, irq,
-				  L4_IPC_TIMEOUT(0,0,0,1,0,0), &resdope);
+				  L4_IPC_RECV_TIMEOUT_0, &resdope);
 
 		if (ret)
 			printk("Failure while trying to send to irq thread,"
@@ -154,17 +153,9 @@ static inline unsigned int wait_for_irq_message(unsigned int irq_to_ack)
 		}
 
 		/* Check sender */
-		/* Gnah, this is foobar */
-#ifdef L4API_l4x0
 		if (id.id.task == 0 && id.raw && id.raw < NR_IRQS + 1) {
 			return id.raw - 1;
-		}
-#else /* v2 */
-		if (id.lh.high == 0 && id.lh.low && id.lh.low < NR_IRQS + 1) {
-			return id.lh.low - 1;
-		}
-#endif
-		else if (id.id.task == l4x_kernel_taskno) {
+		} else if (id.id.task == l4x_kernel_taskno) {
 			if (d1 == IRQ_SND_MSG_ATTACH) {
 				attach_to_IRQ(d2);
 

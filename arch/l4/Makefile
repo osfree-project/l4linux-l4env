@@ -11,7 +11,7 @@ endif
 
 ifneq ($(CONFIG_L4_ARCH_ARM),)
 # arm selection
-L4API		:= x0
+L4API		:= v2
 BASEARCH	:= arm
 
 CHECKFLAGS	:= -D__arm__
@@ -113,6 +113,7 @@ L4LX_E_L-$(CONFIG_L4_OSHKOSH_DRV) += -loshkoshnicdrv
 L4LX_E_L-$(CONFIG_L4_ORE_DRV)   += -lore
 L4LX_E_L-$(CONFIG_L4_IRQ_OMEGA0) += -lomega0
 L4LX_E_L-$(CONFIG_L4_PDSPBLK_DRV) += -lpers_dsp
+L4LX_E_L-$(CONFIG_L4_USE_L4VMM)	+= -ll4vmm -ll4vmm-c
 
 # Extra includes
 L4LX_E_I-$(CONFIG_L4_NEED_DSI)	+= -I$(srctree)/arch/l4/lib/support
@@ -124,8 +125,7 @@ libs-y				+= arch/l4/lib/arch-$(BASEARCH)/	\
 				   arch/l4/l4lxlib/generic/		\
 				   arch/l4/l4lxlib/$(BASEENV)/
 
-core-y				+= arch/l4/idl/				\
-				   arch/l4/kernel/			\
+core-y				+= arch/l4/kernel/			\
 				   arch/l4/kernel/arch-$(BASEARCH)/	\
 				   arch/l4/mm/arch-$(BASEARCH)/
 
