@@ -135,6 +135,7 @@ EXPORT_SYMBOL_GPL(arm_pm_restart);
  * This is our default idle handler.  We need to disable
  * interrupts here to ensure we don't miss a wakeup call.
  */
+#if 0
 static void default_idle(void)
 {
 	if (hlt_counter)
@@ -148,6 +149,7 @@ static void default_idle(void)
 		local_irq_enable();
 	}
 }
+#endif
 
 /*
  * The idle thread.  We try to conserve power, while trying to keep

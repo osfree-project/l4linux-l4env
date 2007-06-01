@@ -110,6 +110,7 @@ l4_kernel_info_t *l4lx_kinfo;
 unsigned int l4x_kernel_taskno __nosavedata;
 
 int l4x_debug_show_exceptions;
+int l4x_debug_show_ghost_regions;
 #ifdef CONFIG_L4_DEBUG_STATS
 struct l4x_debug_stats l4x_debug_stats_data;
 #endif
@@ -373,6 +374,16 @@ static void l4x_mbm_request_ghost(l4dm_dataspace_t *ghost_ds)
 
 }
 
+static void l4x_map_below_mainmem_print_region(l4_addr_t s, l4_addr_t e)
+{
+	if (!l4x_debug_show_ghost_regions)
+		return;
+	if (s == ~0UL)
+		return;
+
+	LOG_printf("Ghost region: %08lx - %08lx [%4ld]\n", s, e, (e - s) >> 12);
+}
+
 static void l4x_map_below_mainmem(void)
 {
 	unsigned long i;
@@ -384,6 +395,7 @@ static void l4x_map_below_mainmem(void)
 	int ret;
 	unsigned long i_inc;
 	int map_count = 0, map_count_all = 0;
+	l4_addr_t reg_start = ~0UL;
 
 	LOG_printf("Filling lower ptabs...\n");
 	LOG_flush();
@@ -397,8 +409,14 @@ static void l4x_map_below_mainmem(void)
 			if (i != map_addr)
 				enter_kdebug("shouldn't be, hmm?");
 			i_inc = map_size;
+			l4x_map_below_mainmem_print_region(reg_start, i);
+			reg_start = ~0UL;
 			continue;
 		}
+
+		if (reg_start == ~0UL)
+			reg_start = i;
+
 		i_inc = L4_PAGESIZE;
 
 		if (ret != -L4_ENOTFOUND) {
@@ -424,6 +442,7 @@ static void l4x_map_below_mainmem(void)
 			l4x_exit_l4linux();
 		}
 	}
+	l4x_map_below_mainmem_print_region(reg_start, i);
 	LOG_printf("Done (%d entries).\n", map_count_all);
 	LOG_flush();
 
@@ -1035,9 +1054,11 @@ int main(int argc, char **argv)
 		enter_kdebug("noreplacement option found");
 	}
 
-	/* See if we find a showpfexc=1 in the command line */
+	/* See if we find a showpfexc=1 or showghost=1 in the command line */
 	if ((p = strstr(boot_command_line, "showpfexc=")))
 		l4x_debug_show_exceptions = simple_strtoul(p+10, NULL, 0);
+	if ((p = strstr(boot_command_line, "showghost=")))
+		l4x_debug_show_ghost_regions = simple_strtoul(p+10, NULL, 0);
 
 	l4lx_kinfo = l4sigma0_kip_map(L4_INVALID_ID);
 
@@ -1061,7 +1082,7 @@ int main(int argc, char **argv)
 	}
 
 	if (l4sigma0_kip_kernel_has_feature("pl0_hack"))
-		l4x_fiasco_nr_of_syscalls++;
+		l4x_fiasco_nr_of_syscalls += 2;
 
 	if ((l4env_infopage = l4env_get_infopage()) == NULL) {
 		LOG_printf("Couldn't get L4Env info page!\n");
@@ -1070,9 +1091,9 @@ int main(int argc, char **argv)
 
 	l4x_l4vmm_init();
 
-	LOG_printf("Image: %08lx - %08lx [%u KiB].\n",
+	LOG_printf("Image: %08lx - %08lx [%lu KiB].\n",
 	           (unsigned long)_stext, (unsigned long)_end,
-	           (_end - _stext + 1) >> 10);
+	           (unsigned long)(_end - _stext + 1) >> 10);
 
 	LOG_printf("Areas: Text:     %08lx - %08lx [%ldkB] (a bit longer)\n",
 	           (unsigned long)&_stext, (unsigned long)&_sdata,
@@ -1435,6 +1456,7 @@ static void l4x_setup_die_utcb(void)
 	message[sizeof(message) - 1] = 0;
 
 	utcb_to_ptregs(utcb, &regs);
+	regs.ARM_ORIG_r0 = 0;
 	l4x_set_kernel_mode(&regs);
 
 	/* Copy pt_regs on the stack */

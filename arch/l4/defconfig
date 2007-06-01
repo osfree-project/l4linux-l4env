@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux kernel version: 2.6.21-l4
-# Wed May  9 12:48:31 2007
+# Fri Jun  1 21:52:21 2007
 #
 
 #
@@ -16,8 +16,6 @@ CONFIG_L4_ARCH_X86=y
 CONFIG_HZ=100
 CONFIG_PHYSICAL_START=0x0
 # CONFIG_L4_USERPRIV_ONLY is not set
-CONFIG_L4_L4ENV_MEMSIZE=32
-CONFIG_L4_TAMED=y
 
 #
 # L4 build options
@@ -47,6 +45,17 @@ CONFIG_L4_FB_DRIVER=y
 # CONFIG_L4_DROPSCON is not set
 
 #
+# Debugging options
+#
+# CONFIG_L4_DEBUG is not set
+
+#
+# Advanced options
+#
+CONFIG_L4_L4ENV_MEMSIZE=32
+CONFIG_L4_TAMED=y
+
+#
 # Priority configuration
 #
 CONFIG_L4_PRIO_USER_PROCESS=10
@@ -54,16 +63,12 @@ CONFIG_L4_PRIO_IRQ_OFFSET=129
 CONFIG_L4_PRIO_SERVER=100
 
 #
-# Debugging options
-#
-# CONFIG_L4_DEBUG is not set
-
-#
 # Monitoring options (ferret)
 #
 # CONFIG_L4_FERRET_USER is not set
 # CONFIG_L4_FERRET_KERNEL is not set
 # CONFIG_L4_FERRET_SYSCALL_COUNTER is not set
+# CONFIG_L4_USE_L4VMM is not set
 
 #
 # 

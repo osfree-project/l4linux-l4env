@@ -563,14 +563,14 @@ static inline void utcb_print_regs(l4_utcb_t *utcb)
 #undef R
 }
 
-static inline unsigned long call_system_call_args(unsigned long syscall,
-                                                  unsigned long arg1,
-                                                  unsigned long arg2,
-                                                  unsigned long arg3,
-                                                  unsigned long arg4,
-                                                  unsigned long arg5,
-                                                  unsigned long arg6,
-                                                  struct pt_regs *regsp)
+static inline void call_system_call_args(unsigned long syscall,
+                                         unsigned long arg1,
+                                         unsigned long arg2,
+                                         unsigned long arg3,
+                                         unsigned long arg4,
+                                         unsigned long arg5,
+                                         unsigned long arg6,
+                                         struct pt_regs *regsp)
 {
 	syscall_t syscall_fn;
 
