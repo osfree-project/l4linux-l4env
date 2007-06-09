@@ -761,12 +761,14 @@ static inline int l4x_port_emulation(l4_utcb_t *utcb)
 				case 0x3c1:
 					utcb->exc.eax = -1;
 					utcb->exc.eip++;
+					utcb_snd_size = L4_UTCB_EXCEPTION_REGS_SIZE;
 					return 1;
 			};
 		case 0xee: /* out al, dx */
 			switch (utcb->exc.edx & 0xffff) {
 				case 0x3c0:
 					utcb->exc.eip++;
+					utcb_snd_size = L4_UTCB_EXCEPTION_REGS_SIZE;
 					return 1;
 			};
 	};
@@ -788,32 +790,34 @@ static int l4x_kdebug_emulation(l4_utcb_t *utcb)
 	char *addr = (char *)utcb->exc.eip;
 	int i, len;
 
-	if (get_user(op, addr - 1))
+	if (get_user(op, addr))
 		return 0; /* User memory could not be accessed */
 
 	if (op != 0xcc) /* Check for int3 */
 		return 0; /* Not for us */
 
 	/* jdb command group */
-	if (get_user(op, addr))
+	if (get_user(op, addr + 1))
 		return 0; /* User memory could not be accessed */
 
 	if (op == 0xeb) { /* enter_kdebug */
-		if (get_user(len, addr + 1))
+		if (get_user(len, addr + 2))
 			return 0; /* Access failure */
-		utcb->exc.eip += len + 2;
+		utcb->exc.eip += len + 3;
 		outstring("User enter_kdebug text: ");
-		for (i = 2; len; len--) {
+		for (i = 3; len; len--) {
 			if (get_user(val, addr + i++))
 				break;
 			outchar(val);
 		}
+		outchar('\n');
 		enter_kdebug("User program enter_kdebug");
 
+		utcb_snd_size = L4_UTCB_EXCEPTION_REGS_SIZE;
 		return 1; /* handled */
 
 	} else if (op == 0x3c) {
-		if (get_user(op, addr + 1))
+		if (get_user(op, addr + 2))
 			return 0; /* Access failure */
 		switch (op) {
 			case 0: /* outchar */
@@ -854,7 +858,8 @@ static int l4x_kdebug_emulation(l4_utcb_t *utcb)
 			default:
 				return 0; /* Did not understand */
 		};
-		utcb->exc.eip += 2;
+		utcb->exc.eip += 3;
+		utcb_snd_size = L4_UTCB_EXCEPTION_REGS_SIZE;
 		return 1; /* handled */
 	}
 
@@ -941,6 +946,7 @@ static inline int l4x_dispatch_exception(struct task_struct *p,
 		LOG_printf("eax: %08lx ebx: %08lx ecx: %08lx edx: %08lx\n",
 		           utcb->exc.eax, utcb->exc.ebx, utcb->exc.ecx,
 		           utcb->exc.edx);
+		utcb_snd_size = L4_UTCB_EXCEPTION_REGS_SIZE;
 		return 0;
 	} else if (utcb->exc.trapno == 0xd) {
 		if (l4x_hybrid_begin(p, t, utcb))
