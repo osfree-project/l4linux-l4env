@@ -763,7 +763,7 @@ static int __init l4fb_probe(struct platform_device *dev)
 {
 	struct fb_info *info;
 	int video_cmap_len;
-	int dope_avail = 0, con_avail = 0;
+	int dope_avail = 0, con_avail = 0, force_use_con, force_use_dope;
 	int ret = -ENOMEM;
 
 	if (disable)
@@ -780,18 +780,21 @@ static int __init l4fb_probe(struct platform_device *dev)
 		dope_window_title = window_title;
 
 	/* A quick self-made check to reduce waiting times at startup */
-	dope_avail = (use_dope || !(use_dope + use_con))
-	             && names_query_name("DOpE", NULL);
-	con_avail  = (use_con || !(use_dope + use_con))
-	             && names_query_name(CON_NAMES_STR, NULL);
+	force_use_dope = use_dope && !use_con;
+	force_use_con  = use_con  && !use_dope;
 
-	if ((dope_avail || (!dope_avail && !con_avail)) &&
-	    !((ret = l4fb_dope_init(&l4fb_defined, &l4fb_fix)))) {
+	dope_avail = force_use_dope || names_query_name("DOpE", NULL);
+	con_avail  = force_use_con  || names_query_name(CON_NAMES_STR, NULL);
+
+	if (!force_use_con
+	    && (dope_avail || (!dope_avail && !con_avail))
+	    && !(ret = l4fb_dope_init(&l4fb_defined, &l4fb_fix))) {
 		mode = MODE_DOPE;
 		l4fb_update_rect = l4fb_dope_update_rect;
 	}
-	else if ((con_avail || (!dope_avail && !con_avail)) &&
-	         !((ret = l4fb_con_init(&l4fb_defined, &l4fb_fix)))) {
+	else if (!force_use_dope
+	         && (con_avail || (!dope_avail && !con_avail))
+		 && !(ret = l4fb_con_init(&l4fb_defined, &l4fb_fix))) {
 		mode = MODE_CON;
 		l4fb_update_rect = l4fb_con_update_rect;
 	} else
