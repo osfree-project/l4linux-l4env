@@ -59,7 +59,7 @@ static unsigned int dope_xpos = 120, dope_ypos = 60;
 static char *dope_window_title = "Linux console";
 static unsigned int nograb;
 static l4dm_dataspace_t fbds;
-static int disable;
+static int disable, use_con, use_dope;
 
 static enum mode mode = MODE_NONE;
 
@@ -780,8 +780,10 @@ static int __init l4fb_probe(struct platform_device *dev)
 		dope_window_title = window_title;
 
 	/* A quick self-made check to reduce waiting times at startup */
-	dope_avail = names_query_name("DOpE", NULL);
-	con_avail  = names_query_name(CON_NAMES_STR, NULL);
+	dope_avail = (use_dope || !(use_dope + use_con))
+	             && names_query_name("DOpE", NULL);
+	con_avail  = (use_con || !(use_dope + use_con))
+	             && names_query_name(CON_NAMES_STR, NULL);
 
 	if ((dope_avail || (!dope_avail && !con_avail)) &&
 	    !((ret = l4fb_dope_init(&l4fb_defined, &l4fb_fix)))) {
@@ -946,3 +948,7 @@ module_param(nograb, uint, 0);
 MODULE_PARM_DESC(nograb, "Do not grab window focus with mouse (DOpE only)");
 module_param(disable, bool, 0);
 MODULE_PARM_DESC(disable, "Disable driver");
+module_param(use_dope, bool, 0);
+MODULE_PARM_DESC(use_dope, "Use DOpE only");
+module_param(use_con, bool, 0);
+MODULE_PARM_DESC(use_con, "Use l4con only");
