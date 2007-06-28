@@ -85,16 +85,6 @@ static inline int l4x_do_signal(struct pt_regs *regs, int syscall)
 extern void l4x_show_sigpending_processes(void);
 extern void schedule_tail(struct task_struct *prev);
 
-static inline l4_umword_t l4x_l4pfa(l4_utcb_t *utcb)
-{
-	return (utcb->exc.pfa & ~3) | (!(utcb->exc.err & 0x00020000) << 1);
-}
-
-static inline int l4x_ispf(l4_utcb_t *utcb)
-{
-	return utcb->exc.err & 0x00010000;
-}
-
 void l4x_finish_task_switch(struct task_struct *prev);
 int  l4x_deliver_signal(int exception_nr, int error_code);
 
@@ -1013,7 +1003,7 @@ static inline void l4x_dispatch_page_fault(struct task_struct *p,
 
 	utcb_to_thread_struct(utcb, t);
 
-	if (l4x_handle_page_fault(p, l4x_l4pfa(utcb),
+	if (l4x_handle_page_fault(p, l4_utcb_exc_pfa(utcb),
 	                          l4_utcb_exc_pc(utcb), d0, d1)) {
 
 		if (!signal_pending(p))
@@ -1083,7 +1073,7 @@ restart_loop:
 	goto only_receive_IPC;
 
 	while (1) {
-		if (l4x_ispf(utcb)) {
+		if (l4_utcb_exc_is_pf(utcb)) {
 			l4x_dispatch_page_fault(p, t, utcb, &data0, &data1, &msg_desc);
 		} else {
 			if ((ret = l4x_dispatch_exception(p, t, utcb))) {

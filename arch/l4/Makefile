@@ -262,6 +262,7 @@ $(objtree)/Makeconf.l4conf: $(srctree)/arch/l4/Makefile.l4conf $(srctree)/arch/l
 	$(Q)$(MAKE) $(if $(L4DIR),-C $(L4DIR),) -f $< O=$(L4OBJ) OUTPUT=$@
 
 archprepare: check_linux_config $(symlinks) $(objtree)/Makeconf.l4conf
+	$(Q)mkdir -p arch/$(BASEARCH)/lib
 
 endif # .config available
 else # no archprepare when configuring the kernel

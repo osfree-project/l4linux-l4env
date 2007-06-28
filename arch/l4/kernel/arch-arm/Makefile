@@ -4,7 +4,7 @@
 
 obj-y		:= process.o sys_arm.o time.o semaphore.o traps.o \
 		   switch_to.o setup.o l4.o signal.o irq.o \
-		   ptrace.o entry.o dispatch.o
+		   ptrace.o entry.o dispatch.o armksyms.o
 
 obj-$(CONFIG_MODULES)				+= module.o
 obj-$(CONFIG_ISA_DMA_API)			+= dma.o

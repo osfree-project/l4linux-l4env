@@ -706,16 +706,16 @@ void __init trap_init(void)
 #endif
 }
 
+#include <asm/api/macros.h>
+
 int l4x_deliver_signal(int exception_nr, int errcode)
 {
 	siginfo_t info;
 	extern int do_signal(sigset_t *oldset, struct pt_regs *regs, int syscall);
 
-	printk("%s with exception %d for %x.%x (code: %x)\n",
+	printk("%s with exception %d for " PRINTF_L4TASK_FORM " (code: %x)\n",
 		__func__, exception_nr,
-		current->thread.user_thread_id.id.task,
-		current->thread.user_thread_id.id.lthread,
-		errcode);
+		PRINTF_L4TASK_ARG(current->thread.user_thread_id), errcode);
 
 	info.si_signo = SIGSEGV;
 	info.si_errno = 0;

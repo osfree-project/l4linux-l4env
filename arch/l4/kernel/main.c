@@ -789,10 +789,8 @@ static void __init l4env_linux_startup(void *data)
 
 	l4lx_thread_pager_change(linux_server_thread_id, caller_id);
 
-	l4_utcb_exception_ipc_enable();
-
+	l4_utcb_inherit_fpu(l4_utcb_get(), 1);
 #ifdef ARCH_x86
-	l4_utcb_get()->buffers[0] |= 2;
 	l4_utcb_l4lx_server = l4_utcb_get();
 	{
 		extern struct i386_pda boot_pda;
@@ -1156,8 +1154,6 @@ int main(int argc, char **argv)
 	l4x_fiasco_gdt_entry_offset = fiasco_gdt_get_entry_offset();
 
 	l4env_v2p_add_item(0xa0000, (void *)0xa0000, 0xfffff - 0xa0000);
-
-	l4_utcb_exception_ipc_enable();
 
 #ifdef CONFIG_L4_FERRET
 	l4x_ferret_init();

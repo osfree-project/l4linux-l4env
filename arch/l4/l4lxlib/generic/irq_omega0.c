@@ -213,8 +213,7 @@ void l4lx_irq_dev_shutdown_hw(unsigned int irq)
 }
 
 void l4lx_irq_dev_enable_hw(unsigned int irq)
-{
-}
+{}
 
 void l4lx_irq_dev_disable_hw(unsigned int irq)
 {}
@@ -234,38 +233,21 @@ void l4lx_irq_dev_end_hw(unsigned int irq)
 {}
 
 /*
- * _virt functions are empty for now.
+ * _virt functions are the same as the _hw functions when using omega0
  */
 unsigned int l4lx_irq_dev_startup_virt(unsigned int irq)
-{
-	LOG_printf("%s(%d) unimplemented\n", __func__, irq);
-	return 0;
-}
+{ return l4lx_irq_dev_startup_hw(irq); }
 void l4lx_irq_dev_shutdown_virt(unsigned int irq)
-{
-	LOG_printf("%s(%d) unimplemented\n", __func__, irq);
-}
+{ l4lx_irq_dev_shutdown_hw(irq); }
 void l4lx_irq_dev_ack_virt(unsigned int irq)
-{
-	LOG_printf("%s(%d) unimplemented\n", __func__, irq);
-}
+{ l4lx_irq_dev_ack_hw(irq); }
 void l4lx_irq_dev_mask_virt(unsigned int irq)
-{
-	LOG_printf("%s(%d) unimplemented\n", __func__, irq);
-}
+{ l4lx_irq_dev_mask_hw(irq); }
 void l4lx_irq_dev_unmask_virt(unsigned int irq)
-{
-	LOG_printf("%s(%d) unimplemented\n", __func__, irq);
-}
+{ l4lx_irq_dev_unmask_hw(irq); }
 void l4lx_irq_dev_end_virt(unsigned int irq)
-{
-	LOG_printf("%s(%d) unimplemented\n", __func__, irq);
-}
+{ l4lx_irq_dev_end_hw(irq); }
 void l4lx_irq_dev_enable_virt(unsigned int irq)
-{
-	LOG_printf("%s(%d) unimplemented\n", __func__, irq);
-}
+{ l4lx_irq_dev_enable_hw(irq); }
 void l4lx_irq_dev_disable_virt(unsigned int irq)
-{
-	LOG_printf("%s(%d) unimplemented\n", __func__, irq);
-}
+{ l4lx_irq_dev_disable_hw(irq); }

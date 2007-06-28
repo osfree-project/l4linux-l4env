@@ -85,16 +85,6 @@ extern void fastcall do_signal(struct pt_regs *regs);
 extern void l4x_show_sigpending_processes(void);
 extern void schedule_tail(struct task_struct *prev);
 
-static inline l4_umword_t l4x_l4pfa(l4_utcb_t *utcb)
-{
-	return (utcb->exc.pfa & ~3) | (utcb->exc.err & 2);
-}
-
-static inline int l4x_ispf(l4_utcb_t *utcb)
-{
-	return utcb->exc.trapno == 14;
-}
-
 asmlinkage void ret_from_fork(void) __asm__("ret_from_fork");
 asm(
 ".section .text			\n"
@@ -674,6 +664,7 @@ static inline void dispatch_system_call(l4_utcb_t *utcb)
 						regsp->edi, regsp->ebp);
 		}
 	}
+	//LOG_printf("syscall: %d ret=%d\n", syscall, regsp->eax);
 
 	if (signal_pending(current))
 		do_signal(regsp);
@@ -998,7 +989,7 @@ static inline void l4x_dispatch_page_fault(struct task_struct *p,
 
 	utcb_to_thread_struct(utcb, t);
 
-	if (l4x_handle_page_fault(p, l4x_l4pfa(utcb),
+	if (l4x_handle_page_fault(p, l4_utcb_exc_pfa(utcb),
 	                          l4_utcb_exc_pc(utcb), d0, d1)) {
 
 		if (!signal_pending(p))
@@ -1068,7 +1059,7 @@ restart_loop:
 	goto only_receive_IPC;
 
 	while (1) {
-		if (l4x_ispf(utcb)) {
+		if (l4_utcb_exc_is_pf(utcb)) {
 			l4x_dispatch_page_fault(p, t, utcb, &data0, &data1, &msg_desc);
 		} else {
 			if ((ret = l4x_dispatch_exception(p, t, utcb))) {
