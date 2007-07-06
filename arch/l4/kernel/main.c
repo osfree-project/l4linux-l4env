@@ -1578,7 +1578,7 @@ static void l4x_server_loop(void)
 			                          &w0, &w1,
 			                          L4_IPC_NEVER, &result, &tag);
 
-		if (w0 == L4X_SERVER_EXIT) {
+		if (l4_msgtag_label(tag) == 0 && w0 == L4X_SERVER_EXIT) {
 			l4x_linux_main_exit(); // will not return anyway
 			do_wait = 1;
 			continue; // do not reply
@@ -2116,13 +2116,10 @@ void __init setup_pit_timer(void)
 }
 #endif
 
-/* Some exports from L4 libraries etc. */
-EXPORT_SYMBOL(LOG_printf);
-
-#ifdef ARCH_x86
 /* ----------------------------------------------------------------------- */
 /* Export list, we could also put these in a separate file (like l4_ksyms.c) */
 
+#ifdef ARCH_x86
 #include <linux/dma-mapping.h>
 #include <linux/interrupt.h>
 
@@ -2132,7 +2129,6 @@ EXPORT_SYMBOL(LOG_printf);
 #include <asm/dma-mapping.h>
 #include <asm/io.h>
 
-EXPORT_SYMBOL(l4env_vmalloc_memory_start);
 EXPORT_SYMBOL(__VMALLOC_RESERVE);
 
 EXPORT_SYMBOL(swapper_pg_dir);
@@ -2155,6 +2151,13 @@ EXPORT_SYMBOL(mmx_copy_page);
 
 EXPORT_SYMBOL(_proxy_pda);
 
+#endif /* ARCH_x86 */
+
+/* Some exports from L4 libraries etc. */
+EXPORT_SYMBOL(LOG_printf);
+
+EXPORT_SYMBOL(l4env_vmalloc_memory_start);
+
 /* Exports for L4 specific modules */
 EXPORT_SYMBOL(l4_sleep);
 EXPORT_SYMBOL(l4rm_do_attach);
@@ -2173,5 +2176,3 @@ EXPORT_SYMBOL(l4semaphore_thread_l4_id);
 EXPORT_SYMBOL(l4thread_myself);
 
 EXPORT_SYMBOL(l4x_prepare_irq_thread);
-
-#endif /* ARCH_x86 */

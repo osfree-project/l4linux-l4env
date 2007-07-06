@@ -79,7 +79,7 @@ l4_threadid_t l4lx_thread_create(void (*thread_func)(void *data),
 				 const char *name)
 {
 	void *data, *stack_top;
-	l4_threadid_t ret = linux_server_thread_id;
+	l4_threadid_t ret;
 	l4thread_t thread_no;
 	char l4lx_name[20] = "l4lx.";
 
@@ -126,8 +126,7 @@ l4_threadid_t l4lx_thread_create(void (*thread_func)(void *data),
 		return L4_INVALID_ID;
 	}
 
-	/* XXX: V2 stuff... */
-	ret.id.lthread = thread_no;
+	ret = l4thread_l4_id(thread_no);
 
 	LOG_printf("%s: Created thread " PRINTF_L4TASK_FORM " (%s)\n",
 	           __func__, PRINTF_L4TASK_ARG(ret), name);
