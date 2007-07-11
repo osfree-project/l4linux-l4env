@@ -155,6 +155,7 @@ L4LIBS		= -L$(L4OBJ)/lib/$(L4_MK_ARCH)_$(L4_MK_CPU)/$(L4_MK_API) \
 
 L4INC		= -I$(L4OBJ)/include/$(L4_MK_ARCH)/$(L4_MK_API) \
 		  -I$(L4OBJ)/include/$(L4_MK_ARCH) \
+		  -I$(L4OBJ)/include/$(L4_MK_API) \
 		  -I$(L4OBJ)/include \
 		  -I$(L4BID_DICEDIR)/include \
 		  $(L4LX_E_I-y)

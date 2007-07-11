@@ -2151,6 +2151,8 @@ EXPORT_SYMBOL(mmx_copy_page);
 
 EXPORT_SYMBOL(_proxy_pda);
 
+EXPORT_SYMBOL(l4lx_fpu_enabled);
+
 #endif /* ARCH_x86 */
 
 /* Some exports from L4 libraries etc. */

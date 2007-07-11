@@ -201,7 +201,7 @@ unsigned long clear_user(void *address, unsigned long n)
 	}
 	return 0;
 }
-
+EXPORT_SYMBOL(clear_user);
 
 /*
  * Copy a null terminated string from userspace.
@@ -415,3 +415,4 @@ long strnlen_user(const char *src, long n)
 
 	return 0; /* EFAULT */
 }
+EXPORT_SYMBOL(strnlen_user);
