@@ -31,6 +31,8 @@ endif
 
 export BASEARCH L4_MK_ARCH
 
+KBUILD_DEFCONFIG := x86-native_defconfig
+
 # crude hack
 TRASH := $(shell test -f $(srctree)/arch/l4/Kconfig.isg || touch $(srctree)/arch/l4/Kconfig.isg; cd $(srctree)/arch/l4 && ln -fs ../i386/Kconfig Kconfig.i386 && ln -sf Kconfig.$(BASEARCH) Kconfig.arch)
 
