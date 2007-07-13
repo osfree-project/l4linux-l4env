@@ -35,9 +35,9 @@
 #include <l4/sys/kdebug.h>
 #include <l4/sys/syscalls.h>
 #include <l4/sys/utcb.h>
-#include <l4/util/cpu.h>
 #include <l4/sigma0/kip.h>
 #include <l4/sigma0/sigma0.h>
+#include <l4/util/cpu.h>
 #include <l4/util/mbi_argv.h>
 #include <l4/util/l4_macros.h>
 
@@ -62,6 +62,10 @@
 #include <asm/l4x/iodb.h>
 #include <asm/l4x/exception.h>
 #include <asm/l4x/lx_syscalls.h>
+
+#ifdef ARCH_x86
+#include <l4/rtc/rtc.h>
+#endif
 
 #ifdef CONFIG_L4_USE_L4VMM
 #include <l4/vmm/vmm.h>
@@ -1158,6 +1162,17 @@ int main(int argc, char **argv)
 #ifdef CONFIG_L4_FERRET
 	l4x_ferret_init();
 #endif
+
+	/* Make sure RTC is ready */
+	{
+		l4_uint32_t seconds;
+
+		i = 10;
+		while (--i && l4rtc_get_seconds_since_1970(&seconds))
+			l4_sleep(100);
+		if (i == 0)
+			LOG_printf("WARNING: RTC server does not respond!\n");
+	}
 
 #endif /* ARCH_x86 */
 

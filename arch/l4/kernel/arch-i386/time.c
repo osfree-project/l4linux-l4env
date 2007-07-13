@@ -203,7 +203,9 @@ unsigned long read_persistent_clock(void)
 {
 #ifdef CONFIG_L4_EXTERNAL_RTC
 	l4_uint32_t seconds;
-	l4rtc_get_seconds_since_1970(&seconds);
+
+	if (l4rtc_get_seconds_since_1970(&seconds))
+		return 0;
 
 	return seconds;
 #else
