@@ -182,5 +182,4 @@ static int __init l4x_proc_init(void)
 }
 
 /* automatically start this */
-module_init(l4x_proc_init);
-
+subsys_initcall(l4x_proc_init);
