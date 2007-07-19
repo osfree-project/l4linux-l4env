@@ -286,43 +286,19 @@ chkl4conf:
 ## Check a few options that should not be enabled
 # regparm: gcc may call memset from our libs, so obey calling convention
 #          this should probably be fixed
+
+DIS_OPTS := HIGHMEM4G HIGHMEM64G SMP PREEMPT PCI_GOANY PCI_GOBIOS HPET_TIMER \
+            X86_MCE X86_MCE MTRR PARAVIRT KEXEC MCA
+
 check_linux_config:
-	@if [ "$(CONFIG_HIGHMEM4G)" = "y" ]; then         \
-	  echo CONFIG_HIGHMEM4G must not be enabled;      \
-	  exit 1;                                         \
-	fi
-	@if [ "$(CONFIG_HIGHMEM64G)" = "y" ]; then        \
-	  echo CONFIG_HIGHMEM64G must not be enabled;     \
-	  exit 1;                                         \
-	fi
-	@if [ "$(CONFIG_SMP)" = "y" ]; then               \
-	  echo CONFIG_SMP must no be enabled;             \
-	  exit 1;                                         \
-	fi
-	@if [ "$(CONFIG_PREEMPT)" = "y" ]; then           \
-	  echo CONFIG_PREEMPT mode not supported;         \
-	  exit 1;                                         \
-	fi
-	@if [ "$(CONFIG_PCI_GOANY)" = "y" ]; then         \
-	  echo CONFIG_PCI_GOANY mode not supported;       \
-	  exit 1;                                         \
-	fi
-	@if [ "$(CONFIG_PCI_GOBIOS)" = "y" ]; then        \
-	  echo CONFIG_PCI_GOBIOS mode not supported;      \
-	  exit 1;                                         \
-	fi
-	@if [ "$(HPET_TIMER)" = "y" ]; then               \
-	  echo HPET timer must not be enabled;            \
-	  exit 1;                                         \
-	fi
-	@if [ "$(CONFIG_X86_MCE)" = "y" ]; then           \
-	  echo MCE must not be enabled;                   \
-	  exit 1;                                         \
-	fi
-	@if [ "$(CONFIG_MTRR)" = "y" ]; then              \
-	  echo MTRR support must not be enabled;          \
-	  exit 1;                                         \
-	fi
+	@$(foreach i,$(addprefix CONFIG_,$(DIS_OPTS)),     \
+	  if [ "$($(i))" = "y" ]; then                     \
+	    echo; echo "ERROR: $(i) must not be enabled."; \
+	    failed=1;                                      \
+	  fi;)                                             \
+	  if [ -n "$$failed" ]; then                       \
+	    echo; exit 1;                                  \
+	  fi
 
 PHONY += chkl4conf check_linux_config
 
