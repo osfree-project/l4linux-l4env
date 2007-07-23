@@ -643,10 +643,6 @@ void __init setup_arch(char **cmdline_p)
 	vmi_init();
 #endif
 
-#if defined(CONFIG_L4_L4ENV) && !defined(CONFIG_L4_USERPRIV_ONLY)
-	l4x_l4io_init();
-#endif
-
 	/*
 	 * NOTE: before this point _nobody_ is allowed to allocate
 	 * any memory using the bootmem allocator.  Although the

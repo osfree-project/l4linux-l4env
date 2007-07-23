@@ -15,9 +15,7 @@
 #include <asm/api/config.h>
 #include <asm/generic/irq.h>
 
-void l4x_arm_integrator_init(void);
-void l4x_arm_integrator_map_io(void);
-void l4x_arm_integrator_irq_init(void);
+void l4x_arm_devices_init(void);
 
 void l4x_arm_isg_init(void);
 void l4x_arm_isg_map_io(void);
@@ -27,9 +25,6 @@ void l4x_arm_isg_irq_init(void);
 
 static void __init map_io_l4(void)
 {
-#ifdef CONFIG_L4_ARM_PLATFORM_INTEGRATOR
-	l4x_arm_integrator_map_io();
-#endif
 #ifdef CONFIG_L4_ARM_PLATFORM_ISG
 	l4x_arm_isg_map_io();
 #endif
@@ -119,10 +114,6 @@ static void __init init_irq_l4(void)
 #ifdef CONFIG_L4_ARM_PLATFORM_ISG
 	l4x_arm_isg_irq_init();
 #endif
-
-#ifdef CONFIG_L4_ARM_PLATFORM_INTEGRATOR
-	l4x_arm_integrator_irq_init();
-#endif
 }
 
 static irqreturn_t l4_timer_interrupt_handler(int irq, void *dev_id)
@@ -159,9 +150,8 @@ static void __init l4x_timer_init(void)
 
 static void __init init_l4(void)
 {
-#ifdef CONFIG_L4_ARM_PLATFORM_INTEGRATOR
-	l4x_arm_integrator_init();
-#endif
+	l4x_arm_devices_init();
+
 #ifdef CONFIG_L4_ARM_PLATFORM_ISG
 	l4x_arm_isg_init();
 #endif

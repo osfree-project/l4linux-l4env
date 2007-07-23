@@ -55,19 +55,6 @@ config L4_USERPRIV_ONLY
 	  option and do not enable any option/driver which may touch the
 	  hardware.
 
-choice
-	prompt "Platform"
-	default L4_ARM_PLATFORM_GENERIC
-	depends on L4_ARCH_ARM
-
-	config L4_ARM_PLATFORM_GENERIC
-		bool "Generic only"
-	config L4_ARM_PLATFORM_INTEGRATOR
-		bool "ARM Integrator"
-	config L4_ARM_PLATFORM_ISG
-		bool "ISG"
-endchoice
-
 
 if L4_ARM_PLATFORM_ISG
 source arch/l4/Kconfig.isg
@@ -401,6 +388,13 @@ config L4_USE_L4VMM
 
 	  Note: Don't use loader's allow_bios flag when enabling this
 	        option.
+
+config L4_ARM_PLATFORM_ISG
+	bool "Enable ISG"
+	default n
+	depends on L4_ARCH_ARM
+	help
+	  Enables ISG.
 
 endmenu # advanced
 

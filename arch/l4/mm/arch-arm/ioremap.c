@@ -10,17 +10,10 @@
 #include <asm/tlbflush.h>
 #include <asm/sizes.h>
 
-/*
- * Used by ioremap() and iounmap() code to mark (super)section-mapped
- * I/O regions in vm_struct->flags field.
- */
-#define VM_ARM_SECTION_MAPPING	0x80000000
+#include <asm/generic/io.h>
 
-#include <asm/generic/memory.h>
-
-#include <l4/sys/kdebug.h>
-#include <l4/l4rm/l4rm.h>
-
+#define __ARCH_IOREMAP_C_INCLUDED__
+#include "../io.c"
 
 void __check_kvm_seq(struct mm_struct *mm)
 {
@@ -43,36 +36,12 @@ void __check_kvm_seq(struct mm_struct *mm)
 void __iomem *
 __ioremap(unsigned long phys_addr, size_t size, unsigned long flags)
 {
-	l4_addr_t virt_addr;
-	l4_uint32_t rg;
-	int error;
-
-	size = (size + (PAGE_SIZE - 1)) & ~(PAGE_SIZE - 1);
-
-	if ((error = l4rm_area_reserve(size, L4RM_LOG2_ALIGNED,
-	                               &virt_addr, &rg)))
-		goto fail_reserve;
-
-	if (l4x_map_iomemory_from_sigma0(phys_addr, virt_addr, size))
-		goto fail_map;
-
-	return (void *)virt_addr;
-
-fail_map:
-	if (l4rm_area_release_addr((void *)virt_addr))
-		printk("%s: l4rm_area_release_addr failed\n", __func__);
-fail_reserve:
-	return NULL;
+	return __l4x_ioremap(phys_addr, size, flags);
 }
 EXPORT_SYMBOL(__ioremap);
 
 void __iounmap(volatile void __iomem *addr)
 {
-	printk("__iounmap: unimplemented\n");
+	l4x_iounmap(addr);
 }
 EXPORT_SYMBOL(__iounmap);
-
-unsigned long find_ioremap_entry(unsigned long phys_addr)
-{
-	return 0;
-}

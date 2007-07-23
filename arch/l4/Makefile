@@ -132,7 +132,6 @@ core-y				+= arch/l4/kernel/			\
 				   arch/l4/mm/arch-$(BASEARCH)/
 
 ifeq ($(BASEARCH),i386)
-libs-y				+= -lio-ll
 drivers-$(CONFIG_PCI)		+= arch/l4/pci/
 drivers-$(CONFIG_PM)		+= arch/l4/power/arch-i386/
 endif
@@ -141,7 +140,7 @@ ifeq ($(BASEARCH),arm)
 core-$(CONFIG_FPE_NWFPE)	+= arch/arm/nwfpe/
 endif
 
-libs-y				+= -ldm_phys -lgeneric_fprov -ll4util \
+libs-y				+= -lio-ll -ldm_phys -lgeneric_fprov -ll4util \
 				   -ll4sys $(L4LX_E_L-y)
 
 libs-$(CONFIG_L4_FERRET)	+= -lferret_client -lferret_producer \

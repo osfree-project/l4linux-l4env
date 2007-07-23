@@ -813,16 +813,27 @@ static void __init l4env_linux_startup(void *data)
 	start_kernel();
 }
 
-#ifdef ARCH_x86
+static l4io_info_t _l4x_io_info_page;
+
+l4io_info_t *l4x_l4io_info_page(void)
+{
+	return &_l4x_io_info_page;
+}
+
 void __init l4x_l4io_init(void)
 {
-	l4io_info_t *io_info_page = (void *)-1;
+	l4io_info_t *io_info_page = (void *)0;
+
+	/* io clientlib flexpages into our BSS, if we rerequest mappings
+	 * from our pager this mapping will disappear, as we only need the
+	 * static data on the io page we just copy it */
 
 	/* initialize IO lib */
 	if (l4io_init(&io_info_page, L4IO_DRV_INVALID))
 		enter_kdebug("Error calling l4io_init!");
+
+	memcpy(&_l4x_io_info_page, io_info_page, sizeof(l4io_info_t));
 }
-#endif
 
 #ifdef CONFIG_BLK_DEV_INITRD
 static l4dm_dataspace_t l4env_initrd_ds;
@@ -1175,6 +1186,8 @@ int main(int argc, char **argv)
 	}
 
 #endif /* ARCH_x86 */
+
+	l4x_l4io_init();
 
 	/* Set name of startup thread */
 	l4lx_thread_name_set(l4x_start_thread_id, "l4env-start");
