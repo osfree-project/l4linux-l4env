@@ -828,6 +828,8 @@ void __init l4x_l4io_init(void)
 	 * from our pager this mapping will disappear, as we only need the
 	 * static data on the io page we just copy it */
 
+	LOG_printf("Connecting to l4io server.\n");
+
 	/* initialize IO lib */
 	if (l4io_init(&io_info_page, L4IO_DRV_INVALID))
 		enter_kdebug("Error calling l4io_init!");
@@ -982,14 +984,7 @@ static void __init get_initial_cpu_capabilities(void)
 #ifdef ARCH_x86
 	/* new_cpu_data is filled into boot_cpu_data in setup_arch */
 	extern struct cpuinfo_x86 new_cpu_data;
-#ifdef CONFIG_L4_USERPRIV_ONLY
-	/* The check uses popfl/pushfl and we don't like this with UX, and
-	 * additionally nobody is going to use the UX version on a 486 type
-	 * machine, right? And we _could_ also set the capabilities to 0... */
-	new_cpu_data.x86_capability[0] = l4util_cpu_capabilities_nocheck();
-#else
 	new_cpu_data.x86_capability[0] = l4util_cpu_capabilities();
-#endif
 #endif
 }
 
@@ -1130,13 +1125,6 @@ int main(int argc, char **argv)
 	            (unsigned long)&__init_end - (unsigned long)&__init_begin);
 	l4_touch_rw(&__bss_start,
 	            (unsigned long)&__bss_stop - (unsigned long)&__bss_start);
-
-#ifdef CONFIG_L4_DROPSCON
-	if (0) {
-		extern void dropscon_bootlog_init(void);
-		dropscon_bootlog_init();
-	}
-#endif
 
 	/* some things from head.S */
 	get_initial_cpu_capabilities();
@@ -1462,9 +1450,33 @@ static int l4x_l4vmm_handle_exception(void)
 
 static inline void l4x_print_exception(l4_threadid_t t)
 {
-	LOG_printf("EX: "l4util_idfmt": pc = "l4_addr_fmt" trapno = 0x%lx err = 0x%lx\n",
+	LOG_printf("EX: "l4util_idfmt": pc = "l4_addr_fmt
+	           " trapno = 0x%lx err/pfa = 0x%lx%s\n",
 	           l4util_idstr(t), l4_utcb_get()->exc.eip,
-		   l4_utcb_get()->exc.trapno, l4_utcb_get()->exc.err);
+		   l4_utcb_get()->exc.trapno,
+		   l4_utcb_get()->exc.trapno == 14
+	             ? l4_utcb_get()->exc.pfa
+	             : l4_utcb_get()->exc.err,
+	           l4_utcb_get()->exc.trapno == 14
+	             ? (l4_utcb_get()->exc.err & 2)
+	               ? " w" : " r"
+	             : "");
+
+	if (l4x_debug_show_exceptions >= 2
+	    && !l4_utcb_exc_is_pf(l4_utcb_get())) {
+		/* Lets assume we can do the following... */
+		unsigned len = 72, i;
+		unsigned long eip = l4_utcb_get()->exc.eip - 43;
+
+		LOG_printf("Dump: ");
+		for (i = 0; i < len; i++, eip++)
+			if (eip == l4_utcb_get()->exc.eip)
+				LOG_printf("<%02x> ", *(unsigned char *)eip);
+			else
+				LOG_printf("%02x ", *(unsigned char *)eip);
+
+		LOG_printf(".\n");
+	}
 }
 #endif /* ARCH_x86 */
 
@@ -1502,6 +1514,23 @@ static inline void l4x_print_exception(l4_threadid_t t)
 	LOG_printf("EX: "l4util_idfmt": pc = "l4_addr_fmt" err = 0x%lx\n",
 	           l4util_idstr(t),
 		   l4_utcb_get()->exc.pc, l4_utcb_get()->exc.err);
+
+	if (l4x_debug_show_exceptions >= 2
+	    && !l4_utcb_exc_is_pf(l4_utcb_get())
+	    && (l4_utcb_get()->exc.pc & 3) == 0) {
+		/* Lets assume we can do the following... */
+		unsigned len = 72 >> 2, i;
+		unsigned long eip = l4_utcb_get()->exc.pc - 44;
+
+		LOG_printf("Dump: ");
+		for (i = 0; i < len; i++, eip += sizeof(unsigned long))
+			if (eip == l4_utcb_get()->exc.pc)
+				LOG_printf("<%08lx> ", *(unsigned long *)eip);
+			else
+				LOG_printf("%08lx ", *(unsigned long *)eip);
+
+		LOG_printf(".\n");
+	}
 }
 #endif /* ARCH_arm */
 
@@ -1919,7 +1948,6 @@ void l4x_setup_threads(void)
 /* -------------------------------------------------- */
 /* some irq stuff */
 
-#if defined(CONFIG_L4_USERPRIV_ONLY) || defined(ARCH_arm)
 #ifndef CONFIG_L4_TAMED
 #include <asm/hardirq.h>
 
@@ -1951,7 +1979,6 @@ void l4x_local_irq_restore(unsigned long flags)
 
 }
 EXPORT_SYMBOL(l4x_local_irq_restore);
-#endif
 #endif
 
 /* ----------------------------------------------------- */

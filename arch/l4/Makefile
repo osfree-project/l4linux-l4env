@@ -105,8 +105,6 @@ export L4DIR
 
 
 # Extra Libs
-L4LX_E_L-$(CONFIG_L4_DROPSCON)  += -l$(patsubst "%",%,$(CONFIG_L4_DROPSCON_LIB)) -lnames
-L4LX_E_L-$(CONFIG_L4_DROPSCON)  += -lcon -lconstream-server
 L4LX_E_L-$(CONFIG_L4_FB_DRIVER) += -ll4dope -lvscreen -lcon -lconstream-server
 L4LX_E_L-$(CONFIG_L4_BLK_DRV)   += -lgeneric_blk
 L4LX_E_L-$(CONFIG_L4_EXTERNAL_RTC) += -lrtc
@@ -178,28 +176,18 @@ CPPFLAGS	+= -DL4API_$(L4_MK_API)
 # IDL also generates header files
 CPPFLAGS	+= -I$(obj)/arch/l4/idl
 
-VMLINUZEXT = $(shell if ! test -e .config; then \
-                       :; \
-                     elif grep -q CONFIG_L4_USERPRIV_ONLY=y .config; then \
-                       echo .ux; \
-		     elif grep -q CONFIG_ARM=y .config; then \
-		       echo .arm; \
-		     fi)
-
 all: vmlinuz
 
-quiet_cmd_compr = COMPR   $< to vmlinuz26$(VMLINUZEXT)
-      cmd_compr = (if grep -q CONFIG_ARM=y .config; then		\
-                     ln -f vmlinux vmlinuz26$(VMLINUZEXT);		\
-		   else							\
-                     gzip -c vmlinux > vmlinuz26$(VMLINUZEXT);		\
-		   fi)
+SUFFIX = $(patsubst "%",%,$(CONFIG_L4_VMLINUZ_SUFFIX))
 
-CLEAN_FILES	+= vmlinuz26$(VMLINUZEXT)
+quiet_cmd_compr = COMPR   $< to vmlinuz$(SUFFIX)
+      cmd_compr = gzip -c vmlinux > vmlinuz$(SUFFIX)
 
-quiet_cmd_localinst = LOCINST vmlinuz26$(VMLINUZEXT)
+CLEAN_FILES	+= vmlinuz$(SUFFIX)
+
+quiet_cmd_localinst = LOCINST vmlinuz$(SUFFIX)
       cmd_localinst = ([ -x "$(srctree)/arch/l4/install.local" ] &&		\
-	                $(srctree)/arch/l4/install.local vmlinuz26$(VMLINUZEXT))\
+	                $(srctree)/arch/l4/install.local vmlinuz$(SUFFIX) $(BASEARCH))\
 			  || true
 
 vmlinuz: vmlinux
