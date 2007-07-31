@@ -29,7 +29,7 @@
  * more memory from BSS. Needing more stacks than available will make the
  * kernel print an error message.
  */
-#define L4LX_THREAD_NO_THREADS (24)
+#define L4LX_THREAD_NO_THREADS (48)
 
 /**
  * Size of the stack for every thread, in Bytes.

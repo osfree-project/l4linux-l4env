@@ -24,11 +24,15 @@ SECTIONS
 	/*. = PAGE_OFFSET + TEXT_OFFSET; */
 	. = 0x200000;
 #endif
-	.init : {			/* Init code and data		*/
+	.text.head : {
 		_stext = .;
-			_sinittext = .;
+		_sinittext = .;
+		*(.text.head)
+	}
+
+	.init : {			/* Init code and data		*/
 			*(.init.text)
-			_einittext = .;
+		_einittext = .;
 		__proc_info_begin = .;
 			*(.proc.info.init)
 		__proc_info_end = .;
@@ -60,7 +64,7 @@ SECTIONS
 			usr/built-in.o(.init.ramfs)
 		__initramfs_end = .;
 #endif
-		. = ALIGN(64);
+		. = ALIGN(4096);
 		__per_cpu_start = .;
 			*(.data.percpu)
 		__per_cpu_end = .;
@@ -89,7 +93,10 @@ SECTIONS
 
 	.text : {			/* Real text segment		*/
 		_text = .;		/* Text and read-only data	*/
-			*(.text)
+			__exception_text_start = .;
+			*(.exception.text)
+			__exception_text_end = .;
+			TEXT_TEXT
 			SCHED_TEXT
 			LOCK_TEXT
 #ifdef CONFIG_MMU
@@ -126,8 +133,7 @@ SECTIONS
 		 * first, the init task union, aligned
 		 * to an 8192 byte boundary.
 		 */
-  		*(.data.init_task)
-		*(.init.task)
+		*(.data.init_task)
 
 #ifdef CONFIG_XIP_KERNEL
 		. = ALIGN(4096);
@@ -162,7 +168,7 @@ SECTIONS
 		/*
 		 * and the usual data section
 		 */
-		*(.data)
+		DATA_DATA
 		CONSTRUCTORS
 
 		_edata = .;

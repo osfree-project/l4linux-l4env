@@ -9,7 +9,6 @@
  */
 #include <linux/errno.h>
 #include <linux/signal.h>
-#include <linux/ptrace.h>
 #include <linux/personality.h>
 #include <linux/freezer.h>
 
@@ -212,7 +211,7 @@ struct rt_sigframe {
 
 static int restore_sigframe(struct pt_regs *regs, struct sigframe __user *sf)
 {
-	//struct aux_sigframe __user *aux;
+	struct aux_sigframe __user *aux;
 	sigset_t set;
 	int err;
 
@@ -245,6 +244,11 @@ static int restore_sigframe(struct pt_regs *regs, struct sigframe __user *sf)
 
 	err |= !valid_user_regs(regs);
 
+	aux = (struct aux_sigframe __user *) sf->uc.uc_regspace;
+#ifdef CONFIG_CRUNCH
+	if (err == 0)
+		err |= restore_crunch_context(&aux->crunch);
+#endif
 #ifdef CONFIG_IWMMXT
 	if (err == 0 && test_thread_flag(TIF_USING_IWMMXT))
 		err |= restore_iwmmxt_context(&aux->iwmmxt);
@@ -280,11 +284,7 @@ asmlinkage int sys_sigreturn(struct pt_regs *regs)
 	if (restore_sigframe(regs, frame))
 		goto badframe;
 
-	/* Send SIGTRAP if we're single-stepping */
-	if (current->ptrace & PT_SINGLESTEP) {
-		ptrace_cancel_bpt(current);
-		send_sig(SIGTRAP, current, 1);
-	}
+	single_step_trap(current);
 
 	return regs->ARM_r0;
 
@@ -319,11 +319,7 @@ asmlinkage int sys_rt_sigreturn(struct pt_regs *regs)
 	if (do_sigaltstack(&frame->sig.uc.uc_stack, NULL, regs->ARM_sp) == -EFAULT)
 		goto badframe;
 
-	/* Send SIGTRAP if we're single-stepping */
-	if (current->ptrace & PT_SINGLESTEP) {
-		ptrace_cancel_bpt(current);
-		send_sig(SIGTRAP, current, 1);
-	}
+	single_step_trap(current);
 
 	return regs->ARM_r0;
 
@@ -639,14 +635,12 @@ int do_signal(sigset_t *oldset, struct pt_regs *regs, int syscall)
 	if (try_to_freeze())
 		goto no_signal;
 
-	if (current->ptrace & PT_SINGLESTEP)
-		ptrace_cancel_bpt(current);
+	single_step_clear(current);
 
 	signr = get_signal_to_deliver(&info, &ka, regs, NULL);
 	if (signr > 0) {
 		handle_signal(signr, &ka, &info, oldset, regs, syscall);
-		if (current->ptrace & PT_SINGLESTEP)
-			ptrace_set_bpt(current);
+		single_step_set(current);
 		return 1;
 	}
 
@@ -700,8 +694,7 @@ int do_signal(sigset_t *oldset, struct pt_regs *regs, int syscall)
 			restart_syscall(regs);
 		}
 	}
-	if (current->ptrace & PT_SINGLESTEP)
-		ptrace_set_bpt(current);
+	single_step_set(current);
 	return 0;
 }
 

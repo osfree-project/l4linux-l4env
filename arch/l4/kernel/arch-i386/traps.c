@@ -52,7 +52,7 @@
 #include <asm/unwind.h>
 #include <asm/smp.h>
 #include <asm/arch_hooks.h>
-#include <asm/kdebug.h>
+#include <linux/kdebug.h>
 #include <asm/stacktrace.h>
 
 #include <linux/module.h>
@@ -101,20 +101,6 @@ void machine_check(void);
 
 int kstack_depth_to_print = 24;
 static unsigned int code_bytes = 64;
-ATOMIC_NOTIFIER_HEAD(i386die_chain);
-
-int register_die_notifier(struct notifier_block *nb)
-{
-	vmalloc_sync_all();
-	return atomic_notifier_chain_register(&i386die_chain, nb);
-}
-EXPORT_SYMBOL(register_die_notifier); /* used modular by kdb */
-
-int unregister_die_notifier(struct notifier_block *nb)
-{
-	return atomic_notifier_chain_unregister(&i386die_chain, nb);
-}
-EXPORT_SYMBOL(unregister_die_notifier); /* used modular by kdb */
 
 static inline int valid_stack_ptr(struct thread_info *tinfo, void *p)
 {
@@ -169,7 +155,7 @@ void dump_trace(struct task_struct *task, struct pt_regs *regs,
 		unsigned long dummy;
 		stack = &dummy;
 		if (task && task != current)
-			stack = (unsigned long *)task->thread.kernel_sp;
+			stack = (unsigned long *)task->thread.esp;
 	}
 
 #ifdef CONFIG_FRAME_POINTER
@@ -179,7 +165,7 @@ void dump_trace(struct task_struct *task, struct pt_regs *regs,
 			asm ("movl %%ebp, %0" : "=r" (ebp) : );
 		} else {
 			/* ebp is the last reg pushed by switch_to */
-			ebp = *(unsigned long *) task->thread.kernel_sp;
+			ebp = *(unsigned long *) task->thread.esp;
 		}
 	}
 #endif
@@ -258,7 +244,7 @@ static void show_stack_log_lvl(struct task_struct *task, struct pt_regs *regs,
 
 	if (esp == NULL) {
 		if (task)
-			esp = (unsigned long*)task->thread.kernel_sp;
+			esp = (unsigned long*)task->thread.esp;
 		else
 			esp = (unsigned long *)&esp;
 	}
@@ -321,7 +307,7 @@ void show_registers(struct pt_regs *regs)
 	       regs->xds & 0xffff, regs->xes & 0xffff, regs->xfs & 0xffff, gs, ss);
 	printk(KERN_EMERG "Process %.*s (pid: %d, ti=%p task=%p task.ti=%p)",
 		TASK_COMM_LEN, current->comm, current->pid,
-		current_thread_info(), current, current->thread_info);
+		current_thread_info(), current, task_thread_info(current));
 	/*
 	 * When in-kernel, we also print out the stack and code at the
 	 * time of the fault..
@@ -482,6 +468,15 @@ static inline void die_if_kernel(const char * str, struct pt_regs * regs, long e
 {
   	die(str, regs, err);
 }
+
+#ifdef CONFIG_SMP
+void __kprobes die_nmi(struct pt_regs *regs, const char *msg)
+{
+	printk("die_nmi: %s\n", msg);
+	printk("Doing nothing\n");
+	do_exit(SIGSEGV);
+}
+#endif
 
 void do_kernel_error(const char * str, struct pt_regs * regs, long error_code)
 {

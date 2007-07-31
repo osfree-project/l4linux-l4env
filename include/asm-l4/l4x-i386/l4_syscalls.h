@@ -8,13 +8,14 @@ enum {
 /*
  * Return syscall nr, or -1 if process is not on a syscall.
  */
-static inline int l4x_l4syscall_get_nr(l4_utcb_t *utcb)
+static inline int l4x_l4syscall_get_nr(unsigned long error_code,
+                                       unsigned long ip)
 {
 	int syscall_nr = 0;
 
 	/* int 0xX is trap 0xd and err 0xX << 3 | 2 */
-	if (utcb->exc.err & 2)
-		syscall_nr = utcb->exc.err >> 3;
+	if (error_code & 2)
+		syscall_nr = error_code >> 3;
 
 	if (syscall_nr < L4X_SYSCALL_NR_BASE
 	    || syscall_nr >= (L4X_SYSCALL_NR_BASE + l4x_fiasco_nr_of_syscalls))

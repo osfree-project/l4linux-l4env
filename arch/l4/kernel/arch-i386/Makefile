@@ -13,6 +13,7 @@ obj-$(CONFIG_ACPI_BOOT)		+= acpi.o
 obj-$(CONFIG_MODULES)		+= module.o
 obj-$(CONFIG_KPROBES)		+= kprobes.o
 obj-$(CONFIG_K8_NB)		+= k8.o
+obj-$(CONFIG_SMP)		+= mpparse.o nmi.o apic.o io_apic.o smp.o smpboot.o smpcommon.o
 
 # Make sure this is linked after any other paravirt_ops structs: see head.S
 obj-$(CONFIG_PARAVIRT)		+= paravirt.o
@@ -27,6 +28,8 @@ sys_i386-y	:= $(b)/sys_i386.o
 topology-y	:= $(b)/topology.o
 i387-y		:= $(b)/i387.o
 e820-y		:= $(b)/e820.o
+nmi-y		:= $(b)/nmi.o
+smpcommon-y	:= $(b)/smpcommon.o
 
 k8-y		+= ../../../x86_64/kernel/k8.o
 stacktrace-y	+= ../../../x86_64/kernel/stacktrace.o

@@ -43,6 +43,7 @@ static inline void utcb_to_ptregs(l4_utcb_t *utcb, struct pt_regs *ptregs)
 	U2P(ptregs, utcb, eip);
 	U2P(ptregs, utcb, eflags);
 	U2P(ptregs, utcb, esp);
+	ptregs->xfs = utcb->exc.fs;
 }
 #undef U2P
 
@@ -59,14 +60,20 @@ static inline void ptregs_to_utcb(struct pt_regs *ptregs, l4_utcb_t *utcb)
 	P2U(utcb, ptregs, eip);
 	P2U(utcb, ptregs, eflags);
 	P2U(utcb, ptregs, esp);
+	utcb->exc.fs = ptregs->xfs;
 }
 #undef P2U
 
-extern l4_utcb_t *l4_utcb_l4lx_server;
+extern l4_utcb_t *l4_utcb_l4lx_server[];
 
-static inline l4_utcb_t *l4_utcb_get_l4lx(void)
+static inline void l4_utcb_set_l4lx(int cpu, l4_utcb_t *u)
 {
-	return l4_utcb_l4lx_server;
+	l4_utcb_l4lx_server[cpu] = u;
+}
+
+static inline l4_utcb_t *l4_utcb_get_l4lx(int cpu)
+{
+	return l4_utcb_l4lx_server[cpu];
 }
 
 #endif /* ! __ASM_L4__L4X_I386__EXCEPTION_H__ */

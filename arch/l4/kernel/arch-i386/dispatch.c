@@ -9,6 +9,7 @@
 #include <asm/mmu_context.h>
 #include <asm/uaccess.h>
 #include <asm/io.h>
+#include <asm/unistd.h>
 #include <asm/i387.h>
 
 #include <l4/sys/ipc.h>
@@ -36,15 +37,18 @@
 #include <asm/generic/hybrid.h>
 #include <asm/generic/syscall_guard.h>
 #include <asm/generic/stats.h>
+#include <asm/generic/smp.h>
 
 #include <asm/l4x/exception.h>
 #include <asm/l4x/iodb.h>
 #include <asm/l4x/l4_syscalls.h>
 #include <asm/l4x/lx_syscalls.h>
 
+#include <l4/util/kprintf.h> // XXX: remove again
+
 #define TBUF_TID(tid) ((tid.id.task << 8) | tid.id.lthread)
 #if 0
-#define TBUF_LOG_IDLE(x)        do { x; } while (0)
+#define TBUF_LOG_IDLE(x)        //do { x; } while (0)
 #define TBUF_LOG_WAKEUP_IDLE(x)	do { x; } while (0)
 #define TBUF_LOG_USER_PF(x)     do { x; } while (0)
 #define TBUF_LOG_INT80(x)       do { x; } while (0)
@@ -85,6 +89,16 @@ extern void fastcall do_signal(struct pt_regs *regs);
 extern void l4x_show_sigpending_processes(void);
 extern void schedule_tail(struct task_struct *prev);
 
+static inline l4_umword_t l4x_l4pfa(struct thread_struct *t)
+{
+	return (t->pfa & ~3) | (t->error_code & 2);
+}
+
+static inline int l4x_ispf(struct thread_struct *t)
+{
+	return t->trap_no == 14;
+}
+
 asmlinkage void ret_from_fork(void) __asm__("ret_from_fork");
 asm(
 ".section .text			\n"
@@ -100,14 +114,21 @@ void l4x_idle(void);
 
 int  l4x_deliver_signal(int exception_nr, int error_code);
 
-struct task_struct *l4x_current_process = l4x_idle_task(0);
-struct thread_info *l4x_current_proc_run;
-static unsigned utcb_snd_size;
+DEFINE_PER_CPU(struct task_struct *, l4x_current_process) = &init_task;
+DEFINE_PER_CPU(struct thread_info *, l4x_current_proc_run);
+static DEFINE_PER_CPU(unsigned, utcb_snd_size);
+static DEFINE_PER_CPU(int, l4x_fpu_enabled);
+
+void l4x_fpu_set(int on_off)
+{
+	fiasco_tbuf_log_3val("fpuset", on_off, smp_processor_id(), 0);
+	per_cpu(l4x_fpu_enabled, smp_processor_id()) = on_off;
+}
 
 static void l4x_setup_next_exec(struct task_struct *p, unsigned long f)
 {
 	unsigned long *sp = (unsigned long *)
-	                     ((unsigned long)p->thread_info + THREAD_SIZE);
+	                     ((unsigned long)p->stack + THREAD_SIZE);
 
 	BUG_ON(current == p);
 
@@ -115,7 +136,7 @@ static void l4x_setup_next_exec(struct task_struct *p, unsigned long f)
 	*--sp = 0;
 	*--sp = f;
 
-	p->thread.kernel_sp = (unsigned long)sp;
+	p->thread.esp = (unsigned long)sp;
 }
 
 void l4x_setup_user_dispatcher_after_fork(struct task_struct *p)
@@ -123,14 +144,31 @@ void l4x_setup_user_dispatcher_after_fork(struct task_struct *p)
 	l4x_setup_next_exec(p, (unsigned long)ret_from_fork);
 }
 
+#include <asm/generic/stack_id.h>
+//struct task_struct fastcall * __switch_to(struct task_struct *prev, struct task_struct *next)
 void fastcall l4x_switch_to(struct task_struct *prev, struct task_struct *next)
 {
-	//printk("%s: %s(%d)[%ld] -> %s(%d)[%ld]\n", __func__, prev->comm, prev->pid, prev->state, next->comm, next->pid, next->state);
-	TBUF_LOG_SWITCH(fiasco_tbuf_log_3val("SWITCH", TBUF_TID(prev->thread.user_thread_id), TBUF_TID(next->thread.user_thread_id), 0));
+#if 0
+	LOG_printf("%s: " PRINTF_L4TASK_FORM ": %s(%d)[%ld] -> %s(%d)[%ld]\n",
+	           __func__, PRINTF_L4TASK_ARG(l4_myself()),
+	           prev->comm, prev->pid, prev->state,
+	           next->comm, next->pid, next->state);
+#endif
+	TBUF_LOG_SWITCH(fiasco_tbuf_log_3val("SWITCH", (prev->pid << 16) | TBUF_TID(prev->thread.user_thread_id), (next->pid << 16) | TBUF_TID(next->thread.user_thread_id), 0));
 
 	__unlazy_fpu(prev);
-	l4x_current_process = next;
-	write_pda(pcurrent, next);
+	per_cpu(l4x_current_process, smp_processor_id()) = next;
+	x86_write_percpu(current_task, next);
+
+#ifdef CONFIG_SMP
+	next->thread.user_thread_id = next->thread.user_thread_ids[smp_processor_id()];
+	l4x_stack_struct_get(next->stack)->id = l4x_cpu_thread_get(smp_processor_id());
+#endif
+
+	if (next->thread.user_thread_id.id.task)
+		load_TLS(&next->thread, 0);
+
+	//return prev;
 }
 
 static inline l4_umword_t l4x_parse_ptabs(struct task_struct *p,
@@ -144,7 +182,7 @@ static inline l4_umword_t l4x_parse_ptabs(struct task_struct *p,
 	if (ptep && (pte_present(*ptep))) {
 		if (!(address & PF_EWRITE)) {
 			/* read access */
-			pte_val(*ptep) |= (_PAGE_ACCESSED + _PAGE_MAPPED);
+			ptep->pte_low |= (_PAGE_ACCESSED + _PAGE_MAPPED);
 			phy = pte_val(*ptep) & PAGE_MASK;
 
 			/* handle zero page specially */
@@ -157,8 +195,8 @@ static inline l4_umword_t l4x_parse_ptabs(struct task_struct *p,
 			/* write access */
 			if (pte_write(*ptep)) {
 				/* page present and writable */
-				pte_val(*ptep) |= (_PAGE_ACCESSED +
-				                   _PAGE_DIRTY + _PAGE_MAPPED);
+				ptep->pte_low |= (_PAGE_ACCESSED +
+				                  _PAGE_DIRTY + _PAGE_MAPPED);
 				phy = pte_val(*ptep) & PAGE_MASK;
 
 				/* handle the zero page specially */
@@ -355,11 +393,12 @@ static inline int l4x_handle_page_fault(struct task_struct *p,
 static inline void utcb_to_thread_struct(l4_utcb_t *utcb,
                                          struct thread_struct *t)
 {
+	//LOG_printf("utcb_to_thread_struct: utcb=%p pc=%lx\n", utcb, l4_utcb_exc_pc(utcb));
 	utcb_to_ptregs(utcb, &t->regs);
 	t->gs         = utcb->exc.gs;
-	t->fs         = utcb->exc.fs;
 	t->trap_no    = utcb->exc.trapno;
 	t->error_code = utcb->exc.err;
+	t->pfa        = utcb->exc.pfa;
 }
 
 static inline void thread_struct_to_utcb(struct thread_struct *t,
@@ -368,8 +407,8 @@ static inline void thread_struct_to_utcb(struct thread_struct *t,
 {
 	ptregs_to_utcb(&t->regs, utcb);
 	utcb->exc.gs   = t->gs;
-	utcb->exc.fs   = t->fs;
-	utcb_snd_size = send_size;
+	per_cpu(utcb_snd_size, smp_processor_id()) = send_size;
+	//LOG_printf("thread_struct_to_utcb: utcb=%p pc=%lx\n", utcb, l4_utcb_exc_pc(utcb));
 }
 
 /*
@@ -381,10 +420,10 @@ static int l4x_hybrid_begin(struct task_struct *p,
 {
 	int ret;
 	l4_msgdope_t dummydope;
-	int intnr = l4x_l4syscall_get_nr(utcb);
+	int intnr = l4x_l4syscall_get_nr(t->error_code, t->regs.eip);
 
 	if (intnr == -1
-	    || !l4x_syscall_guard(p, utcb, intnr)
+	    || !l4x_syscall_guard(p, intnr)
 	    || t->hybrid_sc_in_prog)
 		return 0;
 
@@ -408,7 +447,7 @@ static int l4x_hybrid_begin(struct task_struct *p,
 	}
 
 	/* Let the user go on on the syscall instruction */
-	utcb_snd_size = 0; /* We haven't modified the UTCB, so nothing to send */
+	per_cpu(utcb_snd_size, smp_processor_id()) = 0; /* We haven't modified the UTCB, so nothing to send */
 	ret = l4_ipc_send(p->thread.user_thread_id,
 	                  L4_IPC_SHORT_MSG, L4_EXCEPTION_REPLY_DW0_DEALIEN, 0,
 	                  L4_IPC_SEND_TIMEOUT_0, &dummydope);
@@ -445,7 +484,7 @@ static int l4x_hybrid_begin(struct task_struct *p,
 				t->hybrid_pf = t->hybrid_pf_addr = 0;
 			}
 
-			utcb_snd_size = 0;
+			per_cpu(utcb_snd_size, smp_processor_id()) = 0;
 			ret = l4_ipc_send(p->thread.user_thread_id,
 			                  L4_IPC_SHORT_FPAGE, data0, data1,
 			                  L4_IPC_SEND_TIMEOUT_0, &dummydope);
@@ -460,7 +499,7 @@ static int l4x_hybrid_begin(struct task_struct *p,
 
 	/* When coming back from schedule, the register state was stored in
 	 * pt_regs so move it to the utcb now for a proper reply */
-	thread_struct_to_utcb(t, utcb, L4_UTCB_EXCEPTION_REGS_SIZE);
+	//thread_struct_to_utcb(t, l4_utcb_get_l4lx(smp_processor_id()), L4_UTCB_EXCEPTION_REGS_SIZE);
 
 	return 1;
 }
@@ -484,14 +523,14 @@ static void l4x_hybrid_return(l4_threadid_t src_id,
 		t->hybrid_pf      = 1;
 	} else {
 		if (unlikely(utcb->exc.trapno != 0xd
-		             || l4x_l4syscall_get_nr(utcb) == -1
+		             || l4x_l4syscall_get_nr(utcb->exc.err, utcb->exc.eip) == -1
 		             || !(utcb->exc.err & 4)))
 			goto out_fail;
 
 		t->hybrid_sc_in_prog = 0;
 
 		/* Keep registers */
-		utcb_to_thread_struct(utcb, t);
+		//utcb_to_thread_struct(utcb, t);
 	}
 
 	TBUF_LOG_HYB_RETURN(fiasco_tbuf_log_3val("hyb-ret", TBUF_TID(t->user_thread_id), l4_utcb_exc_pc(utcb), t->hybrid_pf_addr));
@@ -506,26 +545,30 @@ out_fail:
 	LOG_printf("%s: Invalid hybrid return for " PRINTF_L4TASK_FORM " ("
 	           "%p, %lx, %lx, %d, %lx)!\n",
 	           __func__, PRINTF_L4TASK_ARG(src_id),
-	           h, utcb->exc.trapno, utcb->exc.err, l4x_l4syscall_get_nr(utcb),
+	           h, utcb->exc.trapno, utcb->exc.err, l4x_l4syscall_get_nr(utcb->exc.err, utcb->exc.eip),
 	           l4_utcb_exc_pc(utcb));
 	LOG_printf("%s: Currently running: " PRINTF_L4TASK_FORM "\n",
 	           __func__, PRINTF_L4TASK_ARG(current->thread.user_thread_id));
 	enter_kdebug("hybrid_return failed");
 }
 
-l4_threadid_t idler_thread __nosavedata = L4_INVALID_ID;
+static l4_threadid_t idler_thread[NR_CPUS];
+static int           idler_up[NR_CPUS];
 
-void l4x_wakeup_idler(void)
+void l4x_wakeup_idler(int cpu)
 {
 	l4_threadid_t pager_id, preempter_id;
 	l4_umword_t o_efl, o_ip, o_sp;
 
+	if (!idler_up[cpu])
+		return;
+
 	pager_id = preempter_id = L4_INVALID_ID;
-	l4_thread_ex_regs_flags(idler_thread, 0, 0,
+	l4_thread_ex_regs_flags(idler_thread[cpu], 0, 0,
 	                        &preempter_id, &pager_id,
 	                        &o_efl, &o_ip, &o_sp,
 	                        L4_THREAD_EX_REGS_RAISE_EXCEPTION);
-	TBUF_LOG_WAKEUP_IDLE(fiasco_tbuf_log_3val("wakeup idle", 0, 0, 0));
+	TBUF_LOG_WAKEUP_IDLE(fiasco_tbuf_log_3val("wakeup idle", cpu, 0, 0));
 }
 
 static void idler_func(void *data)
@@ -541,27 +584,42 @@ void l4x_idle(void)
 	l4_umword_t data0, data1;
 	l4_msgdope_t dummydope;
 	l4_msgtag_t tag;
-	l4_utcb_t *utcb = l4_utcb_get_l4lx();
+	int cpu = smp_processor_id();
+	l4_utcb_t *utcb = l4_utcb_get_l4lx(cpu);
+	char s[9];
 
-	idler_thread = l4lx_thread_create(idler_func, NULL, NULL, 0,
-	                                  CONFIG_L4_PRIO_SERVER + 1,
-	                                  "Idler");
-	if (l4_is_invalid_id(idler_thread)) {
+#ifdef CONFIG_SMP
+	snprintf(s, sizeof(s), "idler%d", cpu);
+#else
+	snprintf(s, sizeof(s), "idler");
+#endif
+	s[sizeof(s) - 1] = 0;
+
+	LOG_printf("idler%d: utcb=%p " PRINTF_L4TASK_FORM "\n",
+			cpu, utcb, PRINTF_L4TASK_ARG(l4_myself()));
+
+	idler_thread[cpu] = l4lx_thread_create(idler_func, NULL, NULL, 0,
+	                                       CONFIG_L4_PRIO_SERVER + 1, s);
+	if (l4_is_invalid_id(idler_thread[cpu])) {
 		LOG_printf("Could not create idler thread... exiting\n");
 		l4x_exit_l4linux();
 	}
-	l4lx_thread_pager_change(idler_thread, l4_myself());
+	l4lx_thread_pager_change(idler_thread[cpu], l4_myself());
+	idler_up[cpu] = 1;
+	l4_kprintf("IDLER%d IS UP\n", cpu);
 
 	tick_nohz_stop_sched_tick();
 
 	while (1) {
 
 		/* &init_thread_info == current_thread_info() */
-		l4x_current_proc_run = &init_thread_info;
+		per_cpu(l4x_current_proc_run, cpu) = &init_thread_info;
 		current_thread_info()->status &= ~TS_POLLING;
 
+		l4x_smp_process_IPI();
+
 		if (need_resched()) {
-			l4x_current_proc_run = NULL;
+			per_cpu(l4x_current_proc_run, cpu) = NULL;
 			current_thread_info()->status |= TS_POLLING;
 			tick_nohz_restart_sched_tick();
 			preempt_enable_no_resched();
@@ -570,21 +628,24 @@ void l4x_idle(void)
 			tick_nohz_stop_sched_tick();
 			continue;
 		}
+		check_pgt_cache();
 
-		TBUF_LOG_IDLE(fiasco_tbuf_log_3val("l4x_idle <", 0, 0, 0));
+		TBUF_LOG_IDLE(fiasco_tbuf_log_3val("l4x_idle <", cpu, 0, 0));
 
 		error = l4_ipc_wait_tag(&src_id,
 		                        L4_IPC_SHORT_MSG, &data0, &data1,
 		                        L4_IPC_SEND_TIMEOUT_0, &dummydope, &tag);
 
-		l4x_current_proc_run = NULL;
+		per_cpu(l4x_current_proc_run, cpu) = NULL;
 		current_thread_info()->status |= TS_POLLING;
 
-		TBUF_LOG_IDLE(fiasco_tbuf_log_3val("l4x_idle >", TBUF_TID(src_id), error, data0));
+		TBUF_LOG_IDLE(fiasco_tbuf_log_3val("l4x_idle >",
+		              TBUF_TID(src_id) | (cpu << 16), error, data0));
 
 		if (unlikely(error)) {
 			if (error != L4_IPC_RECANCELED) {
-				LOG_printf("IPC error = %x (idle)\n", error);
+				LOG_printf("idle%d: IPC error = %x (idle)\n",
+				           smp_processor_id(), error);
 				enter_kdebug("l4_idle: ipc_wait failed");
 			}
 			continue;
@@ -594,27 +655,34 @@ void l4x_idle(void)
 			/* We have received a wakeup message from another
 			 * kernel thread. Reschedule. */
 			l4x_hybrid_do_regular_work();
+
+			/* Check for IPI */
+			if (l4x_IPI_is_ipi_message(data0))
+				continue;
+
 			/* Paranoia */
-			if (utcb->exc.trapno != 0xff) {
-				LOG_printf("exc.trapno = 0x%lx\n", utcb->exc.trapno);
+			if (!l4_msgtag_is_exception(tag)
+			    || l4_utcb_get_l4lx(smp_processor_id())->exc.trapno != 0xff) {
+				LOG_printf("idler%d: src=" PRINTF_L4TASK_FORM " exc.trapno = 0x%lx (d0 = %lx, d1 = %lx, tag = %lx)\n",
+				           cpu, PRINTF_L4TASK_ARG(src_id), l4_utcb_get_l4lx(smp_processor_id())->exc.trapno, data0, data1, l4_msgtag_label(tag));
 				enter_kdebug("Uhh, no exc?!");
 			}
 		} else
-			l4x_hybrid_return(src_id, utcb, data0, data1, tag);
+			l4x_hybrid_return(src_id, l4_utcb_get_l4lx(smp_processor_id()), data0, data1, tag);
 	}
 }
 
-static inline void dispatch_system_call(l4_utcb_t *utcb)
+static inline void dispatch_system_call(struct task_struct *p)
 {
-	struct thread_struct *t = &current->thread;
+	struct thread_struct *t = &p->thread;
 	register struct pt_regs *regsp = &t->regs;
 	unsigned int syscall;
 	syscall_t syscall_fn = NULL;
 
 	//syscall_count++;
 
-	utcb_to_thread_struct(utcb, t); /* XXX Hmm, we don't need to copy eax */
-	regsp->orig_eax = syscall = utcb->exc.eax;
+	//utcb_to_thread_struct(l4_utcb_get_l4lx(smp_processor_id()), t); /* XXX Hmm, we don't need to copy eax */
+	regsp->orig_eax = syscall = regsp->eax; //l4_utcb_get_l4lx(smp_processor_id())->exc.eax;
 	regsp->eax = -ENOSYS;
 
 #ifdef CONFIG_L4_FERRET_SYSCALL_COUNTER
@@ -625,27 +693,40 @@ static inline void dispatch_system_call(l4_utcb_t *utcb)
 	if (syscall == 11) {
 		char *filename;
 		printk("execve: pid: %d(%s), " PRINTF_L4TASK_FORM ": ",
-		       current->pid, current->comm,
-		       PRINTF_L4TASK_ARG(current->thread.user_thread_id));
+		       p->pid, p->comm, PRINTF_L4TASK_ARG(p->thread.user_thread_id));
 		filename = getname((char *)regsp->ebx);
 		printk("%s\n", IS_ERR(filename) ? "UNKNOWN" : filename);
 	}
 #endif
 #if 0
-	if (current->comm[0] == '_')
+	if (p->comm[0] == '_')
 		printk("Syscall %3d for %s(%d) [" PRINTF_L4TASK_FORM "]\n", syscall,
-			current->comm, current->pid,
-			PRINTF_L4TASK_ARG(current->thread.user_thread_id));
+			p->comm, p->pid,
+			PRINTF_L4TASK_ARG(p->thread.user_thread_id));
 #endif
 #if 0
 	LOG_printf("Syscall %3d for %s(%d at %p): arg1 = %lx\n",
-	           syscall, current->comm, current->pid, (void *)regsp->eip,
+	           syscall, p->comm, p->pid, (void *)regsp->eip,
 	           regsp->ebx);
 #endif
+
+#if 0
+	if (syscall == 120)
+		LOG_printf("Syscall %3d for %s(%d at %p): arg1 = %lx\n",
+		           syscall, p->comm, p->pid, (void *)regsp->eip,
+		           regsp->ebx);
+#endif
+	if (!is_lx_syscall(syscall))
+	{
+	LOG_printf("Syscall %3d for %s(%d at %p): arg1 = %lx\n",
+	           syscall, p->comm, p->pid, (void *)regsp->eip,
+	           regsp->ebx);
+		enter_kdebug("no syscall");
+	}
 	if (likely((is_lx_syscall(syscall))
 		   && ((syscall_fn = sys_call_table[syscall])))) {
-		if (!current->user)
-			enter_kdebug("dispatch_system_call: !current->user");
+		if (!p->user)
+			enter_kdebug("dispatch_system_call: !p->user");
 
 		/* valid system call number.. */
 		if (unlikely(current_thread_info()->flags
@@ -666,28 +747,33 @@ static inline void dispatch_system_call(l4_utcb_t *utcb)
 	}
 	//LOG_printf("syscall: %d ret=%d\n", syscall, regsp->eax);
 
-	if (signal_pending(current))
+	if (signal_pending(p))
 		do_signal(regsp);
 
 	if (need_resched())
 		schedule();
 
 	/* Prepare UTCB reply */
-	thread_struct_to_utcb(t, utcb, L4_UTCB_EXCEPTION_REGS_SIZE);
+	//thread_struct_to_utcb(t, l4_utcb_get_l4lx(smp_processor_id()), L4_UTCB_EXCEPTION_REGS_SIZE);
+
+#if 0
+	LOG_printf("Syscall %3d for %s(%d at %p): return %lx\n",
+	           syscall, p->comm, p->pid, (void *)regsp->eip,
+	           regsp->eax);
+#endif
+	if (unlikely(syscall == -38))
+		enter_kdebug("no ssycall");
 }
 
 static inline void l4x_dispatch_suspend(struct task_struct *p,
-                                        struct thread_struct *t,
-                                        l4_utcb_t *utcb)
+                                        struct thread_struct *t)
 {
 	/* We're a suspended user process and want to
 	 * sleep (aka schedule) now */
 
-	if (unlikely(!t->initial_state_set))
+	if (unlikely(!t->initial_state_set
+	             || !test_bit(smp_processor_id(), &t->threads_up)))
 		return;
-
-	/* safe state */
-	utcb_to_thread_struct(utcb, t);
 
 	/* Go to sleep */
 	schedule();
@@ -695,19 +781,13 @@ static inline void l4x_dispatch_suspend(struct task_struct *p,
 	/* Handle signals */
 	if (signal_pending(p))
 		do_signal(&t->regs);
-
-	/* Wakeup... reply to suspend exception */
-	thread_struct_to_utcb(t, utcb, L4_UTCB_EXCEPTION_REGS_SIZE);
 }
 
-static inline void l4x_task_start_setup(struct task_struct *p, struct thread_struct *t,
-                                        l4_utcb_t *utcb)
+static inline void l4x_task_start_setup(struct task_struct *p, struct thread_struct *t)
 {
 	if (signal_pending(p))
 		do_signal(&t->regs);
 
-	/* Copy initial regs */
-	thread_struct_to_utcb(t, utcb, L4_UTCB_EXCEPTION_REGS_SIZE);
 	t->initial_state_set = 1;
 	t->is_hybrid = 0; /* cloned thread need to reset this */
 
@@ -716,16 +796,6 @@ static inline void l4x_task_start_setup(struct task_struct *p, struct thread_str
 		fiasco_ldt_set(p->mm->context.ldt,
 		               p->mm->context.size * LDT_ENTRY_SIZE, 0,
 		               p->thread.user_thread_id.id.task);
-
-	load_TLS(t, 0);
-
-	// ####
-	//utcb->exc.eflags |= 256; // singlestep
-	// ----
-
-#ifdef CONFIG_L4_DEBUG_REGISTER_NAMES
-	fiasco_register_thread_name(p->thread.user_thread_id, p->comm);
-#endif
 }
 
 /*
@@ -733,33 +803,33 @@ static inline void l4x_task_start_setup(struct task_struct *p, struct thread_str
  *
  * Returns 1 if something could be handled, 0 if not.
  */
-static inline int l4x_port_emulation(l4_utcb_t *utcb)
+static inline int l4x_port_emulation(struct pt_regs *regs)
 {
 	u8 op;
 
-	if (get_user(op, (char *)utcb->exc.eip))
+	if (get_user(op, (char *)regs->eip))
 		return 0; /* User memory could not be accessed */
 
-	//printf("OP: %x (eip: %08x) dx = 0x%x\n", op, utcb->exc.eip, utcb->exc.edx & 0xffff);
+	//printf("OP: %x (eip: %08x) dx = 0x%x\n", op, regs->eip, regs->edx & 0xffff);
 
 	switch (op) {
 		case 0xed: /* in dx, eax */
 		case 0xec: /* in dx, al */
-			switch (utcb->exc.edx & 0xffff) {
+			switch (regs->edx & 0xffff) {
 				case 0xcf8:
 				case 0x3da:
 				case 0x3cc:
 				case 0x3c1:
-					utcb->exc.eax = -1;
-					utcb->exc.eip++;
-					utcb_snd_size = L4_UTCB_EXCEPTION_REGS_SIZE;
+					regs->eax = -1;
+					regs->eip++;
+					per_cpu(utcb_snd_size, smp_processor_id()) = L4_UTCB_EXCEPTION_REGS_SIZE;
 					return 1;
 			};
 		case 0xee: /* out al, dx */
-			switch (utcb->exc.edx & 0xffff) {
+			switch (regs->edx & 0xffff) {
 				case 0x3c0:
-					utcb->exc.eip++;
-					utcb_snd_size = L4_UTCB_EXCEPTION_REGS_SIZE;
+					regs->eip++;
+					per_cpu(utcb_snd_size, smp_processor_id()) = L4_UTCB_EXCEPTION_REGS_SIZE;
 					return 1;
 			};
 	};
@@ -775,10 +845,10 @@ static inline int l4x_port_emulation(l4_utcb_t *utcb)
  *        nevertheless return true.
  * Note2: More commands to be emulated can be added on request.
  */
-static int l4x_kdebug_emulation(l4_utcb_t *utcb)
+static int l4x_kdebug_emulation(struct pt_regs *regs)
 {
 	u8 op = 0, val;
-	char *addr = (char *)utcb->exc.eip;
+	char *addr = (char *)regs->eip;
 	int i, len;
 
 	if (get_user(op, addr))
@@ -794,7 +864,7 @@ static int l4x_kdebug_emulation(l4_utcb_t *utcb)
 	if (op == 0xeb) { /* enter_kdebug */
 		if (get_user(len, addr + 2))
 			return 0; /* Access failure */
-		utcb->exc.eip += len + 3;
+		regs->eip += len + 3;
 		outstring("User enter_kdebug text: ");
 		for (i = 3; len; len--) {
 			if (get_user(val, addr + i++))
@@ -804,7 +874,7 @@ static int l4x_kdebug_emulation(l4_utcb_t *utcb)
 		outchar('\n');
 		enter_kdebug("User program enter_kdebug");
 
-		utcb_snd_size = L4_UTCB_EXCEPTION_REGS_SIZE;
+		per_cpu(utcb_snd_size, smp_processor_id()) = L4_UTCB_EXCEPTION_REGS_SIZE;
 		return 1; /* handled */
 
 	} else if (op == 0x3c) {
@@ -812,45 +882,45 @@ static int l4x_kdebug_emulation(l4_utcb_t *utcb)
 			return 0; /* Access failure */
 		switch (op) {
 			case 0: /* outchar */
-				outchar(utcb->exc.eax & 0xff);
+				outchar(regs->eax & 0xff);
 				break;
 			case 1: /* outnstring */
-				len = utcb->exc.ebx;
+				len = regs->ebx;
 				for (i = 0;
-				     !get_user(val, (char *)(utcb->exc.eax + i++))
+				     !get_user(val, (char *)(regs->eax + i++))
 				     && len;
 				     len--)
 					outchar(val);
 				break;
 			case 2: /* outstring */
 				for (i = 0;
-				     !get_user(val, (char *)(utcb->exc.eax + i++))
+				     !get_user(val, (char *)(regs->eax + i++))
 				     && val;)
 					outchar(val);
 				break;
 			case 5: /* outhex32 */
-				outhex32(utcb->exc.eax);
+				outhex32(regs->eax);
 				break;
 			case 6: /* outhex20 */
-				outhex20(utcb->exc.eax);
+				outhex20(regs->eax);
 				break;
 			case 7: /* outhex16 */
-				outhex16(utcb->exc.eax);
+				outhex16(regs->eax);
 				break;
 			case 8: /* outhex12 */
-				outhex12(utcb->exc.eax);
+				outhex12(regs->eax);
 				break;
 			case 9: /* outhex8 */
-				outhex8(utcb->exc.eax);
+				outhex8(regs->eax);
 				break;
 			case 11: /* outdec */
-				outdec(utcb->exc.eax);
+				outdec(regs->eax);
 				break;
 			default:
 				return 0; /* Did not understand */
 		};
-		utcb->exc.eip += 3;
-		utcb_snd_size = L4_UTCB_EXCEPTION_REGS_SIZE;
+		regs->eip += 3;
+		per_cpu(utcb_snd_size, smp_processor_id()) = L4_UTCB_EXCEPTION_REGS_SIZE;
 		return 1; /* handled */
 	}
 
@@ -862,52 +932,29 @@ static int l4x_kdebug_emulation(l4_utcb_t *utcb)
  *                1 -> don't send a reply
  */
 static inline int l4x_dispatch_exception(struct task_struct *p,
-                                         struct thread_struct *t,
-                                         l4_utcb_t *utcb)
+                                         struct thread_struct *t)
 {
+	struct pt_regs *regs = &t->regs;
+
 	l4x_hybrid_do_regular_work();
 	l4x_debug_stats_exceptions_hit();
 
-	if (utcb->exc.trapno == 0xff) {
-		if (unlikely(!t->initial_state_set)) {
-			if (t->task_start_fork) {
-				if (unlikely(current_thread_info()->flags
-					     & (_TIF_SYSCALL_TRACE
-						| _TIF_SYSCALL_AUDIT
-						| _TIF_SECCOMP))) {
-					do_syscall_trace(&t->regs, 1);
-				}
-				t->task_start_fork = 0;
-			}
-
-			/* forced kernel entry upon task start, just fill in
-			 * the registers,
-			 * this will only happen for additional threads in an
-			 * address space, so that the first page-fault will not hit */
-			TBUF_LOG_START(fiasco_tbuf_log_3val("task start", TBUF_TID(t->user_thread_id), t->regs.eip, t->regs.esp));
-
-			/* Initial state already set? */
-			BUG_ON(t->initial_state_set);
-
-			l4x_task_start_setup(p, t, utcb);
-			return 0;
-		}
-
+	if (t->trap_no == 0xff) {
 		/* we come here for suspend events */
-		TBUF_LOG_SUSPEND(fiasco_tbuf_log_3val("dsp susp", TBUF_TID(t->user_thread_id), utcb->exc.eip, 0));
-		l4x_dispatch_suspend(p, t, utcb);
+		TBUF_LOG_SUSPEND(fiasco_tbuf_log_3val("dsp susp", TBUF_TID(t->user_thread_id), regs->eip, 0));
+		l4x_dispatch_suspend(p, t);
 
 		return 0;
-	} else if (likely(utcb->exc.trapno == 0xd && utcb->exc.err == 0x402)) {
+	} else if (likely(t->trap_no == 0xd && t->error_code == 0x402)) {
 		/* int 0x80 is trap 0xd and err 0x402 (0x80 << 3 | 2) */
 
-		TBUF_LOG_INT80(fiasco_tbuf_log_3val("int80  ", TBUF_TID(t->user_thread_id), utcb->exc.eip, utcb->exc.eax));
+		TBUF_LOG_INT80(fiasco_tbuf_log_3val("int80  ", TBUF_TID(t->user_thread_id), regs->eip, regs->eax));
 
 		/* set after int 0x80, before syscall so the forked childs
 		 * get the increase too */
-		utcb->exc.eip += 2;
+		regs->eip += 2;
 
-		dispatch_system_call(utcb);
+		dispatch_system_call(p);
 
 		BUG_ON(p != current);
 
@@ -915,11 +962,12 @@ static inline int l4x_dispatch_exception(struct task_struct *p,
 			/* fine, go send a reply and return to userland */
 			return 0;
 
+		//LOG_printf("Restart triggered for %s(%d)\n", p->comm, p->pid);
 		/* Restart whole dispatch loop, also restarts thread */
 		t->restart = 0;
 		return 2;
 
-	} else if (utcb->exc.trapno == 7) {
+	} else if (t->trap_no == 7) {
 
 		extern asmlinkage void math_state_restore(void/*struct pt_regs regs*/);
 		math_state_restore();
@@ -929,43 +977,44 @@ static inline int l4x_dispatch_exception(struct task_struct *p,
 
 		return 0;
 
-	} else if (unlikely(utcb->exc.trapno == 0x1)) {
+	} else if (unlikely(t->trap_no == 0x1)) {
 		/* Singlestep */
 		LOG_printf("eip: %08lx esp: %08lx err: %08lx trp: %08lx\n",
-		           utcb->exc.eip, utcb->exc.esp,
-		           utcb->exc.err, utcb->exc.trapno);
+		           regs->eip, regs->esp,
+		           t->error_code, t->trap_no);
 		LOG_printf("eax: %08lx ebx: %08lx ecx: %08lx edx: %08lx\n",
-		           utcb->exc.eax, utcb->exc.ebx, utcb->exc.ecx,
-		           utcb->exc.edx);
-		utcb_snd_size = L4_UTCB_EXCEPTION_REGS_SIZE;
+		           regs->eax, regs->ebx, regs->ecx,
+		           regs->edx);
+		per_cpu(utcb_snd_size, smp_processor_id()) = L4_UTCB_EXCEPTION_REGS_SIZE;
 		return 0;
-	} else if (utcb->exc.trapno == 0xd) {
-		if (l4x_hybrid_begin(p, t, utcb))
+	} else if (t->trap_no == 0xd) {
+		if (l4x_hybrid_begin(p, t, l4_utcb_get_l4lx(smp_processor_id())))
 			return 0;
 
 		/* Fall through otherwise */
 	}
 
-	if (utcb->exc.trapno == 3)
-		if (l4x_kdebug_emulation(utcb))
+	if (t->trap_no == 3)
+		if (l4x_kdebug_emulation(regs))
 			return 0; /* known and handled */
 
-	if (l4x_port_emulation(utcb))
+	if (l4x_port_emulation(regs))
 		return 0; /* known and handled */
 
-	TBUF_LOG_EXCP(fiasco_tbuf_log_3val("except ", TBUF_TID(t->user_thread_id), utcb->exc.trapno, utcb->exc.err));
+	TBUF_LOG_EXCP(fiasco_tbuf_log_3val("except ", TBUF_TID(t->user_thread_id), t->trap_no, t->error_code));
 
-	utcb_to_thread_struct(utcb, t);
-	if (l4x_deliver_signal(utcb->exc.trapno, utcb->exc.err)) {
-		thread_struct_to_utcb(t, utcb, L4_UTCB_EXCEPTION_REGS_SIZE);
+	//utcb_to_thread_struct(l4_utcb_get_l4lx(smp_processor_id()), t);
+	if (l4x_deliver_signal(t->trap_no, t->error_code)) {
+		//thread_struct_to_utcb(t,
+		//l4_utcb_get_l4lx(smp_processor_id()), L4_UTCB_EXCEPTION_REGS_SIZE);
 		return 0; /* handled signal, reply */
 	}
 
 	/* This path should never be reached... */
 
 	printk("(Unknown) EXCEPTION [" PRINTF_L4TASK_FORM "]\n", PRINTF_L4TASK_ARG(t->user_thread_id));
-	printk("eip: %08lx esp: %08lx err: %08lx trp: %08lx\n", utcb->exc.eip, utcb->exc.esp, utcb->exc.err, utcb->exc.trapno);
-	printk("eax: %08lx ebx: %08lx ecx: %08lx edx: %08lx\n", utcb->exc.eax, utcb->exc.ebx, utcb->exc.ecx, utcb->exc.edx);
+	printk("eip: %08lx esp: %08lx err: %08lx trp: %08lx\n", regs->eip, regs->esp, t->error_code, t->trap_no);
+	printk("eax: %08lx ebx: %08lx ecx: %08lx edx: %08lx\n", regs->eax, regs->ebx, regs->ecx, regs->edx);
 	printk("will die...\n");
 
 	enter_kdebug("check");
@@ -978,25 +1027,21 @@ static inline int l4x_dispatch_exception(struct task_struct *p,
 
 static inline void l4x_dispatch_page_fault(struct task_struct *p,
                                            struct thread_struct *t,
-                                           l4_utcb_t *utcb,
                                            l4_umword_t *d0,
                                            l4_umword_t *d1,
                                            void **msg_desc)
 {
 	TBUF_LOG_USER_PF(fiasco_tbuf_log_3val("U-PF   ",
 	                 TBUF_TID(p->thread.user_thread_id),
-	                 utcb->exc.pfa, l4_utcb_exc_pc(utcb)));
+	                 t->pfa, t->regs.eip));
 
-	utcb_to_thread_struct(utcb, t);
-
-	if (l4x_handle_page_fault(p, l4_utcb_exc_pfa(utcb),
-	                          l4_utcb_exc_pc(utcb), d0, d1)) {
+	if (l4x_handle_page_fault(p, l4x_l4pfa(t),
+	                          t->regs.eip, d0, d1)) {
 
 		if (!signal_pending(p))
 			force_sig(SIGSEGV, p);
 
 		do_signal(&t->regs);
-		thread_struct_to_utcb(t, utcb, L4_UTCB_EXCEPTION_REGS_SIZE);
 
 		*msg_desc = L4_IPC_SHORT_MSG;
 
@@ -1006,23 +1051,22 @@ static inline void l4x_dispatch_page_fault(struct task_struct *p,
 	if (need_resched())
 		schedule();
 
-	thread_struct_to_utcb(t, utcb, L4_UTCB_EXCEPTION_REGS_SIZE);
-
 	*msg_desc = L4_IPC_SHORT_FPAGE;
-	utcb_snd_size = 0;
+	per_cpu(utcb_snd_size, smp_processor_id()) = L4_UTCB_EXCEPTION_REGS_SIZE;
 }
 
 /*
  * - Suspend thread
  */
-void l4x_suspend_user(struct task_struct *p)
+void l4x_suspend_user(struct task_struct *p, int cpu)
 {
 	l4_threadid_t pager_id, preempter_id;
 	l4_umword_t o_efl, o_ip, o_sp;
 
 	/* Do not suspend if it is still in the setup phase, also
 	 * no need to interrupt as it will not stay out long... */
-	if (unlikely(!p->thread.initial_state_set))
+	//if (unlikely(!p->thread.initial_state_set))
+	if (!test_bit(cpu, &p->thread.threads_up))
 		return;
 
 	pager_id = preempter_id = L4_INVALID_ID;
@@ -1039,52 +1083,147 @@ void l4x_suspend_user(struct task_struct *p)
 	l4x_debug_stats_suspend_hit();
 }
 
+static inline void l4x_spawn_cpu_thread(int cpu_change,
+                                        struct task_struct *p,
+                                        struct thread_struct *t)
+{
+	int cpu = smp_processor_id();
+	l4_threadid_t me = l4_myself(); // XXX: use stack function
+	int error;
+	l4_umword_t data0;
+	l4_msgdope_t dummydope;
+	l4_threadid_t pseudo_parent = L4_NIL_ID;
+#ifdef CONFIG_L4_DEBUG_REGISTER_NAMES
+	char s[10];
+#endif
+
+	if (cpu_change)
+		pseudo_parent = t->user_thread_ids[t->start_cpu];
+
+	if (l4lx_task_get_new_task(pseudo_parent,
+	                           &t->user_thread_id)) {
+		printk("l4x_thread_create: No task no left for user\n"); 
+		return;
+	}
+
+
+	t->user_thread_ids[cpu] = t->user_thread_id;
+	if (!cpu_change)
+		t->start_cpu = cpu;
+
+
+
+	if (!l4lx_task_create_pager(t->user_thread_id, me)) {
+		printk("%s: Failed to create user task\n", __func__);
+		return;
+	}
+
+	// now wait that thread comes in
+
+	error = l4_ipc_receive(t->user_thread_id,
+	                       L4_IPC_SHORT_MSG, &data0, &data0,
+	                       L4_IPC_SEND_TIMEOUT_0, &dummydope);
+	if (error)
+		LOG_printf("%s: IPC error %x\n", __func__, error);
+
+	set_bit(cpu, &t->threads_up);
+
+#ifdef CONFIG_L4_DEBUG_REGISTER_NAMES
+#ifdef CONFIG_SMP
+	snprintf(s, sizeof(s), "%s-%d", p->comm, cpu);
+#else
+	snprintf(s, sizeof(s), "%s", p->comm);
+#endif
+	s[sizeof(s)-1] = 0;
+	fiasco_register_thread_name(t->user_thread_id, s);
+#endif
+
+
+	if (!cpu_change) {
+
+		t->started = 1;
+
+		if (t->task_start_fork) {
+			if (unlikely(current_thread_info()->flags
+			             & (_TIF_SYSCALL_TRACE
+			                | _TIF_SYSCALL_AUDIT
+			                | _TIF_SECCOMP)))
+				do_syscall_trace(&t->regs, 1);
+			t->task_start_fork = 0;
+		}
+
+		TBUF_LOG_START(fiasco_tbuf_log_3val("task start", TBUF_TID(t->user_thread_id), t->regs.eip, t->regs.esp));
+
+		l4x_task_start_setup(p, t);
+	}
+
+	per_cpu(utcb_snd_size, smp_processor_id()) = L4_UTCB_EXCEPTION_REGS_SIZE;
+
+	load_TLS(t, 0);
+}
+
+static inline int l4x_msgtag_fpu(void)
+{
+	return per_cpu(l4x_fpu_enabled, smp_processor_id()) ? 0x8000 : 0;
+}
+
 asmlinkage void l4x_user_dispatcher(void)
 {
 	struct task_struct *p = current;
 	struct thread_struct *t = &p->thread;
-	l4_umword_t data0;
-	l4_umword_t data1;
+	l4_umword_t data0 = 0, data1 = 0;
 	int error = 0;
 	l4_threadid_t src_id;
 	l4_msgdope_t dummydope;
-	l4_utcb_t *utcb = l4_utcb_get_l4lx();
 	l4_msgtag_t tag;
 	void *msg_desc;
 	int ret;
 
 	/* Start L4 activity */
+	t->restart = 0;
 restart_loop:
-	l4x_start_thread_really();
-	goto only_receive_IPC;
+	l4x_spawn_cpu_thread(0, p, t);
+	msg_desc = L4_IPC_SHORT_MSG;
+	goto reply_IPC;
 
 	while (1) {
-		if (l4_utcb_exc_is_pf(utcb)) {
-			l4x_dispatch_page_fault(p, t, utcb, &data0, &data1, &msg_desc);
+		if (l4x_ispf(t)) {
+			l4x_dispatch_page_fault(p, t, &data0, &data1, &msg_desc);
 		} else {
-			if ((ret = l4x_dispatch_exception(p, t, utcb))) {
+			if ((ret = l4x_dispatch_exception(p, t))) {
 				if (ret == 2)
 					goto restart_loop;
-				else
-					goto only_receive_IPC;
+				goto only_receive_IPC;
 			}
 
 			msg_desc = L4_IPC_SHORT_MSG;
 		}
 
-		l4x_current_proc_run = current_thread_info();
+		if (!test_bit(smp_processor_id(), &p->thread.threads_up))
+			l4x_spawn_cpu_thread(1, p, t);
+
+		p->thread.user_thread_id
+			= p->thread.user_thread_ids[smp_processor_id()];
+
+reply_IPC:
+		thread_struct_to_utcb(t, l4_utcb_get_l4lx(smp_processor_id()),
+		                      per_cpu(utcb_snd_size, smp_processor_id()));
+
+		per_cpu(l4x_current_proc_run, smp_processor_id()) = current_thread_info();
 
 		/*
 		 * Actually we could use l4_ipc_call here but for our
-		 * (asynchronous) hybrid apps we need to do an open wait.
+		 * (asynchronous) hybrid apps and IPIs we need to do an open
+		 * wait.
 		 */
 
 		TBUF_LOG_DSP_IPC_IN(fiasco_tbuf_log_3val
 		   ((msg_desc != L4_IPC_SHORT_FPAGE) ? "DSP-inM" : "DSP-inF",
-		    TBUF_TID(current->thread.user_thread_id), data0, data1));
+		    TBUF_TID(current->thread.user_thread_id), 0, 0));
+
 		/* send the reply message and wait for a new request. */
-		tag = l4_msgtag(0, utcb_snd_size, 0,
-		                l4lx_fpu_enabled ? 0x8000 : 0);
+		tag = l4_msgtag(0, per_cpu(utcb_snd_size, smp_processor_id()), 0,
+		                l4x_msgtag_fpu());
 		error = l4_ipc_reply_and_wait_tag(p->thread.user_thread_id,
 		                                  msg_desc, data0, data1,
 		                                  tag,
@@ -1094,46 +1233,61 @@ restart_loop:
 		                                  L4_IPC_SEND_TIMEOUT_0,
 		                                  &dummydope, &tag);
 after_IPC:
-		l4x_current_proc_run = NULL;
+		per_cpu(l4x_current_proc_run, smp_processor_id()) = NULL;
 
-		TBUF_LOG_DSP_IPC_OUT(fiasco_tbuf_log_3val("DSP-out",
-		                     TBUF_TID(src_id),
-		                     (error << 16) | utcb->exc.trapno,
-		                     TBUF_TID(current->thread.user_thread_id)));
-		TBUF_LOG_DSP_IPC_OUT(fiasco_tbuf_log_3val("DSP-val",
-		                     TBUF_TID(src_id), data0, data1));
+		TBUF_LOG_DSP_IPC_OUT(fiasco_tbuf_log_3val("DSP-out", TBUF_TID(src_id),
+		                     (error << 16), TBUF_TID(current->thread.user_thread_id)));
+		TBUF_LOG_DSP_IPC_OUT(fiasco_tbuf_log_3val("DSP-val", TBUF_TID(src_id), data0, data1));
 
 		if (unlikely(error == L4_IPC_SETIMEOUT)) {
-			LOG_printf("IPC error SETIMEOUT (context) (to = "
+			LOG_printf("dispatch%d: "
+			           "IPC error SETIMEOUT (context) (to = "
 			           PRINTF_L4TASK_FORM ", src = "
 			           PRINTF_L4TASK_FORM ")\n",
+			           smp_processor_id(),
 			           PRINTF_L4TASK_ARG(p->thread.user_thread_id),
 			           PRINTF_L4TASK_ARG(src_id));
 			enter_kdebug("L4_IPC_SETIMEOUT?!");
 
 only_receive_IPC:
-			l4x_current_proc_run = current_thread_info();
-			TBUF_LOG_DSP_IPC_IN(fiasco_tbuf_log_3val("DSP-in (O) ", TBUF_TID(current->thread.user_thread_id), TBUF_TID(src_id), 0));
+			per_cpu(l4x_current_proc_run, smp_processor_id()) = current_thread_info();
+			TBUF_LOG_DSP_IPC_IN(fiasco_tbuf_log_3val("DSP-in (O) ",
+			                    TBUF_TID(current->thread.user_thread_id),
+			                    TBUF_TID(src_id), 0));
 			error = l4_ipc_wait_tag(&src_id,
 			                        L4_IPC_SHORT_MSG, &data0, &data1,
 			                        L4_IPC_SEND_TIMEOUT_0,
 			                        &dummydope, &tag);
 			goto after_IPC;
 		} else if (unlikely(error)) {
-			LOG_printf("IPC error = 0x%x (context) (to = "
+			LOG_printf("dispatch%d: IPC error = 0x%x (context) (to = "
 			           PRINTF_L4TASK_FORM ", src = "
 			           PRINTF_L4TASK_FORM ")\n",
-			           error,
+			           smp_processor_id(), error,
 			           PRINTF_L4TASK_ARG(p->thread.user_thread_id),
 			           PRINTF_L4TASK_ARG(src_id));
 			enter_kdebug("ipc error");
 		}
 
 		if (!l4_thread_equal(src_id, t->user_thread_id)) {
-			if (unlikely(!l4_thread_equal(src_id, idler_thread)))
-				l4x_hybrid_return(src_id, utcb, data0, data1, tag);
+
+			if (src_id.id.task == l4x_kernel_taskno) {
+
+				if (l4x_IPI_is_ipi_message(data0))
+					l4x_smp_process_IPI();
+
+				goto only_receive_IPC;
+			}
+
+			l4x_hybrid_return(src_id, l4_utcb_get_l4lx(smp_processor_id()),
+			                  data0, data1, tag);
+
 			goto only_receive_IPC;
 		}
+
+		// copy utcb now that we have made sure to have received
+		// from t
+		utcb_to_thread_struct(l4_utcb_get_l4lx(smp_processor_id()), t);
 	} /* endless loop */
 
 	enter_kdebug("end of dispatch loop!?");

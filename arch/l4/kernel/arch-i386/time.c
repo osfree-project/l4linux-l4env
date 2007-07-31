@@ -74,8 +74,6 @@
 
 #include <asm/i8259.h>
 
-int pit_latch_buggy;              /* extern */
-
 #include "do_timer.h"
 
 unsigned int cpu_khz;	/* Detected as we calibrate the TSC */
@@ -171,11 +169,13 @@ irqreturn_t timer_interrupt(int irq, void *dev_id)
 		 * This will also deassert NMI lines for the watchdog if run
 		 * on an 82489DX-based system.
 		 */
+#if 0
 		spin_lock(&i8259A_lock);
 		outb(0x0c, PIC_MASTER_OCW3);
 		/* Ack the IRQ; AEOI will end it automatically. */
 		inb(PIC_MASTER_POLL);
 		spin_unlock(&i8259A_lock);
+#endif
 	}
 #endif
 

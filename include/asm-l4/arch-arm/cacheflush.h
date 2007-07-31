@@ -11,6 +11,7 @@
 
 #define flush_cache_vmap(start, end)            \
 	do { l4x_vmalloc_map_vm_area(start, end); } while (0)
+/* end - 'guard page' */
 #define flush_cache_vunmap(start, end)          \
 	do { l4x_vmalloc_unmap_vm_area(start, end - PAGE_SIZE); } while (0)
 

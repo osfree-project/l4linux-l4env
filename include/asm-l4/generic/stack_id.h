@@ -27,6 +27,7 @@ static inline void l4x_stack_setup(struct thread_info *ti)
 static inline l4_threadid_t l4x_stack_id_get(void)
 {
 	return l4x_stack_struct_get(current_thread_info())->id;
+	//return l4_myself();
 }
 
 static inline unsigned int l4x_stack_prio_get(void)

@@ -3,6 +3,7 @@
 
 #include <linux/stddef.h>
 #include <linux/mm.h>
+#include <linux/sched.h>
 
 #include <l4/sys/types.h>
 

@@ -12,7 +12,6 @@
 #include <linux/mm.h>
 #include <linux/elfcore.h>
 #include <linux/smp.h>
-#include <linux/smp_lock.h>
 #include <linux/stddef.h>
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
@@ -30,12 +29,16 @@
 #include <linux/random.h>
 #include <linux/personality.h>
 #include <linux/tick.h>
+#include <linux/percpu.h>
 
 #include <asm/uaccess.h>
+#include <asm/pgtable.h>
+#include <asm/system.h>
+#include <asm/io.h>
 #include <asm/ldt.h>
 #include <asm/processor.h>
-#include <asm/desc.h>
 #include <asm/i387.h>
+#include <asm/desc.h>
 
 #include <asm/api/macros.h>
 #include <asm/api/ids.h>
@@ -52,7 +55,6 @@
 #include <asm/l4x/iodb.h>
 
 //#define DEBUG
-#define MY_ASSERTIONS
 
 int reboot_thru_bios;
 
@@ -63,12 +65,18 @@ asmlinkage int sys_enosys(void)
 
 static int hlt_counter;
 
+DEFINE_PER_CPU(struct task_struct *, current_task) = &init_task;
+EXPORT_PER_CPU_SYMBOL(current_task);
+
+DEFINE_PER_CPU(int, cpu_number);
+EXPORT_PER_CPU_SYMBOL(cpu_number);
+
 /*
  * Return saved PC of a blocked thread.
  */
 unsigned long thread_saved_pc(struct task_struct *tsk)
 {
-	return ((unsigned long *)tsk->thread.kernel_sp)[0];
+	return ((unsigned long *)tsk->thread.esp)[0];
 }
 
 
@@ -122,18 +130,20 @@ void show_regs(struct pt_regs * regs)
 		return;
 	}
 
+	printk("\n");
 	printk("Pid: %d, comm: %20s\n", current->pid, current->comm);
-	printk("EIP: %08lx CPU: %d\n", regs->eip, smp_processor_id());
+	printk("EIP: %04x:[<%08lx>] CPU: %d\n",0xffff & regs->xcs,regs->eip, smp_processor_id());
 	print_symbol("EIP is at %s\n", regs->eip);
 
-	printk(" ESP: %08lx", regs->esp);
+	if (user_mode_vm(regs))
+		printk(" ESP: %04x:%08lx",0xffff & regs->xss,regs->esp);
 	printk(" EFLAGS: %08lx    %s  (%s %.*s)\n",
 	       regs->eflags, print_tainted(), init_utsname()->release,
 	       (int)strcspn(init_utsname()->version, " "),
 	       init_utsname()->version);
 	printk("EAX: %08lx EBX: %08lx ECX: %08lx EDX: %08lx\n",
 		regs->eax,regs->ebx,regs->ecx,regs->edx);
-	printk("ESI: %08lx EDI: %08lx EBP: %08lx\n",
+	printk("ESI: %08lx EDI: %08lx EBP: %08lx",
 		regs->esi, regs->edi, regs->ebp);
 	printk(" DS: %04x ES: %04x FS: %04x\n",
 	       0xffff & regs->xds,0xffff & regs->xes, 0xffff & regs->xfs);
@@ -160,14 +170,16 @@ int kernel_thread(int (*fn)(void *), void * arg, unsigned long flags)
 
 	regs.xds = __USER_DS;
 	regs.xes = __USER_DS;
-	regs.xfs = __KERNEL_PDA;
+	regs.xfs = __KERNEL_PERCPU;
 	regs.orig_eax = -1;
 	//regs.eip = (unsigned long) kernel_thread_helper;
 	regs.xcs = __KERNEL_CS | get_kernel_rpl();
 	regs.eflags = X86_EFLAGS_IF | X86_EFLAGS_SF | X86_EFLAGS_PF | 0x2;
 
-	return do_fork(flags | CLONE_VM | CLONE_UNTRACED | CLONE_L4_KERNEL, 0, &regs, 0, NULL, NULL);
+	/* Ok, create the new process.. */
+	return do_fork(flags | CLONE_VM | CLONE_UNTRACED, 0, &regs, COPY_THREAD_STACK_SIZE___FLAG_INKERNEL, NULL, NULL);
 }
+EXPORT_SYMBOL(kernel_thread);
 
 /*
  * Called by release_task in kernel/exit.c
@@ -204,42 +216,34 @@ void kernel_thread_start(struct task_struct *p)
  * Create the kernel context for a new process.  Our main duty here is
  * to fill in p->thread, the arch-specific part of the process'
  * task_struct */
-static int l4x_thread_create(struct task_struct *p, unsigned long clone_flags)
+static int l4x_thread_create(struct task_struct *p, unsigned long clone_flags,
+                             int inkernel)
 {
 	struct thread_struct *t = &p->thread;
-
-	//printk("%s: %p,%s(%d)\n", __func__, p, p->comm, p->pid);
+	int i;
 
 	/* first, allocate task id for  client task */
-	if (!(clone_flags & CLONE_L4_KERNEL)) { /* is this a user process? */
-		//if (clone_flags & CLONE_VM)
-		//	printk("CLONE_VM set for: %d, %s; parent: %d, %s\n",
-		//	       p->pid, p->comm, current->pid, current->comm);
-		if (l4lx_task_get_new_task(clone_flags & CLONE_VM ?
-		                           current->thread.user_thread_id :
-					   L4_NIL_ID,
-		                           &t->user_thread_id) < 0) {
-			printk("l4x_thread_create: No task no left for user\n"); 
-			return -EBUSY;
-		}
-	} else {
-		/* we're a kernel process */
-		t->user_thread_id = L4_NIL_ID;
-	}
+	if (!inkernel) /* is this a user process? */
+		t->task_start_fork = !(clone_flags & CLONE_VM);
+
+	for (i = 0; i < NR_CPUS; i++)
+		p->thread.user_thread_ids[i] = L4_NIL_ID;
+	p->thread.user_thread_id = L4_NIL_ID;
+	p->thread.threads_up = 0;
 
 	/* put thread id in stack */
-	l4x_stack_setup(p->thread_info);
+	l4x_stack_setup(p->stack);
 
 	/* if creating a kernel-internal thread, return at this point */
-	if (clone_flags & CLONE_L4_KERNEL) {
+	if (inkernel) {
 		/* compute pointer to end of stack */
 		unsigned long *sp = (unsigned long *)
-		       ((unsigned long)p->thread_info + sizeof(union thread_union));
+		       ((unsigned long)p->stack + sizeof(union thread_union));
 		/* switch_to will expect the new program pointer
 		 * on the stack */
 		*(--sp) = (unsigned long) ret_kernel_thread_start;
 
-		t->kernel_sp = (unsigned long) sp;
+		t->esp = (unsigned long) sp;
 		return 0;
 	}
 
@@ -257,21 +261,22 @@ void prepare_to_copy(struct task_struct *tsk)
 }
 
 int copy_thread(int nr, unsigned long clone_flags, unsigned long esp,
-	unsigned long unused,
+	unsigned long stack_size___used_for_inkernel_process_flag,
 	struct task_struct * p, struct pt_regs * regs)
 {
 	struct pt_regs * childregs;
 	struct task_struct *cur = current;
 	int err;
 
-	/* set up regs for child */
-	childregs  = &p->thread.regs;
+	childregs = task_pt_regs(p);
 	*childregs = *regs;
 	childregs->eax = 0;
 	childregs->esp = esp;
 
 	childregs->eflags |= 0x200;	/* sanity: set EI flag */
 	childregs->eflags &= 0x1ffff;
+
+	//p->thread.eip = (unsigned long) ret_from_fork;
 
 #ifdef DEBUG
 	printk("%s: esp: %lx on_page: %x\n",
@@ -284,7 +289,6 @@ int copy_thread(int nr, unsigned long clone_flags, unsigned long esp,
 
 	/* Copy segment registers */
 	p->thread.gs = cur->thread.gs;
-	p->thread.fs = cur->thread.fs;
 
 	/*
 	 * Inherit the IOPL
@@ -317,7 +321,7 @@ int copy_thread(int nr, unsigned long clone_flags, unsigned long esp,
 	}
 
 	/* create the user task */
-	err = l4x_thread_create(p, clone_flags);
+	err = l4x_thread_create(p, clone_flags, stack_size___used_for_inkernel_process_flag == COPY_THREAD_STACK_SIZE___FLAG_INKERNEL);
 out:
 	return err;
 }
@@ -329,8 +333,10 @@ out:
 void flush_thread(void)
 {
 	struct task_struct *tsk = current;
-	l4_threadid_t task = tsk->thread.user_thread_id;
-	int ret = 0;
+	int ret = 0, i;
+
+	//LOG_printf("%s\n", __func__);
+	//enter_kdebug("flush thread");
 
 	memset(tsk->thread.tls_array, 0, sizeof(tsk->thread.tls_array));
 	clear_tsk_thread_flag(tsk, TIF_DEBUG);
@@ -343,25 +349,28 @@ void flush_thread(void)
 	// turn back to normal flush-behavior
 	//current->mm->context.releasing = 0;
 
-	if ((!l4_thread_equal(task, L4_NIL_ID)) &&
-	    !(ret = l4lx_task_delete(task, l4x_hybrid_list_task_exists(task))))
-		do_exit(9);
+	for (i = 0; i < NR_CPUS; i++) {
+		l4_threadid_t id = tsk->thread.user_thread_ids[i];
 
-	current->thread.started = 0;
+		//LOG_printf("flush of " PRINTF_L4TASK_FORM "\n", PRINTF_L4TASK_ARG(id));
+		if (l4_thread_equal(id, L4_NIL_ID))
+			continue;
 
-	if (ret == L4LX_TASK_DELETE_THREAD) {
-		/*
-		 * User task was not alone in its address space before,
-		 * we have to create a new address space now.
-		 */
-		l4x_hybrid_list_thread_remove(task);
-		if (l4lx_task_get_new_task(L4_NIL_ID,
-		                           &current->thread.user_thread_id) < 0) {
-			printk("%s: No task no left for user\n", __func__); 
+		if (!(ret = l4lx_task_delete(id, l4x_hybrid_list_task_exists(id))))
 			do_exit(9);
+
+		if (ret == L4LX_TASK_DELETE_THREAD)
+			l4x_hybrid_list_thread_remove(id);
+		else {
+			l4lx_task_number_free(id);
+			l4x_hybrid_list_task_remove(id);
 		}
-	} else
-		l4x_hybrid_list_task_remove(task);
+
+		current->thread.user_thread_ids[i] = L4_NIL_ID;
+	}
+	current->thread.started = 0;
+	current->thread.threads_up = 0;
+	current->thread.user_thread_id = L4_NIL_ID;
 
 	/* i386 does this in start_thread but we have to do it earlier since
 	   we have to access user space in do_execve */
@@ -381,7 +390,7 @@ void start_thread(struct pt_regs *regs, unsigned long eip,
 	regs->esp = esp;
 
 	current->thread.gs = 0;
-	current->thread.fs = 0;
+	regs->xfs = 0;
 
 	current->thread.restart = 1;
 
@@ -453,7 +462,7 @@ int dump_task_regs(struct task_struct *tsk, elf_gregset_t *regs)
 asmlinkage int sys_fork(void)
 {
 	struct pt_regs *regs = &current->thread.regs;
-	return do_fork(SIGCHLD, regs->esp, regs, 0, NULL, NULL);
+	return do_fork(SIGCHLD, regs->esp, regs, COPY_THREAD_STACK_SIZE___FLAG_USER, NULL, NULL);
 }
 
 asmlinkage int sys_clone(void)
@@ -463,14 +472,14 @@ asmlinkage int sys_clone(void)
 	unsigned long newsp;
 	int __user *parent_tidptr, *child_tidptr;
 
-	clone_flags = regs->ebx & ~CLONE_L4_KERNEL;
+	clone_flags = regs->ebx;
 	newsp = regs->ecx;
 	parent_tidptr = (int __user *)regs->edx;
 	child_tidptr = (int __user *)regs->edi;
 	if (!newsp)
 		newsp = regs->esp;
 
-	return do_fork(clone_flags, newsp, regs, 0, parent_tidptr, child_tidptr);
+	return do_fork(clone_flags, newsp, regs, COPY_THREAD_STACK_SIZE___FLAG_USER, parent_tidptr, child_tidptr);
 }
 
 
@@ -488,7 +497,7 @@ asmlinkage int sys_vfork(void)
 {
 	struct pt_regs *regs = &current->thread.regs;
 
-	return do_fork(CLONE_VFORK | CLONE_VM | SIGCHLD, regs->esp, regs, 0, NULL, NULL);
+	return do_fork(CLONE_VFORK | CLONE_VM | SIGCHLD, regs->esp, regs, COPY_THREAD_STACK_SIZE___FLAG_USER, NULL, NULL);
 }
 
 /*
@@ -521,19 +530,15 @@ out:
 int l4_kernelinternal_execve(char * file, char ** argv, char ** envp)
 {
 	int error;
+	//int cpu = smp_processor_id();
+	struct thread_struct *t = &current->thread;
 
-	ASSERT(l4_thread_equal(current->thread.user_thread_id, L4_NIL_ID));
+	ASSERT(l4_thread_equal(t->user_thread_id, L4_NIL_ID));
 
 	/* we are going to become a real user task now, so prepare a real
 	 * pt_regs structure. */
 	/* Enable Interrupts, Set IOPL (needed for X, hwclock etc.) */
-	current->thread.regs.eflags = 0x3200; /* XXX hardcoded */
-
-	/* we're about to exec, so get a task id now */
-	if (l4lx_task_get_new_task(L4_NIL_ID, &current->thread.user_thread_id) < 0) {
-		printk("execve: No task no left for user\n");
-		return -1;
-	}
+	t->regs.eflags = 0x3200; /* XXX hardcoded */
 
 	/* do_execve() will create the user task for us in start_thread()
 	   and call set_fs(USER_DS) in flush_thread. I know this sounds
@@ -545,14 +550,14 @@ int l4_kernelinternal_execve(char * file, char ** argv, char ** envp)
 
 	ASSERT(segment_eq(get_fs(), KERNEL_DS));
 	lock_kernel();
-	error = do_execve(file, argv, envp, &current->thread.regs);
+	error = do_execve(file, argv, envp, &t->regs);
 
 	if (error < 0) {
 		/* we failed -- become a kernel thread again */
 		//printk("Error in kernel-internal exec for " PRINTF_L4TASK_FORM ": %d\n", PRINTF_L4TASK_ARG(current->thread.user_thread_id), error);
-		l4lx_task_number_free(current->thread.user_thread_id);
+		l4lx_task_number_free(t->user_thread_id);
 		set_fs(KERNEL_DS);
-		current->thread.user_thread_id = L4_NIL_ID;
+		t->user_thread_id = L4_NIL_ID;
 		return -1;
 	}
 
@@ -579,7 +584,7 @@ unsigned long get_wchan(struct task_struct *p)
 	if (!p || p == current || p->state == TASK_RUNNING)
 		return 0;
 	stack_page = (unsigned long)task_stack_page(p);
-	esp = p->thread.kernel_sp;
+	esp = p->thread.esp;
 	if (!stack_page || esp < stack_page || esp > top_esp+stack_page)
 		return 0;
 
@@ -589,7 +594,7 @@ unsigned long get_wchan(struct task_struct *p)
 	 *  reflect that. And we leave the different name for
 	 *  esp to catch direct usage of thread data. */
 
-	esp = p->thread.kernel_sp + 4;/* add 4 to remove return address */
+	esp = p->thread.esp + 4;/* add 4 to remove return address */
 
 	/* include/asm-i386/system.h:switch_to() pushes ebp last. */
 	ebp = *(unsigned long *) esp;

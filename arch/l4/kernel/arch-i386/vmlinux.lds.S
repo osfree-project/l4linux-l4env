@@ -26,13 +26,12 @@ OUTPUT_FORMAT("elf32-i386", "elf32-i386", "elf32-i386")
 OUTPUT_ARCH(i386)
 ENTRY(phys_startup_32)
 jiffies = jiffies_64;
-_proxy_pda = 1;
 
 #if 0
 PHDRS {
 	text PT_LOAD FLAGS(5);	/* R_E */
 	data PT_LOAD FLAGS(7);	/* RWE */
-	note PT_NOTE FLAGS(4);	/* R__ */
+	note PT_NOTE FLAGS(0);	/* ___ */
 }
 #endif
 SECTIONS
@@ -49,7 +48,8 @@ SECTIONS
   startup_32 = .;
   _stext = .;
   .text : AT(ADDR(.text) - LOAD_OFFSET) {
-	*(.text .text.*)
+	TEXT_TEXT
+	*(.text.*)
 	SCHED_TEXT
 	LOCK_TEXT
 	KPROBES_TEXT
@@ -67,8 +67,6 @@ SECTIONS
   	__stop___ex_table = .;
   }
 
-  RODATA
-
   BUG_TABLE
 
   . = ALIGN(4);
@@ -78,6 +76,8 @@ SECTIONS
   	__tracedata_end = .;
   }
 
+  RODATA
+
   /* writeable */
   . = ALIGN(4096);
   _sdata = .;
@@ -85,19 +85,13 @@ SECTIONS
   .data : AT(ADDR(.data) - LOAD_OFFSET) {	/* Data */
 	*(.got)
 	*(.got.plt)
-	*(.data)
+	DATA_DATA
 	CONSTRUCTORS
 	. = ALIGN(4);
 	__l4env_initcall_start = .;
 	*(.l4env_initcall.init)
 	__l4env_initcall_end = .;
 	}
-
-  .paravirtprobe : AT(ADDR(.paravirtprobe) - LOAD_OFFSET) {
-  	__start_paravirtprobe = .;
-	*(.paravirtprobe)
-  	__stop_paravirtprobe = .;
-  }
 
   . = ALIGN(4096);
   .data_nosave : AT(ADDR(.data_nosave) - LOAD_OFFSET) {
@@ -131,21 +125,10 @@ SECTIONS
 
   /* might get freed after init */
   . = ALIGN(4096);
-  .smp_altinstructions : AT(ADDR(.smp_altinstructions) - LOAD_OFFSET) {
-	__smp_alt_begin = .;
-	__smp_alt_instructions = .;
-	*(.smp_altinstructions)
-	__smp_alt_instructions_end = .;
-  }
-  . = ALIGN(4);
   .smp_locks : AT(ADDR(.smp_locks) - LOAD_OFFSET) {
   	__smp_locks = .;
 	*(.smp_locks)
 	__smp_locks_end = .;
-  }
-  .smp_altinstr_replacement : AT(ADDR(.smp_altinstr_replacement) - LOAD_OFFSET) {
-	*(.smp_altinstr_replacement)
-  	__smp_alt_end = .;
   }
   /* will be freed after init
    * Following ALIGN() is required to make sure no other data falls on the
@@ -192,9 +175,9 @@ SECTIONS
   }
   . = ALIGN(4);
   .parainstructions : AT(ADDR(.parainstructions) - LOAD_OFFSET) {
-  	__start_parainstructions = .;
+  	__parainstructions = .;
 	*(.parainstructions)
-  	__stop_parainstructions = .;
+  	__parainstructions_end = .;
   }
   /* .exit.text is discard at runtime, not link time, to deal with references
      from .altinstructions and .eh_frame */
@@ -208,7 +191,7 @@ SECTIONS
 	__initramfs_end = .;
   }
 #endif
-  . = ALIGN(L1_CACHE_BYTES);
+  . = ALIGN(4096);
   .data.percpu  : AT(ADDR(.data.percpu) - LOAD_OFFSET) {
 	__per_cpu_start = .;
 	*(.data.percpu)

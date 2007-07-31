@@ -26,12 +26,16 @@ static inline void l4x_tamed_sem_down(void)
 	l4_msgdope_t result;
 
 	while (1) {
-		if (likely(l4x_atomic_dec(&cli_lock.sem.counter) >= 0))
+		if (likely(l4x_atomic_dec(&tamed_per_nr(cli_lock,
+		                          get_tamer_nr(smp_processor_id())).sem.counter)
+		           >= 0))
 			break;
 #ifdef CONFIG_L4_DEBUG_TAMED_COUNT_INTERRUPT_DISABLE
 		cli_taken++;
 #endif
-		if (l4_ipc_call(cli_sem_thread_id, L4_IPC_SHORT_MSG,
+		if (l4_ipc_call(tamed_per_nr(cli_sem_thread_id,
+		                             get_tamer_nr(smp_processor_id())),
+		                L4_IPC_SHORT_MSG,
 		                1 /* L4SEMAPHORE_BLOCK */,
 		                l4x_stack_prio_get(),
 				L4_IPC_SHORT_MSG, &d0, &d1,
@@ -48,8 +52,12 @@ static inline void l4x_tamed_sem_up(void)
 	l4_umword_t d;
 	l4_msgdope_t result;
 
-	if (unlikely(l4x_atomic_inc(&cli_lock.sem.counter) <= 0))
-		if (l4_ipc_call(cli_sem_thread_id, L4_IPC_SHORT_MSG,
+	if (unlikely(l4x_atomic_inc(&tamed_per_nr(cli_lock,
+	                            get_tamer_nr(smp_processor_id())).sem.counter)
+	             <= 0))
+		if (l4_ipc_call(tamed_per_nr(cli_sem_thread_id,
+		                             get_tamer_nr(smp_processor_id())),
+		                L4_IPC_SHORT_MSG,
 		                2 /* L4SEMAPHORE_RELEASE */,
 		                l4x_stack_prio_get(),
 				L4_IPC_SHORT_MSG, &d, &d,

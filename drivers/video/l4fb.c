@@ -84,7 +84,7 @@ static char window_title[50];
 
 /* -- framebuffer variables/structures --------------------------------- */
 
-static struct fb_var_screeninfo l4fb_defined __initdata = {
+static struct fb_var_screeninfo l4fb_defined = {
 	.activate	= FB_ACTIVATE_NOW,
 	.height		= -1,
 	.width		= -1,
@@ -95,7 +95,7 @@ static struct fb_var_screeninfo l4fb_defined __initdata = {
 	.vmode		= FB_VMODE_NONINTERLACED,
 };
 
-static struct fb_fix_screeninfo l4fb_fix __initdata = {
+static struct fb_fix_screeninfo l4fb_fix = {
 	.id	= "l4fb",
 	.type	= FB_TYPE_PACKED_PIXELS,
 	.accel	= FB_ACCEL_NONE,

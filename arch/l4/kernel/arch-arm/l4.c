@@ -120,13 +120,20 @@ static irqreturn_t l4_timer_interrupt_handler(int irq, void *dev_id)
 {
 	write_seqlock(&xtime_lock);
 	timer_tick();
+
+	//l4_kprintf("%s: %d\n", __func__, smp_processor_id());
+#if defined(CONFIG_SMP)  && !defined(CONFIG_LOCAL_TIMERS)
+	smp_send_timer();
+	update_process_times(user_mode(get_irq_regs()));
+#endif
+
 	write_sequnlock(&xtime_lock);
 	return IRQ_HANDLED;
 }
 
 static struct irqaction timer_irq = {
 	.name		= "L4 Timer Tick",
-	.flags		= IRQF_DISABLED | IRQF_TIMER,
+	.flags		= IRQF_DISABLED | IRQF_TIMER | IRQF_IRQPOLL,
 	.handler	= l4_timer_interrupt_handler,
 };
 

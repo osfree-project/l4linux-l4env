@@ -6,6 +6,7 @@ obj-y		:= process.o sys_arm.o time.o semaphore.o traps.o \
 		   switch_to.o setup.o l4.o signal.o irq.o \
 		   ptrace.o entry.o dispatch.o mach_setup.o
 
+obj-$(CONFIG_SMP)				+= smp.o platsmp.o
 obj-$(CONFIG_MODULES)				+= armksyms.o module.o
 obj-$(CONFIG_ISA_DMA_API)			+= dma.o
 obj-$(CONFIG_L4_ARM_PLATFORM_ISG)		+= mach_isg.o

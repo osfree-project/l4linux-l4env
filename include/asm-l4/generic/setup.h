@@ -20,6 +20,8 @@ void l4env_load_initrd(char *command_line);
 void l4x_setup_threads(void);
 void l4x_l4io_init(void);
 
+void l4x_setup_thread_stack(void);
+
 void l4x_prepare_irq_thread(struct thread_info *ti);
 
 void __attribute__((noreturn)) l4x_exit_l4linux(void);

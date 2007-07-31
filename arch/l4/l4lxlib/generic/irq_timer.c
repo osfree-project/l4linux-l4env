@@ -14,6 +14,7 @@
 #include <asm/generic/task.h>
 #include <asm/generic/do_irq.h>
 #include <asm/generic/suspres.h>
+#include <asm/generic/smp.h>
 
 #include <asm/l4lxapi/irq.h>
 #include <asm/l4lxapi/thread.h>
@@ -85,6 +86,7 @@ void timer_irq_thread(void *data)
 		}
 
 		l4x_do_IRQ(irq, ctx);
+		l4x_smp_broadcast_timer();
 	}
 } /* timer_irq_thread */
 

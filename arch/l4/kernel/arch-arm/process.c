@@ -16,7 +16,6 @@
 #include <linux/mm.h>
 #include <linux/stddef.h>
 #include <linux/unistd.h>
-#include <linux/ptrace.h>
 #include <linux/slab.h>
 #include <linux/user.h>
 #include <linux/a.out.h>
@@ -28,6 +27,8 @@
 #include <linux/cpu.h>
 #include <linux/elfcore.h>
 #include <linux/pm.h>
+#include <linux/tick.h>
+#include <linux/utsname.h>
 
 #include <asm/leds.h>
 #include <asm/processor.h>
@@ -175,9 +176,11 @@ void cpu_idle(void)
 		if (!idle)
 			idle = default_idle;
 		leds_event(led_idle_start);
+		tick_nohz_stop_sched_tick();
 		while (!need_resched())
 			idle();
 		leds_event(led_idle_end);
+		tick_nohz_restart_sched_tick();
 		preempt_enable_no_resched();
 		schedule();
 		preempt_disable();
@@ -215,16 +218,19 @@ void machine_restart(char * __unused)
 
 void __show_regs(struct pt_regs *regs)
 {
-	unsigned long flags = condition_codes(regs);
+	unsigned long flags;
+	char buf[64];
 
-	printk("CPU: %d\n", smp_processor_id());
+	printk("CPU: %d    %s  (%s %.*s)\n",
+		smp_processor_id(), print_tainted(), init_utsname()->release,
+		(int)strcspn(init_utsname()->version, " "),
+		init_utsname()->version);
 	print_symbol("PC is at %s\n", instruction_pointer(regs));
 	print_symbol("LR is at %s\n", regs->ARM_lr);
-	printk("pc : [<%08lx>]    lr : [<%08lx>]    %s\n"
+	printk("pc : [<%08lx>]    lr : [<%08lx>]    psr: %08lx\n"
 	       "sp : %08lx  ip : %08lx  fp : %08lx\n",
-		instruction_pointer(regs),
-		regs->ARM_lr, print_tainted(), regs->ARM_sp,
-		regs->ARM_ip, regs->ARM_fp);
+		regs->ARM_pc, regs->ARM_lr, regs->ARM_cpsr,
+		regs->ARM_sp, regs->ARM_ip, regs->ARM_fp);
 	printk("r10: %08lx  r9 : %08lx  r8 : %08lx\n",
 		regs->ARM_r10, regs->ARM_r9,
 		regs->ARM_r8);
@@ -234,37 +240,40 @@ void __show_regs(struct pt_regs *regs)
 	printk("r3 : %08lx  r2 : %08lx  r1 : %08lx  r0 : %08lx\n",
 		regs->ARM_r3, regs->ARM_r2,
 		regs->ARM_r1, regs->ARM_r0);
-	printk("Flags: %c%c%c%c",
-		flags & PSR_N_BIT ? 'N' : 'n',
-		flags & PSR_Z_BIT ? 'Z' : 'z',
-		flags & PSR_C_BIT ? 'C' : 'c',
-		flags & PSR_V_BIT ? 'V' : 'v');
-	printk("  IRQs o%s  FIQs o%s  Mode %s%s  Segment %s\n",
-		interrupts_enabled(regs) ? "n" : "ff",
+
+	flags = regs->ARM_cpsr;
+	buf[0] = flags & PSR_N_BIT ? 'N' : 'n';
+	buf[1] = flags & PSR_Z_BIT ? 'Z' : 'z';
+	buf[2] = flags & PSR_C_BIT ? 'C' : 'c';
+	buf[3] = flags & PSR_V_BIT ? 'V' : 'v';
+	buf[4] = '\0';
+
+	printk("Flags: %s  IRQs o%s  FIQs o%s  Mode %s%s  Segment %s\n",
+		buf, interrupts_enabled(regs) ? "n" : "ff",
 		fast_interrupts_enabled(regs) ? "n" : "ff",
 		processor_modes[processor_mode(regs)],
 		thumb_mode(regs) ? " (T)" : "",
 		get_fs() == get_ds() ? "kernel" : "user");
 #if 0
-#if CONFIG_CPU_CP15
+#ifdef CONFIG_CPU_CP15
 	{
 		unsigned int ctrl;
-		  __asm__ (
-		"	mrc p15, 0, %0, c1, c0\n"
-		: "=r" (ctrl));
-		printk("Control: %04X\n", ctrl);
-	}
+
+		buf[0] = '\0';
 #ifdef CONFIG_CPU_CP15_MMU
-	{
-		unsigned int transbase, dac;
-		  __asm__ (
-		"	mrc p15, 0, %0, c2, c0\n"
-		"	mrc p15, 0, %1, c3, c0\n"
-		: "=r" (transbase), "=r" (dac));
-		printk("Table: %08X  DAC: %08X\n",
-		  	transbase, dac);
-	}
+		{
+			unsigned int transbase, dac;
+			asm("mrc p15, 0, %0, c2, c0\n\t"
+			    "mrc p15, 0, %1, c3, c0\n"
+			    : "=r" (transbase), "=r" (dac));
+			snprintf(buf, sizeof(buf), "  Table: %08x  DAC: %08x",
+			  	transbase, dac);
+		}
 #endif
+		asm("mrc p15, 0, %0, c1, c0\n" : "=r" (ctrl));
+
+		printk("Control: %08x%s\n", ctrl, buf);
+	}
 #endif
 #endif
 }
@@ -324,16 +333,32 @@ void flush_thread(void)
 	struct thread_info *thread = current_thread_info();
 	struct task_struct *tsk = current;
 	l4_threadid_t task = current->thread.user_thread_id;
-	int ret = 0;
+	int ret = 0, i;
 
 	if (!current->thread.started)
 		return;
 
-	if ((!l4_thread_equal(task, L4_NIL_ID)) &&
-	    !(ret = l4lx_task_delete(task, l4x_hybrid_list_task_exists(task))))
-		do_exit(9);
+	for (i = 0; i < NR_CPUS; i++) {
+		l4_threadid_t id = tsk->thread.user_thread_ids[i];
 
+		if (l4_thread_equal(id, L4_NIL_ID))
+			continue;
+
+		if (!(ret = l4lx_task_delete(id, l4x_hybrid_list_task_exists(id))))
+			do_exit(9);
+
+		if (ret == L4LX_TASK_DELETE_THREAD)
+			l4x_hybrid_list_thread_remove(id);
+		else {
+			l4lx_task_number_free(id);
+			l4x_hybrid_list_task_remove(id);
+		}
+
+		current->thread.user_thread_ids[i] = L4_NIL_ID;
+	}
 	current->thread.started = 0;
+	current->thread.threads_up = 0;
+	current->thread.user_thread_id = L4_NIL_ID;
 
 	memset(thread->used_cp, 0, sizeof(thread->used_cp));
 	memset(&tsk->thread.debug, 0, sizeof(struct debug_info));
@@ -370,41 +395,33 @@ extern void kernel_thread_helper(void);
  * Create the kernel context for a new process.  Our main duty here is
  * to fill in p->thread, the arch-specific part of the process'
  * task_struct */
-static int l4x_thread_create(struct task_struct *p, unsigned long clone_flags)
+static int l4x_thread_create(struct task_struct *p, unsigned long clone_flags,
+                             int inkernel)
 {
 	struct thread_struct *t = &p->thread;
-
-	//printk("%s: %p,%s(%d)\n", __func__, p, p->comm, p->pid);
+	int i;
 
 	/* first, allocate task id for  client task */
-	if (!(clone_flags & CLONE_L4_KERNEL)) { /* is this a user process? */
-		//if (clone_flags & CLONE_VM)
-		//	printk("CLONE_VM set for: %d, %s; parent: %d, %s\n",
-		//	       p->pid, p->comm, current->pid, current->comm);
-		if (l4lx_task_get_new_task(clone_flags & CLONE_VM ?
-		                           current->thread.user_thread_id :
-					   L4_NIL_ID,
-		                           &t->user_thread_id) < 0) {
-			printk("l4x_thread_create: No task no left for user\n"); 
-			return -EBUSY;
-		}
-	} else {
-		/* we're a kernel process */
-		t->user_thread_id = L4_NIL_ID;
-	}
+	if (!inkernel) /* is this a user process? */
+		t->task_start_fork = !(clone_flags & CLONE_VM);
+
+	for (i = 0; i < NR_CPUS; i++)
+		p->thread.user_thread_ids[i] = L4_NIL_ID;
+	p->thread.user_thread_id = L4_NIL_ID;
+	p->thread.threads_up = 0;
 
 	/* put thread id in stack */
-	l4x_stack_setup(p->thread_info);
+	l4x_stack_setup(p->stack);
 
 	/* if creating a kernel-internal thread, return at this point */
-	if (clone_flags & CLONE_L4_KERNEL) {
-		p->thread_info->cpu_context.pc = (unsigned long)kernel_thread_helper;
+	if (inkernel) {
+		task_thread_info(p)->cpu_context.pc = (unsigned long)kernel_thread_helper;
 		return 0;
 	}
 
 	/* Fix up stack pointer from copy_thread */
-	p->thread_info->cpu_context.sp
-	   = (unsigned long)p->thread_info + THREAD_SIZE;
+	task_thread_info(p)->cpu_context.sp
+	   = (unsigned long)p->stack + THREAD_SIZE;
 
 	return 0;
 }
@@ -413,12 +430,13 @@ asmlinkage void ret_from_fork(void) __asm__("ret_from_fork");
 
 int
 copy_thread(int nr, unsigned long clone_flags, unsigned long stack_start,
-	    unsigned long stk_sz, struct task_struct *p, struct pt_regs *regs)
+	    unsigned long stack_size___used_for_inkernel_process_flag,
+            struct task_struct *p, struct pt_regs *regs)
 {
 	struct thread_info *thread = task_thread_info(p);
 	struct pt_regs *childregs;
 
-	if (unlikely(clone_flags & CLONE_L4_KERNEL))
+	if (unlikely(stack_size___used_for_inkernel_process_flag == COPY_THREAD_STACK_SIZE___FLAG_INKERNEL))
 		childregs = (void *)thread + THREAD_START_SP - sizeof(*regs);
 	else
 		childregs = task_pt_regs(p);
@@ -434,7 +452,7 @@ copy_thread(int nr, unsigned long clone_flags, unsigned long stack_start,
 		thread->tp_value = regs->ARM_r3;
 
 	/* create the user task */
-	return l4x_thread_create(p, clone_flags);
+	return l4x_thread_create(p, clone_flags, stack_size___used_for_inkernel_process_flag == COPY_THREAD_STACK_SIZE___FLAG_INKERNEL);
 }
 
 /*
@@ -508,8 +526,6 @@ pid_t kernel_thread(int (*fn)(void *), void *arg, unsigned long flags)
 {
 	struct pt_regs regs;
 
-	flags |= CLONE_L4_KERNEL;
-
 	memset(&regs, 0, sizeof(regs));
 
 	regs.ARM_r1 = (unsigned long)arg;
@@ -518,7 +534,7 @@ pid_t kernel_thread(int (*fn)(void *), void *arg, unsigned long flags)
 	//regs.ARM_pc = (unsigned long)kernel_thread_helper;
 	//regs.ARM_cpsr = SVC_MODE;
 
-	return do_fork(flags|CLONE_VM|CLONE_UNTRACED, 0, &regs, 0, NULL, NULL);
+	return do_fork(flags|CLONE_VM|CLONE_UNTRACED, 0, &regs, COPY_THREAD_STACK_SIZE___FLAG_INKERNEL, NULL, NULL);
 }
 EXPORT_SYMBOL(kernel_thread);
 

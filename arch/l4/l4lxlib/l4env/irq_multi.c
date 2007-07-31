@@ -122,7 +122,7 @@ static void send_msg_to_irq_thread(unsigned int irq, unsigned int cpu,
  */
 static inline unsigned int wait_for_irq_message(unsigned int irq_to_ack)
 {
-	l4_umword_t d1, d2;
+	l4_umword_t d1, d2 = 0;
 	l4_msgdope_t dummydope;
 	int code;
 	l4_threadid_t id;

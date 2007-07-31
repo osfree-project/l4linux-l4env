@@ -45,11 +45,11 @@ static inline void l4x_tamed_sem_down(void)
 	   "2:                         \n\t"
 	   : "=c" (dummy1), "=D" (dummy2), "=S" (dummy3)
 	   : "c"  (l4x_stack_prio_get()),
-	     "d"  (&cli_lock.sem),
-	     "D"  (0), "S"  (cli_sem_thread_id.raw)
+	     "d"  (&tamed_per_nr(cli_lock, get_tamer_nr(smp_processor_id())).sem),
+	     "D"  (0),
+	     "S"  (tamed_per_nr(cli_sem_thread_id, get_tamer_nr(smp_processor_id())).raw)
 	   : "memory");
 }
-
 
 static inline void l4x_tamed_sem_up(void)
 {
@@ -81,8 +81,9 @@ static inline void l4x_tamed_sem_up(void)
 	   "2:                         \n\t"
 	   : "=c" (dummy1), "=D" (dummy2), "=S" (dummy3)
 	   : "c"  (l4x_stack_prio_get()),
-	     "d"  (&cli_lock.sem),
-	     "D"  (0), "S"  (cli_sem_thread_id.raw)
+	     "d"  (&tamed_per_nr(cli_lock, get_tamer_nr(smp_processor_id())).sem),
+	     "D"  (0),
+	     "S"  (tamed_per_nr(cli_sem_thread_id, get_tamer_nr(smp_processor_id())).raw)
 	   : "memory");
 }
 #endif /* ! __ASM_L4__L4X_I386__TAMED_H__ */

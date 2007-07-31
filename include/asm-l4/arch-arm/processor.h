@@ -46,6 +46,9 @@ struct thread_struct {
 	unsigned long		error_code;
 
 	l4_threadid_t user_thread_id;
+	l4_threadid_t user_thread_ids[8]; //[NR_CPUS];
+	unsigned int  start_cpu;
+	unsigned long threads_up;
 	unsigned int pf_signal_pending : 1;
 	unsigned int initial_state_set : 1;
 	unsigned int task_start_fork : 1;

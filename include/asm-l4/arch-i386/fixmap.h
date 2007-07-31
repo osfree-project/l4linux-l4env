@@ -12,7 +12,9 @@
 static inline unsigned long __l4x__fix_to_virt(const unsigned int x)
 {
 	if (x == FIX_VDSO)
-		return (unsigned long)&_upage_start;
+		return UPAGE_USER_ADDRESS;
+	if (x == FIX_VDSO - 1)
+		return UPAGE_USER_ADDRESS_END;
 
 	/* Original __fix_to_virt macro code */
 	return (FIXADDR_TOP - ((x) << PAGE_SHIFT));

@@ -11,9 +11,9 @@
 #include <asm/generic/dispatch.h>
 #include <asm/generic/syscall_guard.h>
 
-typedef int (*sc_check_func_t)(struct task_struct *p, l4_utcb_t *utcb);
+typedef int (*sc_check_func_t)(struct task_struct *p);
 
-static int check_ipc(struct task_struct *p, l4_utcb_t *utcb)
+static int check_ipc(struct task_struct *p)
 {
 	if (!strcmp(p->comm, "fiasco"))
 		return 0;
@@ -21,7 +21,7 @@ static int check_ipc(struct task_struct *p, l4_utcb_t *utcb)
 	return 1;
 }
 
-static int check_id_nearest(struct task_struct *p, l4_utcb_t *utcb)
+static int check_id_nearest(struct task_struct *p)
 {
 	if (!strcmp(p->comm, "fiasco"))
 		return 0;
@@ -30,37 +30,37 @@ static int check_id_nearest(struct task_struct *p, l4_utcb_t *utcb)
 	return 1;
 }
 
-static int check_fpage_unmap(struct task_struct *p, l4_utcb_t *utcb)
+static int check_fpage_unmap(struct task_struct *p)
 {
 	/* Allow */
 	return 1;
 }
 
-static int check_thread_switch(struct task_struct *p, l4_utcb_t *utcb)
+static int check_thread_switch(struct task_struct *p)
 {
 	/* Not allowed. */
 	return 0;
 }
 
-static int check_thread_schedule(struct task_struct *p, l4_utcb_t *utcb)
+static int check_thread_schedule(struct task_struct *p)
 {
 	/* Not allowed. */
 	return 0;
 }
 
-static int check_lthread_ex_regs(struct task_struct *p, l4_utcb_t *utcb)
+static int check_lthread_ex_regs(struct task_struct *p)
 {
 	/* Not allowed. */
 	return 0;
 }
 
-static int check_task_new(struct task_struct *p, l4_utcb_t *utcb)
+static int check_task_new(struct task_struct *p)
 {
 	/* Not allowed. */
 	return 0;
 }
 
-static int check_privctrl(struct task_struct *p, l4_utcb_t *utcb)
+static int check_privctrl(struct task_struct *p)
 {
 	/* Not allowed. */
 	return 0;
@@ -88,16 +88,21 @@ sc_check_func_t sc_check_funcs[] = {
  * \return 0		syscall not allowed
  * \return 1		syscall ok
  */
-int l4x_syscall_guard(struct task_struct *p, l4_utcb_t *utcb, int sysnr)
+int l4x_syscall_guard(struct task_struct *p, int sysnr)
 {
 	if (sysnr >= 0
 	    && sc_check_funcs[sysnr]
-	    && sc_check_funcs[sysnr](p, utcb))
+	    && sc_check_funcs[sysnr](p))
 		return 1; /* This syscall is allowed */
 
 	LOG_printf("%s: Syscall%d was forbidden for %s(%d) at %p\n",
 	           __func__, sysnr, p->comm, p->pid,
-	           (void *)l4_utcb_exc_pc(utcb));
+#ifdef ARCH_arm
+		   (void *)p->thread.regs.ARM_pc
+#else
+	           (void *)p->thread.regs.eip
+#endif
+		   );
 
 	return 0; /* Not allowed */
 }

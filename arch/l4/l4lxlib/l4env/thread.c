@@ -19,7 +19,6 @@
 #include <asm/api/macros.h>
 
 #include <linux/module.h>
-#include <linux/spinlock.h>
 #include <linux/bitops.h>
 #include <linux/kernel.h>
 #include <linux/string.h>

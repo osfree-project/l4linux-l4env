@@ -11,7 +11,5 @@ extern unsigned l4x_fiasco_gdt_entry_offset;
 
 #undef  GDT_ENTRY_TLS_MIN
 #define GDT_ENTRY_TLS_MIN	l4x_fiasco_gdt_entry_offset
-#undef  GDT_ENTRY_PDA
-#define GDT_ENTRY_PDA		l4x_fiasco_gdt_entry_offset
 
 #endif /* ! __ASM_L4__ARCH_I386__SEGMENT_H__ */

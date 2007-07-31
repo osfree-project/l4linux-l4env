@@ -21,6 +21,7 @@ unsigned long saved_context_eflags;
 
 void __save_processor_state(struct saved_context *ctxt)
 {
+	mtrr_save_fixed_ranges(NULL);
 	kernel_fpu_begin();
 
 	/*
@@ -115,8 +116,8 @@ void __restore_processor_state(struct saved_context *ctxt)
 	/*
 	 * sysenter MSRs
 	 */
-	//if (boot_cpu_has(X86_FEATURE_SEP))
-	//	enable_sep_cpu();
+	if (boot_cpu_has(X86_FEATURE_SEP))
+		enable_sep_cpu();
 
 	fix_processor_context();
 	do_fpu_end();

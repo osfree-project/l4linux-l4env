@@ -62,8 +62,6 @@ copy_to_user(void __user *to, const void *from, unsigned long n)
 {
 	unsigned long copy_size = (unsigned long)to & ~PAGE_MASK;
 
-	BUG_ON((long)n < 0);
-
 #ifdef DEBUG_MEMCPY_TOFS
 	printk("copy_to_user called from: %08lx to: %p, "
 	       "from: %p, len: %08lx\n",
@@ -119,8 +117,6 @@ unsigned long
 copy_from_user(void *to, const void __user *from, unsigned long n)
 {
 	unsigned long copy_size = (unsigned long)from & ~PAGE_MASK;
-
-	BUG_ON((long)n < 0);
 
 	if (segment_eq(get_fs(), KERNEL_DS)) {
 		memcpy(to, from, n);
@@ -202,6 +198,13 @@ unsigned long clear_user(void *address, unsigned long n)
 	return 0;
 }
 EXPORT_SYMBOL(clear_user);
+
+unsigned long
+__clear_user(void __user *to, unsigned long n)
+{
+	return clear_user(to, n);
+}
+EXPORT_SYMBOL(__clear_user);
 
 /*
  * Copy a null terminated string from userspace.

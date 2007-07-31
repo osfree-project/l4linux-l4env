@@ -10,6 +10,15 @@
 #include <asm/tlbflush.h>
 #include <asm/sizes.h>
 
+#include <asm/mach/map.h>
+#include "mm.h"
+
+/*
+ * Used by ioremap() and iounmap() code to mark (super)section-mapped
+ * I/O regions in vm_struct->flags field.
+ */
+#define VM_ARM_SECTION_MAPPING	0x80000000
+
 #include <asm/generic/io.h>
 
 #define __ARCH_IOREMAP_C_INCLUDED__
@@ -34,7 +43,7 @@ void __check_kvm_seq(struct mm_struct *mm)
 
 
 void __iomem *
-__ioremap(unsigned long phys_addr, size_t size, unsigned long flags)
+__arm_ioremap(unsigned long phys_addr, size_t size, unsigned int flags)
 {
 	return __l4x_ioremap(phys_addr, size, flags);
 }

@@ -17,20 +17,16 @@
 
 #include <asm/generic/setup.h>
 
-void cpu_sa1100_dcache_clean_area(void *addr, int sz)
-{
-}
+void cpu_sa1100_dcache_clean_area(void *addr, int sz) {}
+void cpu_v6_dcache_clean_area(void *addr, int sz) {}
 
-void cpu_sa1100_switch_mm(unsigned long pgd_phys, struct mm_struct *mm)
-{
-	/* Nothing to do for L4Linux */
-}
+void cpu_sa1100_switch_mm(unsigned long pgd_phys, struct mm_struct *mm) {}
+void cpu_v6_switch_mm(unsigned long pgd_phys, struct mm_struct *mm) {}
 
 extern unsigned long fastcall l4x_set_pte(pte_t pteptr, pte_t pteval);
 extern void          fastcall l4x_pte_clear(pte_t ptep);
 
-
-void cpu_sa1100_set_pte_ext(pte_t *pteptr, pte_t pteval, unsigned int ext)
+static inline void l4x_cpu_set_pte_ext(pte_t *pteptr, pte_t pteval, unsigned int ext)
 {
 	//LOG_printf("%s: for %08x pteptr = %p\n", __func__, (unsigned int)pte_val(pteval), pteptr);
 	if ((pte_val(*pteptr) & (L_PTE_PRESENT | L_PTE_MAPPED)) == (L_PTE_PRESENT | L_PTE_MAPPED)) {
@@ -41,6 +37,11 @@ void cpu_sa1100_set_pte_ext(pte_t *pteptr, pte_t pteval, unsigned int ext)
 	}
 	*pteptr = pteval;
 }
+
+void cpu_sa1100_set_pte_ext(pte_t *pteptr, pte_t pteval, unsigned int ext)
+{ l4x_cpu_set_pte_ext(pteptr, pteval, ext); }
+void cpu_v6_set_pte_ext(pte_t *pteptr, pte_t pteval, unsigned int ext)
+{ l4x_cpu_set_pte_ext(pteptr, pteval, ext); }
 
 
 /*
@@ -58,6 +59,11 @@ void cpu_sa1100_proc_init(void)
 	printk("cpu_sa1100_proc_init\n");
 }
 
+void cpu_v6_proc_init(void)
+{
+	printk("cpu_v6_proc_init\n");
+}
+
 /*
  * cpu_proc_fin()
  *
@@ -69,6 +75,12 @@ void cpu_sa1100_proc_fin(void)
 {
 	local_irq_disable();
 }
+#ifdef CONFIG_SMP
+void cpu_v6_proc_fin(void)
+{
+	local_irq_disable();
+}
+#endif
 
 void  __attribute__((noreturn)) l4x_cpu_reset(unsigned long addr)
 {
@@ -91,27 +103,31 @@ void v4_mc_clear_user_page(void *addr, unsigned long vaddr)
 
 void v4wb_flush_user_tlb_range(unsigned long start, unsigned long end,
                                struct vm_area_struct *mm)
-{
-	/* ... */
-}
+{}
+
+#ifdef CONFIG_SMP
+void v6wbi_flush_user_tlb_range(unsigned long start, unsigned long end,
+                               struct vm_area_struct *mm)
+{}
+#endif
 
 void v4wb_flush_user_cache_range(unsigned long start, unsigned long end,
                                  unsigned int flags)
-{
-	/* ... */
-}
+{}
 
 void v4wb_flush_user_cache_all(void)
-{
-}
+{}
 
 void v4wb_flush_kern_tlb_range(unsigned long start, unsigned long end)
-{
-}
+{}
+
+#ifdef CONFIG_SMP
+void v6wbi_flush_kern_tlb_range(unsigned long start, unsigned long end)
+{}
+#endif
 
 void v4wb_flush_kern_cache_all(void)
-{
-}
+{}
 
 void v4wb_coherent_kern_range(unsigned long start, unsigned long end)
 {
@@ -135,7 +151,7 @@ static void __data_abort(unsigned long pc)
 	printk("%s called.\n", __func__);
 }
 
-static void l4x_dma_cache_foo_range(unsigned long start, unsigned long stop)
+static void l4x_dma_cache_foo_range(const void *start, const void *stop)
 {
 }
 
@@ -188,7 +204,8 @@ static struct cpu_cache_fns l4_cpu_cache_fns = {
 	.dma_flush_range        = l4x_dma_cache_foo_range,
 };
 
-struct proc_info_list l4_proc_info __attribute__((__section__(".proc.info.init"))) = {
+#ifndef CONFIG_SMP
+static struct proc_info_list l4_proc_info_v4 __attribute__((__section__(".proc.info.init"))) = {
 	.cpu_val         = 0,
 	.cpu_mask        = 0,
 	.__cpu_mm_mmu_flags = 0,
@@ -203,6 +220,26 @@ struct proc_info_list l4_proc_info __attribute__((__section__(".proc.info.init")
 	.user            = &l4_cpu_user_fns,
 	.cache           = &l4_cpu_cache_fns,
 };
+#endif
+
+
+#ifdef CONFIG_SMP
+static struct proc_info_list l4_proc_info_v6 __attribute__((__section__(".proc.info.init"))) = {
+	.cpu_val         = 0,
+	.cpu_mask        = 0,
+	.__cpu_mm_mmu_flags = 0,
+	.__cpu_io_mmu_flags = 0,
+	.__cpu_flush     = 0,
+	.arch_name       = "armv6",
+	.elf_name        = "v6",
+	.elf_hwcap       = HWCAP_SWP | HWCAP_HALF | HWCAP_26BIT | HWCAP_FAST_MULT,
+	.cpu_name        = "Fiasco",
+	.proc            = &l4_proc_fns,
+	.tlb             = &l4_tlb_fns,
+	.user            = &l4_cpu_user_fns,
+	.cache           = &l4_cpu_cache_fns,
+};
+#endif
 
 
 /*
@@ -212,5 +249,9 @@ struct proc_info_list l4_proc_info __attribute__((__section__(".proc.info.init")
 struct proc_info_list *lookup_processor_type(void);
 struct proc_info_list *lookup_processor_type(void)
 {
-	return &l4_proc_info;
+#ifdef CONFIG_SMP
+	return &l4_proc_info_v6;
+#else
+	return &l4_proc_info_v4;
+#endif
 }

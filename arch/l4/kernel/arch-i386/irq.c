@@ -24,6 +24,9 @@
 DEFINE_PER_CPU(irq_cpustat_t, irq_stat) ____cacheline_internodealigned_in_smp;
 EXPORT_PER_CPU_SYMBOL(irq_stat);
 
+DEFINE_PER_CPU(struct pt_regs *, irq_regs);
+EXPORT_PER_CPU_SYMBOL(irq_regs);
+
 /*
  * 'what should we do if we get a hw irq event on an illegal vector'.
  * each architecture has to answer this themselves.
@@ -342,3 +345,22 @@ void fixup_irqs(cpumask_t map)
 }
 #endif
 
+
+#ifdef CONFIG_SMP
+/* XXX probably the wrong place */
+void l4x_smp_timer_interrupt(void)
+{
+	struct pt_regs regs; // garbage in there...
+	struct pt_regs *oldregs;
+	unsigned long flags;
+	oldregs = set_irq_regs(&regs);
+
+	local_irq_save(flags);
+	irq_enter();
+	profile_tick(CPU_PROFILING);
+	update_process_times(user_mode_vm(get_irq_regs()));
+	irq_exit();
+	local_irq_restore(flags);
+	set_irq_regs(oldregs);
+}
+#endif

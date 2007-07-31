@@ -13,14 +13,15 @@ static inline void l4x_do_IRQ(int irq, struct thread_info *ctx)
 {
 	unsigned long flags, old_cpu_state;
 	struct pt_regs *r;
+	int cpu = smp_processor_id();
 
 	local_irq_save(flags);
-	ctx->task = l4x_current_process;
-	ctx->preempt_count = l4x_current_process->thread_info->preempt_count;
-	r = &l4x_current_process->thread.regs;
+	ctx->task = per_cpu(l4x_current_process, cpu);
+	ctx->preempt_count = task_thread_info(per_cpu(l4x_current_process, cpu))->preempt_count;
+	r = &per_cpu(l4x_current_process, cpu)->thread.regs;
 	old_cpu_state = l4x_get_cpu_mode(r);
 	l4x_set_cpu_mode(r, l4x_in_kernel() ? L4X_MODE_KERNEL : L4X_MODE_USER);
-	do_IRQ(irq, &l4x_current_process->thread.regs);
+	do_IRQ(irq, &per_cpu(l4x_current_process, cpu)->thread.regs);
 	l4x_set_cpu_mode(r, old_cpu_state);
 	local_irq_restore(flags);
 

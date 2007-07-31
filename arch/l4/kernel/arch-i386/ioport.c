@@ -7,14 +7,15 @@
 
 #include <linux/sched.h>
 #include <linux/kernel.h>
+#include <linux/capability.h>
 #include <linux/errno.h>
 #include <linux/types.h>
 #include <linux/ioport.h>
 #include <linux/smp.h>
-#include <linux/smp_lock.h>
 #include <linux/stddef.h>
 #include <linux/slab.h>
 #include <linux/thread_info.h>
+#include <linux/syscalls.h>
 
 #include <l4/sys/ipc.h>
 #include <l4/sys/syscalls.h>
@@ -366,7 +367,7 @@ static int flush_io_pages(struct task_struct *task, l4_fpage_t fpage, int flush)
 /**
  * The same security policy as in arch/i386/kernel/ioport.c.
  */
-asmlinkage int sys_ioperm(unsigned long from, unsigned long num, int turn_on)
+asmlinkage long sys_ioperm(unsigned long from, unsigned long num, int turn_on)
 {
 	struct task_struct *task = current;
 	int ret, i;

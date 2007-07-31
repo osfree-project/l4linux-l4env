@@ -201,7 +201,8 @@ int l4lx_task_create_pager(l4_threadid_t dest, l4_threadid_t pager)
 
 	idx = get_idx(l4x_get_taskno(dest));
 
-	if (idx == -1 || l4lx_task_thread_empty(idx)) {
+	if (idx == -1 || l4lx_task_thread_empty(idx)
+	    || dest.id.lthread == 0) {
 		/* Create new address space */
 		return !l4ts_create_task(&dest, 0, 0,
 		                         L4_TASK_NEW_ALIEN
@@ -213,7 +214,7 @@ int l4lx_task_create_pager(l4_threadid_t dest, l4_threadid_t pager)
 		l4_umword_t o;
 		l4_threadid_t preempter = L4_INVALID_ID;
 
-		l4_inter_task_ex_regs(dest, 0, 0,
+		l4_inter_task_ex_regs(dest, 0x54, 0x78,
 		                      &preempter, &pager,
 				      &o, &o, &o,
 		                      L4_THREAD_EX_REGS_ALIEN
@@ -224,7 +225,7 @@ int l4lx_task_create_pager(l4_threadid_t dest, l4_threadid_t pager)
 	return 1;
 }
 
-int l4lx_task_create(l4_threadid_t dest)
+int __disabled____not__used__l4lx_task_create(l4_threadid_t dest)
 {
 	return l4lx_task_create_pager(dest, linux_server_thread_id);
 }
@@ -238,8 +239,11 @@ int l4lx_task_delete(l4_threadid_t task, unsigned option)
 	idx = get_idx(l4x_get_taskno(task));
 
 	if (idx >= 0 && !test_and_clear_bit(task.id.lthread,
-		                            thread_state[idx].thread_array))
+		                            thread_state[idx].thread_array)) {
+		printk("thread: " PRINTF_L4TASK_FORM " idx=%d\n",
+		       PRINTF_L4TASK_ARG(task), idx);
 		enter_kdebug("Freeing nonexisting thread");
+	}
 
 	if (idx == -1 || l4lx_task_thread_empty(idx)) {
 		int kill_flags = L4TS_KILL_SYNC;

@@ -72,12 +72,12 @@ void l4x_flush_page(unsigned long address, int size, unsigned long options)
 #define _PAGE_MAPPED L_PTE_MAPPED
 #endif
 
-#define check_pte_mapped(old, new)				\
+#define check_pte_mapped(old, newval)				\
 do {								\
-       if (pte_mapped(old) && !pte_mapped(new)) {		\
+       if (pte_mapped(old) && !pte_mapped(newval)) {		\
 		printk("set_pte: old mapped, new one not\n");	\
 		enter_kdebug("set_pte");			\
-		pte_val(new) |= _PAGE_MAPPED;			\
+		newval = __pte(pte_val(newval) | _PAGE_MAPPED); \
        }							\
 } while (0)
 
@@ -109,7 +109,8 @@ unsigned long fastcall l4x_set_pte(pte_t old, pte_t pteval)
 			/* physical page frame changed
 			 * || access attribute changed -> flush */
 			/* flush is the default */
-			pte_val(pteval) &= ~_PAGE_MAPPED;
+			//pteval.pte_low &= ~_PAGE_MAPPED;
+			pteval = __pte(pte_val(pteval) & ~_PAGE_MAPPED);
 
 		} else if ((pte_write(old) && !pte_write(pteval))
 		           || (pte_dirty(old) && !pte_dirty(pteval))) {

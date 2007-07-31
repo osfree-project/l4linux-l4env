@@ -244,7 +244,7 @@ asmlinkage int sys_fork(void)
 {
 #ifdef CONFIG_MMU
 	struct pt_regs *regs = &current->thread.regs;
-	return do_fork(SIGCHLD, regs->ARM_sp, regs, 0, NULL, NULL);
+	return do_fork(SIGCHLD, regs->ARM_sp, regs, COPY_THREAD_STACK_SIZE___FLAG_USER, NULL, NULL);
 #else
 	/* can not support in nommu mode */
 	return(-EINVAL);
@@ -263,13 +263,13 @@ asmlinkage int sys_clone(unsigned long clone_flags, unsigned long newsp,
 	if (!newsp)
 		newsp = regs->ARM_sp;
 
-	return do_fork(clone_flags, newsp, regs, 0, parent_tidptr, child_tidptr);
+	return do_fork(clone_flags, newsp, regs, COPY_THREAD_STACK_SIZE___FLAG_USER, parent_tidptr, child_tidptr);
 }
 
 asmlinkage int sys_vfork(void)
 {
 	struct pt_regs *regs = &current->thread.regs;
-	return do_fork(CLONE_VFORK | CLONE_VM | SIGCHLD, regs->ARM_sp, regs, 0, NULL, NULL);
+	return do_fork(CLONE_VFORK | CLONE_VM | SIGCHLD, regs->ARM_sp, regs, COPY_THREAD_STACK_SIZE___FLAG_USER, NULL, NULL);
 }
 
 /* sys_execve() executes a new program.
@@ -365,26 +365,13 @@ int kernel_execve(const char *filename, char *const argv[], char *const envp[])
 EXPORT_SYMBOL(kernel_execve);
 
 /*
- * Since loff_t is a 64 bit type we avoid a lot of ABI hastle
+ * Since loff_t is a 64 bit type we avoid a lot of ABI hassle
  * with a different argument ordering.
  */
 asmlinkage long sys_arm_fadvise64_64(int fd, int advice,
 				     loff_t offset, loff_t len)
 {
 	return sys_fadvise64_64(fd, offset, len, advice);
-}
-
-/*
- * Yet more syscall fsckage - we can't fit sys_sync_file_range's
- * arguments into the available registers with EABI.  So, let's
- * create an ARM specific syscall for this which has _sane_
- * arguments.  (This incidentally also has an ABI-independent
- * argument layout.)
- */
-asmlinkage long sys_arm_sync_file_range(int fd, unsigned int flags,
-					loff_t offset, loff_t nbytes)
-{
-	return sys_sync_file_range(fd, offset, nbytes, flags);
 }
 void sys_syscall(void)
 {

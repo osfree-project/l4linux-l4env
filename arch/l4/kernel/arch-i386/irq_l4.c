@@ -1,9 +1,4 @@
-/*
- * linux/arch/l4/irq_l4.c
- *
- * $Id: irq_l4.c,v 1.16 2003/01/09 18:39:21 uhlig Exp $
- *
- */
+/* linux/arch/l4/kernel/arch-i386/irq_l4.c */
 
 #include <linux/sched.h>
 #include <linux/interrupt.h>
@@ -19,8 +14,8 @@
 #include <asm/generic/stack_id.h>
 
 
-struct hw_interrupt_type l4_timer_irq_type = {
-	.typename	= "L4 Timer IRQ",
+struct irq_chip l4_timer_irq_type = {
+	.name		= "L4 timer",
 	.startup	= l4lx_irq_timer_startup,
 	.shutdown	= l4lx_irq_timer_shutdown,
 	.enable		= l4lx_irq_timer_enable,
@@ -32,8 +27,8 @@ struct hw_interrupt_type l4_timer_irq_type = {
 	.set_affinity	= NULL
 };
 
-struct hw_interrupt_type l4_hw_irq_type = {
-	.typename	= "L4 HW IRQ",
+struct irq_chip l4_hw_irq_type = {
+	.name		= "L4 hw",
 	.startup	= l4lx_irq_dev_startup_hw,
 	.shutdown	= l4lx_irq_dev_shutdown_hw,
 	.enable		= l4lx_irq_dev_enable_hw,
@@ -45,8 +40,8 @@ struct hw_interrupt_type l4_hw_irq_type = {
 	.set_affinity	= NULL
 };
 
-struct hw_interrupt_type l4_virt_irq_type = {
-	.typename	= "L4 virt IRQ",
+struct irq_chip l4_virt_irq_type = {
+	.name		= "L4 virt",
 	.startup	= l4lx_irq_dev_startup_virt,
 	.shutdown	= l4lx_irq_dev_shutdown_virt,
 	.enable		= l4lx_irq_dev_enable_virt,
@@ -86,16 +81,16 @@ void __init init_IRQ(void)
 	l4lx_irq_init();
 	l4x_init_softirq_stack();
 
-	set_irq_chip_and_handler(0, &l4_timer_irq_type, handle_edge_irq);
+	set_irq_chip_and_handler_name(0, &l4_timer_irq_type, handle_edge_irq, "irq");
 
 	for (i = 1; i < NR_IRQS; i++) {
 		if (i < l4lx_irq_max) {
 			if (i < NR_IRQS_HW)
-				set_irq_chip_and_handler(i, &l4_hw_irq_type, handle_edge_irq);
+				set_irq_chip_and_handler_name(i, &l4_hw_irq_type, handle_edge_irq, "irq");
 			else
-				set_irq_chip_and_handler(i, &l4_virt_irq_type, handle_edge_irq);
+				set_irq_chip_and_handler_name(i, &l4_virt_irq_type, handle_edge_irq, "irq");
 		} else
-			set_irq_chip_and_handler(i, &no_irq_type, handle_edge_irq);
+			set_irq_chip_and_handler(i, &no_irq_chip, handle_edge_irq);
 	}
 }
 

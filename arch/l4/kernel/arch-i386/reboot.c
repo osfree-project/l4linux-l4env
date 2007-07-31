@@ -7,6 +7,9 @@
 #include <asm/generic/memory.h>
 #include <asm/generic/setup.h>
 
+#include <asm/reboot.h>
+
+
 void machine_halt(void)
 {
 	local_irq_disable();
@@ -27,3 +30,11 @@ void machine_power_off(void)
 {
 	machine_halt();
 }
+
+struct machine_ops machine_ops = {
+	.power_off = machine_power_off,
+	.shutdown =  machine_halt,
+	.emergency_restart = machine_emergency_restart,
+	.restart = machine_restart,
+	.halt = machine_halt,
+};
