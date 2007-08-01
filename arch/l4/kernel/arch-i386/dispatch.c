@@ -44,11 +44,9 @@
 #include <asm/l4x/l4_syscalls.h>
 #include <asm/l4x/lx_syscalls.h>
 
-#include <l4/util/kprintf.h> // XXX: remove again
-
 #define TBUF_TID(tid) ((tid.id.task << 8) | tid.id.lthread)
 #if 0
-#define TBUF_LOG_IDLE(x)        //do { x; } while (0)
+#define TBUF_LOG_IDLE(x)        do { x; } while (0)
 #define TBUF_LOG_WAKEUP_IDLE(x)	do { x; } while (0)
 #define TBUF_LOG_USER_PF(x)     do { x; } while (0)
 #define TBUF_LOG_INT80(x)       do { x; } while (0)
@@ -522,9 +520,11 @@ static void l4x_hybrid_return(l4_threadid_t src_id,
 		t->hybrid_pf_addr = d0;
 		t->hybrid_pf      = 1;
 	} else {
-		if (unlikely(utcb->exc.trapno != 0xd
-		             || l4x_l4syscall_get_nr(utcb->exc.err, utcb->exc.eip) == -1
-		             || !(utcb->exc.err & 4)))
+		if (unlikely(   (utcb->exc.trapno != 0xd /* after L4 syscall */
+		                 || l4x_l4syscall_get_nr(utcb->exc.err, utcb->exc.eip) == -1
+		                 || !(utcb->exc.err & 4))
+		             && (utcb->exc.trapno != 0xff /* L4 syscall exr'd */
+		                 || utcb->exc.err != 0)))
 			goto out_fail;
 
 		t->hybrid_sc_in_prog = 0;
@@ -606,7 +606,6 @@ void l4x_idle(void)
 	}
 	l4lx_thread_pager_change(idler_thread[cpu], l4_myself());
 	idler_up[cpu] = 1;
-	l4_kprintf("IDLER%d IS UP\n", cpu);
 
 	tick_nohz_stop_sched_tick();
 

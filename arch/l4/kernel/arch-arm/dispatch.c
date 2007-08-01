@@ -39,10 +39,8 @@
 #include <asm/l4x/l4_syscalls.h>
 #include <asm/l4x/lx_syscalls.h>
 
-#include <l4/util/kprintf.h> // XXX: remove again
-
 #define TBUF_TID(tid) ((tid.id.task << 8) | tid.id.lthread)
-#if 1
+#if 0
 #define TBUF_LOG_IDLE(x)        do { x; } while (0)
 #define TBUF_LOG_WAKEUP_IDLE(x)	do { x; } while (0)
 #define TBUF_LOG_USER_PF(x)     do { x; } while (0)
@@ -118,7 +116,6 @@ asm(
 #include <asm/generic/stack_id.h>
 void fastcall l4x_switch_to(struct task_struct *prev, struct task_struct *next)
 {
-	//l4_kprintf("%s%d: %s(%d)[%ld] -> %s(%d)[%ld]\n", __func__, smp_processor_id(), prev->comm, prev->pid, prev->state, next->comm, next->pid, next->state);
 	TBUF_LOG_SWITCH(fiasco_tbuf_log_3val("SWITCH", TBUF_TID(prev->thread.user_thread_id), TBUF_TID(next->thread.user_thread_id), 0));
 
 	per_cpu(l4x_current_process, smp_processor_id()) = next;
@@ -443,8 +440,9 @@ static void l4x_hybrid_return(l4_threadid_t src_id,
 		t->hybrid_pf_addr = d0;
 		t->hybrid_pf      = 1;
 	} else {
-		if (utcb->exc.err != 0x00310000
-		    && utcb->exc.err != 0x00200000)
+		if (utcb->exc.err != 0x00310000 // after L4 syscall
+		    //&& utcb->exc.err != 0x00200000
+		    && utcb->exc.err != 0x00500000) // L4 syscall exr
 			goto out_fail;
 
 		t->hybrid_sc_in_prog = 0;
@@ -526,7 +524,6 @@ void l4x_idle(void)
 	}
 	l4lx_thread_pager_change(idler_thread[cpu], l4_myself());
 	idler_up[cpu] = 1;
-	l4_kprintf("IDLER%d IS UP\n", cpu);
 
 	tick_nohz_stop_sched_tick();
 

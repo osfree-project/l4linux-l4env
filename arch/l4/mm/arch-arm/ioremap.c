@@ -47,7 +47,7 @@ __arm_ioremap(unsigned long phys_addr, size_t size, unsigned int flags)
 {
 	return __l4x_ioremap(phys_addr, size, flags);
 }
-EXPORT_SYMBOL(__ioremap);
+EXPORT_SYMBOL(__arm_ioremap);
 
 void __iounmap(volatile void __iomem *addr)
 {
