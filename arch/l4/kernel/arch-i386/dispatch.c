@@ -119,7 +119,6 @@ static DEFINE_PER_CPU(int, l4x_fpu_enabled);
 
 void l4x_fpu_set(int on_off)
 {
-	fiasco_tbuf_log_3val("fpuset", on_off, smp_processor_id(), 0);
 	per_cpu(l4x_fpu_enabled, smp_processor_id()) = on_off;
 }
 
