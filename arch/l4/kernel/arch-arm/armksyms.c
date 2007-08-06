@@ -57,7 +57,7 @@ extern void fp_enter(void);
 #define EXPORT_SYMBOL_ALIAS(sym,orig)		\
  EXPORT_CRC_ALIAS(sym)				\
  static const struct kernel_symbol __ksymtab_##sym	\
-  __attribute_used__ __attribute__((section("__ksymtab"))) =	\
+  __used __attribute__((section("__ksymtab"))) =	\
     { (unsigned long)&orig, #sym };
 
 /*
@@ -76,6 +76,7 @@ EXPORT_SYMBOL(__const_udelay);
 
 	/* networking */
 EXPORT_SYMBOL(csum_partial);
+EXPORT_SYMBOL(csum_partial_copy_from_user);
 EXPORT_SYMBOL(csum_partial_copy_nocheck);
 #ifndef CONFIG_L4
 EXPORT_SYMBOL(__csum_ipv6_magic);
@@ -166,9 +167,7 @@ EXPORT_SYMBOL(__aeabi_ulcmp);
 
 	/* bitops */
 EXPORT_SYMBOL(_set_bit_le);
-#ifndef CONFIG_L4
 EXPORT_SYMBOL(_test_and_set_bit_le);
-#endif
 EXPORT_SYMBOL(_clear_bit_le);
 EXPORT_SYMBOL(_test_and_clear_bit_le);
 EXPORT_SYMBOL(_change_bit_le);
