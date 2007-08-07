@@ -1362,6 +1362,13 @@ int main(int argc, char **argv)
 	if ((l4env_infopage = l4env_get_infopage()) == NULL) {
 		LOG_printf("Couldn't get L4Env info page!\n");
 		enter_kdebug("Stop!");
+		return 1;
+	}
+
+	if (l4env_infopage->magic != L4ENV_INFOPAGE_MAGIC) {
+		LOG_printf("L4Env infopage invalid!\n");
+		enter_kdebug("Stop!");
+		return 1;
 	}
 
 #ifdef CONFIG_SMP
