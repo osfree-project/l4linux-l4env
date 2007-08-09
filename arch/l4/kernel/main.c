@@ -72,6 +72,22 @@
 #include <l4/vmm/vmm.h>
 #endif
 
+// -- Configuration check
+
+#ifdef CONFIG_L4_FB_DRIVER
+ #if defined(CONFIG_SERIO_I8042) || defined(CONFIG_SERIO_LIBPS2) \
+     || defined(CONFIG_VGA_CONSOLE)
+  #warning WARNING: L4FB enabled and also CONFIG_SERIO_I8042 or CONFIG_SERIO_LIBPS2 or CONFIG_VGA_CONSOLE
+  #warning WARNING: This is usually not wanted.
+ #endif
+
+ #ifndef CONFIG_INPUT_EVDEV
+  #warning WARNING: L4FB enabled but not CONFIG_INPUT_EVDEV
+ #endif
+#endif
+
+// --
+
 l4_utcb_t *l4_utcb_l4lx_server[NR_CPUS];
 
 #ifdef ARCH_x86
@@ -1958,7 +1974,7 @@ static int l4x_default(l4_threadid_t *src_id, l4_umword_t *dw0,
 	if (unlikely(!l4_task_equal(*src_id, linux_server_thread_id))) {
 		LOG_printf("Invalid source for request: "l4util_idfmt"\n",
 		           l4util_idstr(*src_id));
-		return 1; // no-reply
+		return 1; // no reply
 	}
 
 	if (l4_msgtag_is_exception(*tag)) {
@@ -1966,6 +1982,15 @@ static int l4x_default(l4_threadid_t *src_id, l4_umword_t *dw0,
 
 		if (l4x_debug_show_exceptions)
 			l4x_print_exception(*src_id);
+
+		if (l4_utcb_exc_is_pf(l4_utcb_get())) {
+			/* Forward PF to our pager */
+			l4x_forward_pf(l4_utcb_exc_pfa(l4_utcb_get()),
+			               l4_utcb_exc_pc(l4_utcb_get()));
+			*dw0 = *dw1 = 0;
+			return 0; // reply
+		}
+
 
 		for (i = 0; i < l4x_exception_funcs; i++)
 			if (!l4x_exception_func_list[i].f())
@@ -1976,33 +2001,25 @@ static int l4x_default(l4_threadid_t *src_id, l4_umword_t *dw0,
 		*tag = l4_msgtag(0, L4_UTCB_EXCEPTION_REGS_SIZE, 0, 0);
 		*dw0 = *dw1 = 0;
 		return 0; // reply
-	}
 
-	if (l4x_debug_show_exceptions)
-		LOG_printf("PF: " l4util_idfmt ": pfaddr = " l4_addr_fmt
-		           " pc = " l4_addr_fmt " (%s%s)\n",
-		           l4util_idstr(*src_id), *dw0, *dw1,
-		           *dw0 & 2 ? "rw" : "ro", *dw0 & 1 ? ", T" : "");
+	} else if (l4_msgtag_is_page_fault(*tag)
+	           || l4_msgtag_is_io_page_fault(*tag)) {
+		if (l4x_debug_show_exceptions)
+			LOG_printf("PF: " l4util_idfmt ": pfaddr = "
+			           l4_addr_fmt
+				   " pc = " l4_addr_fmt " (%s%s)\n",
+				   l4util_idstr(*src_id), *dw0, *dw1,
+				   *dw0 & 2 ? "rw" : "ro",
+			           *dw0 & 1 ? ", T" : "");
 
-#ifdef ARCH_x86
-	/* Make an exception out of a I/O page fault */
-	if (l4_is_io_page_fault(*dw0)) {
+		/* Make exception out of PF */
 		*dw0 = -1;
 		return 0; // reply
 	}
-#endif
 
-	/* For a 0 pointer deref, come back with an exception */
-	if ((*dw0 & ~3) == 0)
-		*dw0 = -1;
-	else {
-		/* Forward page fault to our pager */
-		l4x_forward_pf(*dw0, *dw1);
-		*dw0 = 0;
-	}
+	l4x_print_exception(*src_id);
 
-	*dw1 = 0;
-	return 0; // reply
+	return 1; // no reply
 }
 
 enum {
@@ -2049,15 +2066,11 @@ void __attribute__((noreturn)) l4x_exit_l4linux(void)
 {
 	l4_msgdope_t result;
 
-	LOG_printf("%s %d\n", __func__, __LINE__);
 	__cxa_finalize(0);
 
-	LOG_printf("%s %d\n", __func__, __LINE__);
 	l4_ipc_send(l4x_start_thread_id, L4_IPC_SHORT_MSG,
 	             L4X_SERVER_EXIT, 0, L4_IPC_NEVER, &result);
-	LOG_printf("%s %d\n", __func__, __LINE__);
 	l4_sleep_forever();
-	LOG_printf("%s %d\n", __func__, __LINE__);
 }
 
 int l4x_map_iomemory_from_sigma0(l4_addr_t phys, l4_addr_t virt, l4_size_t size)

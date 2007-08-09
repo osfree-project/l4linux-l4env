@@ -617,8 +617,13 @@ static int l4fb_con_init(struct fb_var_screeninfo *var,
 		return -ENODEV;
 	}
 
-	LOG_printf("l4fbcon: %dx%d %dbypp, size: %d\n",
-	           var->xres, var->yres, bytes_per_pixel, fix->smem_len);
+	LOG_printf("l4fb:con: %dx%d@%d %dbypp, size: %d\n",
+	           var->xres, var->yres, var->bits_per_pixel,
+	           bytes_per_pixel, fix->smem_len);
+	LOG_printf("l4fb:con %d:%d:%d %d:%d:%d linelen=%d visual=%d\n",
+	           var->red.length, var->green.length, var->blue.length,
+	           var->red.offset, var->green.offset, var->blue.offset,
+	           fix->line_length, fix->visual);
 
 	/* Get memory for framebuffer */
 	if ((res = l4dm_mem_open(L4DM_DEFAULT_DSM, fix->smem_len,
@@ -818,7 +823,7 @@ static int __init l4fb_probe(struct platform_device *dev)
 	       l4fb_defined.xres, l4fb_defined.yres, l4fb_defined.bits_per_pixel, l4fb_fix.line_length, screen_info.pages);
 
 	l4fb_defined.xres_virtual = l4fb_defined.xres;
-	l4fb_defined.yres_virtual = l4fb_fix.smem_len / l4fb_fix.line_length;
+	l4fb_defined.yres_virtual = l4fb_defined.yres;
 
 	/* some dummy values for timing to make fbset happy */
 	l4fb_defined.pixclock     = 10000000 / l4fb_defined.xres * 1000 / l4fb_defined.yres;

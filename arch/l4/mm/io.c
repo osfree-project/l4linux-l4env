@@ -2,6 +2,12 @@
 #error Don't compile this file directly.
 #endif
 
+#include <asm/generic/io.h>
+
+#ifdef CONFIG_L4_USE_L4VMM
+#include <l4/vmm/vmm-compat.h>
+#endif
+
 #define MAX_IOREMAP_ENTRIES 20
 struct ioremap_table {
 	unsigned long real_map_addr;

@@ -19,8 +19,6 @@
  */
 #define VM_ARM_SECTION_MAPPING	0x80000000
 
-#include <asm/generic/io.h>
-
 #define __ARCH_IOREMAP_C_INCLUDED__
 #include "../io.c"
 

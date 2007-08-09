@@ -368,6 +368,16 @@ config L4_USE_L4VMM
 	  Note: Don't use loader's allow_bios flag when enabling this
 	        option.
 
+config L4_USE_L4VMM_DBG
+	bool "Use L4VMM with debugging support"
+	default n
+	depends on L4_USE_L4VMM
+	help
+	  Use a debug build of L4VMM to ease debugging. This version is
+	  bigger and slower than a normal version.
+
+	  If unsure, say N.
+
 config L4_ARM_PLATFORM_ISG
 	bool "Enable ISG"
 	default n
