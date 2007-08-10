@@ -82,7 +82,10 @@
  #endif
 
  #ifndef CONFIG_INPUT_EVDEV
-  #warning WARNING: L4FB enabled but not CONFIG_INPUT_EVDEV
+  #warning WARNING: L4FB enabled but not CONFIG_INPUT_EVDEV, you probably want to enable this option.
+ #endif
+ #ifndef CONFIG_INPUT_MOUSEDEV
+  #warning WARNING: L4FB enabled but not CONFIG_INPUT_MOUSEDEV, you probably want to enable this option.
  #endif
 #endif
 
@@ -1616,8 +1619,23 @@ static void l4x_setup_stack_for_traps(l4_utcb_t *utcb, struct pt_regs *regs,
 	utcb->exc.eip = (unsigned long)trap_func;
 }
 
+static int l4x_handle_hlt_for_bugs_test(l4_utcb_t *u)
+{
+	void *pc = (void *)l4_utcb_exc_pc(u);
+
+	if (*(unsigned int *)pc == 0xf4f4f4f4) {
+		// check_bugs does 4 times hlt
+		LOG_printf("Jumping over 4x 'hlt' at 0x%lx\n",
+		           (unsigned long)pc);
+		u->exc.eip += 4;
+		return 0; // handled
+	}
+
+	return 1; // not for us
+}
+
 #ifdef CONFIG_KPROBES
-static int l4x_handle_kprobes(void)
+static int l4x_handle_kprobes(l4_utcb_t *u)
 {
 	extern fastcall void do_int3(struct pt_regs *regs, long err);
 	struct pt_regs regs;
@@ -1626,46 +1644,38 @@ static int l4x_handle_kprobes(void)
 	//if (kprobe_running())
 	//	return 1; /* Not handled */
 
-	if (l4_utcb_exc_pc(l4_utcb_get()) < PAGE_SIZE)
+	if (l4_utcb_exc_pc(u) < PAGE_SIZE)
 		return 1; /* Can not handle */
 
 	/* check for kprobes break instruction */
-	if (*(unsigned char *)l4_utcb_exc_pc(l4_utcb_get()) != BREAKPOINT_INSTRUCTION)
+	if (*(unsigned char *)l4_utcb_exc_pc(u) != BREAKPOINT_INSTRUCTION)
 		return 1; /* Not handled */
 
-	utcb_to_ptregs(l4_utcb_get(), &regs);
+	utcb_to_ptregs(u, &regs);
 	l4x_set_kernel_mode(&regs);
 
 	/* Set after breakpoint instruction as for HLT pc is on the
 	 * instruction and for INT3 after the instruction */
 	regs.eip++;
 
-	l4x_setup_stack_for_traps(l4_utcb_get(), &regs, do_int3);
+	l4x_setup_stack_for_traps(u, &regs, do_int3);
 	return 0;
-}
-#else
-static inline int l4x_handle_kprobes(void)
-{
-	return 1; /* Not handled */
 }
 #endif
 
-static int l4x_handle_int1(void)
+static int l4x_handle_int1(l4_utcb_t *u)
 {
 	struct pt_regs regs;
 	extern fastcall void do_debug(struct pt_regs *regs, long err);
 
-	if (l4_utcb_get()->exc.trapno != 1)
-		return 1; /* Not handled */
-
-	utcb_to_ptregs(l4_utcb_get(), &regs);
-	l4x_setup_stack_for_traps(l4_utcb_get(), &regs, do_debug);
+	utcb_to_ptregs(u, &regs);
+	l4x_setup_stack_for_traps(u, &regs, do_debug);
 	return 0;
 }
 
-static int l4x_handle_clisti(void)
+static int l4x_handle_clisti(l4_utcb_t *u)
 {
-	unsigned char opcode = *(unsigned char *)l4_utcb_exc_pc(l4_utcb_get());
+	unsigned char opcode = *(unsigned char *)l4_utcb_exc_pc(u);
 	extern void exit(int);
 
 	/* check for cli or sti instruction */
@@ -1675,7 +1685,7 @@ static int l4x_handle_clisti(void)
 	/* If we trap those instructions it's most likely a configuration
 	 * error and quite early in the boot-up phase, so just quit. */
 	LOG_printf("Aborting L4Linux due to unexpected CLI/STI instructions"
-	           " at %lx.\n", l4_utcb_exc_pc(l4_utcb_get()));
+	           " at %lx.\n", l4_utcb_exc_pc(u));
 	enter_kdebug("abort");
 	exit(0);
 
@@ -1699,9 +1709,9 @@ asm(
 "	call l4x_do_intra_iret\n\t"		/* return */
 );
 
-static int l4x_handle_lxsyscall(void)
+static int l4x_handle_lxsyscall(l4_utcb_t *u)
 {
-	void *pc = (void *)l4_utcb_exc_pc(l4_utcb_get());
+	void *pc = (void *)l4_utcb_exc_pc(u);
 	extern char in_kernel_int80_helper[];
 	unsigned long syscall;
 	struct pt_regs *regsp;
@@ -1712,51 +1722,51 @@ static int l4x_handle_lxsyscall(void)
 	if (pc < (void *)_stext || pc > (void *)_etext)
 		return 1; /* Not for us */
 
-	if (l4_utcb_get()->exc.err != 0x402)
+	if (u->exc.err != 0x402)
 		return 1; /* No int80 error code */
 
 	if (*(unsigned short *)pc != 0x80cd)
 		return 1; /* No int80 instructions */
 
-	syscall = l4_utcb_get()->exc.eax;
+	syscall = u->exc.eax;
 
 	if (!is_lx_syscall(syscall))
 		return 1; /* Not a valid system call number */
 
-	ti = (struct thread_info *)(l4_utcb_get()->exc.esp & ~(THREAD_SIZE - 1));
+	ti = (struct thread_info *)(u->exc.esp & ~(THREAD_SIZE - 1));
 	regsp = &ti->task->thread.regs;
 
-	utcb_to_ptregs(l4_utcb_get(), regsp);
+	utcb_to_ptregs(u, regsp);
 	l4x_set_kernel_mode(regsp);
 
 	/* Set pc after int80 */
 	regsp->eip += 2;
 
-	l4_utcb_get()->exc.esp -= l4x_intra_regs_size;
-	memcpy((void *)l4_utcb_get()->exc.esp, regsp, l4x_intra_regs_size);
+	u->exc.esp -= l4x_intra_regs_size;
+	memcpy((void *)u->exc.esp, regsp, l4x_intra_regs_size);
 
 	/* eax has the function, see in_kernel_int80_helper */
 	if (syscall == __NR_execve)
-		l4_utcb_get()->exc.eax = (unsigned long)l4_kernelinternal_execve;
+		u->exc.eax = (unsigned long)l4_kernelinternal_execve;
 	else
-		l4_utcb_get()->exc.eax = (unsigned long)sys_call_table[syscall];
+		u->exc.eax = (unsigned long)sys_call_table[syscall];
 
 	/* Set PC to helper */
-	l4_utcb_get()->exc.eip = (unsigned long)in_kernel_int80_helper;
+	u->exc.eip = (unsigned long)in_kernel_int80_helper;
 
 	return 0;
 }
 
-static int l4x_handle_msr(void)
+static int l4x_handle_msr(l4_utcb_t *u)
 {
-	void *pc = (void *)l4_utcb_exc_pc(l4_utcb_get());
-	unsigned long reg = l4_utcb_get()->exc.ecx;
+	void *pc = (void *)l4_utcb_exc_pc(u);
+	unsigned long reg = u->exc.ecx;
 
 	/* wrmsr */
 	if (*(unsigned short *)pc == 0x300f) {
 		LOG_printf("WARNING: Unknown wrmsr: %08lx at %p\n", reg, pc);
 
-		l4_utcb_get()->exc.eip += 2;
+		u->exc.eip += 2;
 		return 0; // handled
 	}
 
@@ -1764,38 +1774,16 @@ static int l4x_handle_msr(void)
 	if (*(unsigned short *)pc == 0x320f) {
 
 		if (reg == MSR_IA32_MISC_ENABLE) {
-			l4_utcb_get()->exc.eax = l4_utcb_get()->exc.edx = 0;
+			u->exc.eax = u->exc.edx = 0;
 		} else
 			LOG_printf("WARNING: Unknown rdmsr: %08lx at %p\n", reg, pc);
 
-		l4_utcb_get()->exc.eip += 2;
+		u->exc.eip += 2;
 		return 0; // handled
 	}
 
 	return 1; // not for us
 }
-
-static int l4x_handle_hlt_for_bugs_test(void)
-{
-	void *pc = (void *)l4_utcb_exc_pc(l4_utcb_get());
-
-	if (*(unsigned int *)pc == 0xf4f4f4f4) {
-		// check_bugs does 4 times hlt
-		LOG_printf("Jumping over 4x 'hlt' at 0x%lx\n",
-		           (unsigned long)pc);
-		l4_utcb_get()->exc.eip += 4;
-		return 0; // handled
-	}
-
-	return 1; // not for us
-}
-
-#ifdef CONFIG_L4_USE_L4VMM
-static int l4x_l4vmm_handle_exception(void)
-{
-	return l4vmm_handle_exception(l4_utcb_get());
-}
-#endif
 
 static inline void l4x_print_exception(l4_threadid_t t)
 {
@@ -1872,9 +1860,8 @@ static void l4x_arm_set_reg(l4_utcb_t *u, int num, unsigned long val)
 	}
 }
 
-static int l4x_arm_instruction_emu(void)
+static int l4x_arm_instruction_emu(l4_utcb_t *u)
 {
-	l4_utcb_t *u = l4_utcb_get();
 	unsigned long op = *(unsigned long *)u->exc.pc;
 
 	if ((op & 0xff000000) == 0xee000000) {
@@ -1935,22 +1922,25 @@ static inline void l4x_print_exception(l4_threadid_t t)
 #endif /* ARCH_arm */
 
 struct l4x_exception_func_struct {
-	int (*f)(void);
+	int           (*f)(l4_utcb_t *u);
+	unsigned long trap_mask;
 };
 static struct l4x_exception_func_struct l4x_exception_func_list[] = {
-#ifdef ARCH_x86
-	{ .f = l4x_handle_hlt_for_bugs_test }, // before kprobes!
-	{ .f = l4x_handle_kprobes },
-	{ .f = l4x_handle_int1 },
-	{ .f = l4x_handle_clisti },
-	{ .f = l4x_handle_lxsyscall },
-	{ .f = l4x_handle_msr },
-#endif
 #ifdef CONFIG_L4_USE_L4VMM
-	{ .f = l4x_l4vmm_handle_exception },
+	{ .trap_mask = ~0UL,   .f = l4vmm_handle_exception },
+#endif
+#ifdef ARCH_x86
+	{ .trap_mask = 0x2000, .f = l4x_handle_hlt_for_bugs_test }, // before kprobes!
+#ifdef CONFIG_KPROBES
+	{ .trap_mask = 0x2000, .f = l4x_handle_kprobes },
+#endif
+	{ .trap_mask = 0x2000, .f = l4x_handle_lxsyscall },
+	{ .trap_mask = 0x0002, .f = l4x_handle_int1 },
+	{ .trap_mask = 0x2000, .f = l4x_handle_msr },
+	{ .trap_mask = 0x2000, .f = l4x_handle_clisti },
 #endif
 #ifdef ARCH_arm
-	{ .f = l4x_arm_instruction_emu },
+	{ .trap_mask = ~0UL,   .f = l4x_arm_instruction_emu },
 #endif
 };
 static const int l4x_exception_funcs
@@ -1978,25 +1968,30 @@ static int l4x_default(l4_threadid_t *src_id, l4_umword_t *dw0,
 	}
 
 	if (l4_msgtag_is_exception(*tag)) {
+		l4_utcb_t *u = l4_utcb_get();
 		int i;
 
 		if (l4x_debug_show_exceptions)
 			l4x_print_exception(*src_id);
 
-		if (l4_utcb_exc_is_pf(l4_utcb_get())) {
-			/* Forward PF to our pager */
-			l4x_forward_pf(l4_utcb_exc_pfa(l4_utcb_get()),
-			               l4_utcb_exc_pc(l4_utcb_get()));
-			*dw0 = *dw1 = 0;
-			return 0; // reply
-		}
-
-
+		// check handlers for this exception
 		for (i = 0; i < l4x_exception_funcs; i++)
-			if (!l4x_exception_func_list[i].f())
+			if (((1 << l4_utcb_exc_typeval(u)) & l4x_exception_func_list[i].trap_mask)
+			    && !l4x_exception_func_list[i].f(u))
 				break;
-		if (i == l4x_exception_funcs)
+
+		// no handler wanted to handle this exception
+		if (i == l4x_exception_funcs) {
+			if (l4_utcb_exc_is_pf(u)) {
+				/* Forward PF to our pager */
+				l4x_forward_pf(l4_utcb_exc_pfa(u),
+					       l4_utcb_exc_pc(u));
+				*dw0 = *dw1 = 0;
+				return 0; // reply
+			}
+
 			l4x_setup_die_utcb();
+		}
 
 		*tag = l4_msgtag(0, L4_UTCB_EXCEPTION_REGS_SIZE, 0, 0);
 		*dw0 = *dw1 = 0;
