@@ -1,9 +1,5 @@
 /*
- * Multi/X.2-like IRQ implementation.
- *  (Hey, but the v2 interface s*cks wrt to interrupt attachment,
- *   so bear with me...)
- *
- * We only use one single IRQ thread.
+ * Multi IRQ implementation. We only use one single IRQ thread.
  */
 
 #include <asm/bitops.h>
@@ -11,7 +7,6 @@
 #include <linux/init.h>
 #include <linux/interrupt.h>
 
-#include <l4/rmgr/librmgr.h>
 #include <l4/sys/ipc.h>
 #include <l4/sigma0/kip.h>
 #include <l4/log/l4log.h>
@@ -21,11 +16,8 @@
 
 #include <asm/l4lxapi/irq.h>
 #include <asm/l4lxapi/thread.h>
-#include <asm/l4lxapi/misc.h>
 
-#include <asm/generic/sched.h>
 #include <asm/generic/setup.h>
-#include <asm/generic/task.h>
 #include <asm/generic/do_irq.h>
 
 #define d_printk(format, args...)  printk(format , ## args)
@@ -233,90 +225,11 @@ void l4lx_irq_init(void)
 
 unsigned int l4lx_irq_dev_startup_hw(unsigned int irq)
 {
-	l4_umword_t ret;
-
-	/* register to the IRQ - get the IRQ from RMGR */
-	if ((ret = rmgr_get_irq(irq)) != 0) {
-		/* the supervisor thread exists and sent a negative response */
-		LOG_printf("irq_thread: Roottask denied IRQ %u: Code 0x%lx\n", irq, ret);
-		return 0;
-	}
-
-	send_msg_to_irq_thread(irq, 0, IRQ_SND_MSG_ATTACH);
-	return 1;
-}
-
-unsigned int l4lx_irq_dev_startup_virt(unsigned int irq)
-{
 	send_msg_to_irq_thread(irq, 0, IRQ_SND_MSG_ATTACH);
 	return 1;
 }
 
 void l4lx_irq_dev_shutdown_hw(unsigned int irq)
 {
-	dd_printk("%s: %u\n", __func__, irq);
 	send_msg_to_irq_thread(irq, 0, IRQ_SND_MSG_DETACH);
-
-	if (rmgr_free_irq(irq))
-		LOG_printf("irq_thread: Cannot free IRQ %02d at roottask.\n", irq);
-
-	l4lx_irq_dev_disable_hw(irq);
 }
-
-void l4lx_irq_dev_shutdown_virt(unsigned int irq)
-{
-	dd_printk("%s: %u\n", __func__, irq);
-	send_msg_to_irq_thread(irq, 0, IRQ_SND_MSG_DETACH);
-	l4lx_irq_dev_disable_virt(irq);
-}
-
-static void do_l4lx_irq_dev_enable(unsigned int irq, int mask)
-{
-	dd_printk("%s: %u\n", __func__, irq);
-}
-
-static void do_l4lx_irq_dev_disable(unsigned int irq, int mask)
-{
-	dd_printk("%s: %u\n", __func__, irq);
-}
-
-void l4lx_irq_dev_ack_hw(unsigned int irq)
-{
-	l4lx_irq_dbg_spin_wheel(irq);
-}
-
-void l4lx_irq_dev_mask_hw(unsigned int irq)
-{}
-
-void l4lx_irq_dev_end_hw(unsigned int irq)
-{}
-
-
-void l4lx_irq_dev_enable_hw(unsigned int irq)
-{
-	do_l4lx_irq_dev_enable(irq, 1);
-}
-
-void l4lx_irq_dev_enable_virt(unsigned int irq)
-{
-	do_l4lx_irq_dev_enable(irq, 0);
-}
-
-void l4lx_irq_dev_disable_hw(unsigned int irq)
-{
-	do_l4lx_irq_dev_disable(irq, 1);
-}
-
-void l4lx_irq_dev_disable_virt(unsigned int irq)
-{
-	do_l4lx_irq_dev_disable(irq, 0);
-}
-
-void l4lx_irq_dev_ack_virt(unsigned int irq)
-{}
-
-void l4lx_irq_dev_mask_virt(unsigned int irq)
-{}
-
-void l4lx_irq_dev_end_virt(unsigned int irq)
-{}

@@ -36,68 +36,46 @@ static void __init fixup_l4(struct machine_desc *desc, struct tag *tags,
 }
 
 
-static void l4_irq_timer_ackmaskun(unsigned int irq)
+static void l4x_irq_ackmaskun_empty(unsigned int irq)
 {
 }
 
-static int l4_irq_timer_type(unsigned int irq, unsigned int type)
-{
-	return 0;
-}
-
-static int l4_irq_timer_wake(unsigned int irq, unsigned int type)
+static int l4x_irq_type_empty(unsigned int irq, unsigned int type)
 {
 	return 0;
 }
 
-static void l4_irq_virt_unmask(unsigned int irq)
+static int l4x_irq_wake_empty(unsigned int irq, unsigned int type)
 {
-	l4lx_irq_dev_startup_virt(irq);
+	return 0;
 }
 
-static void l4_irq_hw_unmask(unsigned int irq)
+static void l4x_irq_startup(unsigned int irq)
 {
 	l4lx_irq_dev_startup_hw(irq);
 }
 
-
-static struct irq_chip l4_irq_virt_chip = {
-	.name           = "L4virt",
-	.ack            = l4_irq_timer_ackmaskun,
-	.mask           = l4lx_irq_dev_shutdown_virt,
-	.unmask         = l4_irq_virt_unmask,
-	.set_type       = l4_irq_timer_type,
-	.set_wake       = l4_irq_timer_wake,
-};
-
-static struct irq_chip l4_irq_dev_chip = {
-	.name           = "L4dev",
-	.ack            = l4_irq_timer_ackmaskun,
+static struct irq_chip l4_irq_chip = {
+	.name           = "L4",
+	.ack            = l4x_irq_ackmaskun_empty,
 	.mask           = l4lx_irq_dev_shutdown_hw,
-	.unmask         = l4_irq_hw_unmask,
-	.set_type       = l4_irq_timer_type,
-	.set_wake       = l4_irq_timer_wake,
+	.unmask         = l4x_irq_startup,
+	.set_type       = l4x_irq_type_empty,
+	.set_wake       = l4x_irq_wake_empty,
 };
 
 static struct irq_chip l4_irq_timer_chip = {
 	.name           = "L4timer",
-	.ack            = l4_irq_timer_ackmaskun,
-	.mask           = l4_irq_timer_ackmaskun,
-	.unmask         = l4_irq_timer_ackmaskun,
-	.set_type       = l4_irq_timer_type,
-	.set_wake       = l4_irq_timer_wake,
+	.ack            = l4x_irq_ackmaskun_empty,
+	.mask           = l4x_irq_ackmaskun_empty,
+	.unmask         = l4x_irq_ackmaskun_empty,
+	.set_type       = l4x_irq_type_empty,
+	.set_wake       = l4x_irq_wake_empty,
 };
 
-void __init l4x_setup_virt_irq(unsigned int irq)
+void __init l4x_setup_irq(unsigned int irq)
 {
-	set_irq_chip   (irq, &l4_irq_virt_chip);
-	set_irq_handler(irq, handle_simple_irq);
-	set_irq_flags  (irq, IRQF_VALID);
-}
-
-void __init l4x_setup_dev_irq(unsigned int irq)
-{
-	set_irq_chip   (irq, &l4_irq_dev_chip);
+	set_irq_chip   (irq, &l4_irq_chip);
 	set_irq_handler(irq, handle_simple_irq);
 	set_irq_flags  (irq, IRQF_VALID);
 }
@@ -109,7 +87,7 @@ static void __init init_irq_l4(void)
 	l4lx_irq_init();
 
 	for (i = 1; i < NR_IRQS; i++)
-		l4x_setup_virt_irq(i);
+		l4x_setup_irq(i);
 
 #ifdef CONFIG_L4_ARM_PLATFORM_ISG
 	l4x_arm_isg_irq_init();
