@@ -7,6 +7,9 @@
  *
  */
 
+#include <linux/kernel.h>
+#include <linux/spinlock.h>
+
 #include <asm/l4lxapi/task.h>
 #include <asm/l4lxapi/generic/task_gen.h>
 #include <asm/l4lxapi/thread.h>
@@ -21,8 +24,6 @@
 #include <l4/sys/syscalls.h>
 
 #include <asm/generic/kthreads.h>
-#include <linux/kernel.h>
-#include <linux/spinlock.h>
 
 /* We need to store the state of threads within address spaces. Coming up
  * with a sane data structure would be good... */
@@ -212,13 +213,15 @@ int l4lx_task_create_pager(l4_threadid_t dest, l4_threadid_t pager)
 	} else {
 		/* Start new thread within existing address space */
 		l4_umword_t o;
-		l4_threadid_t preempter = L4_INVALID_ID;
+		l4_threadid_t invid = L4_INVALID_ID;
 
-		l4_inter_task_ex_regs(dest, 0x54, 0x78,
-		                      &preempter, &pager,
-				      &o, &o, &o,
-		                      L4_THREAD_EX_REGS_ALIEN
-		                       | L4_THREAD_EX_REGS_RAISE_EXCEPTION);
+		l4_thread_ex_regs_sc
+		  (l4_thread_ex_regs_reg0(dest.id.lthread,
+		                          dest.id.task,
+		                          L4_THREAD_EX_REGS_ALIEN
+		                          | L4_THREAD_EX_REGS_RAISE_EXCEPTION),
+		   0x54, 0x78, &invid, &pager, &o, &o, &o);
+
 		l4lx_task_prio_set(dest, CONFIG_L4_PRIO_USER_PROCESS);
 	}
 
