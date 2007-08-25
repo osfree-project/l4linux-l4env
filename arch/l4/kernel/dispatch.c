@@ -525,7 +525,6 @@ static inline void l4x_dispatch_page_fault(struct task_struct *p,
 		schedule();
 
 	*msg_desc = L4_IPC_SHORT_FPAGE;
-	per_cpu(utcb_snd_size, smp_processor_id()) = L4_UTCB_EXCEPTION_REGS_SIZE;
 }
 
 /*
@@ -570,19 +569,18 @@ static inline void l4x_spawn_cpu_thread(int cpu_change,
 
 	if (cpu_change)
 		pseudo_parent = t->user_thread_ids[t->start_cpu];
+	else if (!l4_is_nil_id(t->cloner))
+		pseudo_parent = t->cloner;
 
 	if (l4lx_task_get_new_task(pseudo_parent,
 	                           &t->user_thread_id)) {
-		printk("l4x_thread_create: No task no left for user\n"); 
+		printk("l4x_thread_create: No task no left for user\n");
 		return;
 	}
-
 
 	t->user_thread_ids[cpu] = t->user_thread_id;
 	if (!cpu_change)
 		t->start_cpu = cpu;
-
-
 
 	if (!l4lx_task_create_pager(t->user_thread_id, me)) {
 		printk("%s: Failed to create user task\n", __func__);
@@ -590,7 +588,6 @@ static inline void l4x_spawn_cpu_thread(int cpu_change,
 	}
 
 	// now wait that thread comes in
-
 	error = l4_ipc_receive(t->user_thread_id,
 	                       L4_IPC_SHORT_MSG, &data0, &data0,
 	                       L4_IPC_SEND_TIMEOUT_0, &dummydope);
@@ -614,10 +611,8 @@ static inline void l4x_spawn_cpu_thread(int cpu_change,
 
 		t->started = 1;
 
-		if (t->task_start_fork) {
+		if (l4_is_nil_id(t->cloner)) // this is a fork
 			l4x_arch_do_syscall_trace(p, t);
-			t->task_start_fork = 0;
-		}
 
 		TBUF_LOG_START(fiasco_tbuf_log_3val("task start", TBUF_TID(t->user_thread_id), regs_pc(t), regs_sp(t)));
 
@@ -629,8 +624,6 @@ static inline void l4x_spawn_cpu_thread(int cpu_change,
 
 		l4x_arch_task_start_setup(p);
 	}
-
-	per_cpu(utcb_snd_size, smp_processor_id()) = L4_UTCB_EXCEPTION_REGS_SIZE;
 
 	l4x_arch_task_setup(t);
 }
@@ -675,7 +668,7 @@ restart_loop:
 
 reply_IPC:
 		thread_struct_to_utcb(t, l4_utcb_get_l4lx(smp_processor_id()),
-		                      per_cpu(utcb_snd_size, smp_processor_id()));
+		                      L4_UTCB_EXCEPTION_REGS_SIZE);
 
 		per_cpu(l4x_current_proc_run, smp_processor_id()) = current_thread_info();
 

@@ -353,12 +353,14 @@ static void l4x_forward_pf(l4_umword_t addr, l4_umword_t pc)
 	int error;
 	l4_umword_t dw0, dw1;
 	l4_msgdope_t result;
+	l4_msgtag_t tag;
 
 	do {
-		error = l4_ipc_call(l4x_start_thread_pager_id,
-		                    L4_IPC_SHORT_MSG, addr, pc,
-				    L4_IPC_MAPMSG(addr, L4_LOG2_PAGESIZE),
-				    &dw0, &dw1, L4_IPC_NEVER, &result);
+		tag = l4_msgtag(L4_MSGTAG_PAGE_FAULT, 0, 0, 0);
+		error = l4_ipc_call_tag(l4x_start_thread_pager_id,
+		                        L4_IPC_SHORT_MSG, addr, pc, tag,
+				        L4_IPC_MAPMSG(addr, L4_LOG2_PAGESIZE),
+				        &dw0, &dw1, L4_IPC_NEVER, &result, &tag);
 	} while (error == L4_IPC_SECANCELED || error == L4_IPC_SEABORTED);
 
 	if (unlikely(error))
@@ -1888,10 +1890,12 @@ static int l4x_arm_instruction_emu(l4_utcb_t *u)
 		}
 	}
 
+#if 0
 	LOG_printf("Exception state:\n");
 	LOG_printf("PC = %08lx SP = %08lx r0 = %08lx r1 = %08lx\n",
 	           u->exc.pc, u->exc.sp, u->exc.r[0], u->exc.r[1]);
 	LOG_printf("Opcode: %08lx\n", op);
+#endif
 
 	return 1; // not for us
 }

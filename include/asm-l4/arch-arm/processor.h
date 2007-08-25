@@ -47,11 +47,11 @@ struct thread_struct {
 
 	l4_threadid_t user_thread_id;
 	l4_threadid_t user_thread_ids[8]; //[NR_CPUS];
+	l4_threadid_t cloner;
 	unsigned int  start_cpu;
 	unsigned long threads_up;
 	unsigned int pf_signal_pending : 1;
 	unsigned int initial_state_set : 1;
-	unsigned int task_start_fork : 1;
 	unsigned int started : 1;
 	unsigned int is_hybrid : 1;
 	unsigned int restart : 1;

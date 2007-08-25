@@ -570,7 +570,8 @@ static int l4fb_con_init(struct fb_var_screeninfo *var,
 
 	if (con_if_openqry_call(&con_id, 16 << 10, 0, 0,
 	                        L4THREAD_DEFAULT_PRIO,
-	                        &vc_id, CON_NOVFB, &_env)) {
+	                        &vc_id, CON_NOVFB, &_env)
+	    || DICE_HAS_EXCEPTION(&_env)) {
 		LOG_printf("Cannot open VC!\n");
 		return -ENODEV;
 	}
@@ -578,7 +579,8 @@ static int l4fb_con_init(struct fb_var_screeninfo *var,
 	if ((res = l4fb_con_input_setup(&ev_id)))
 		return res;
 
-	if (con_vc_smode_call(&vc_id, CON_INOUT, &ev_id, &_env)) {
+	if (con_vc_smode_call(&vc_id, CON_INOUT, &ev_id, &_env)
+	    || DICE_HAS_EXCEPTION(&_env)) {
 		LOG_printf("Cannot setup VC!\n");
 		return -ENODEV;
 	}
@@ -586,7 +588,8 @@ static int l4fb_con_init(struct fb_var_screeninfo *var,
 	if (con_vc_graph_gmode_call(&vc_id, &gmode, &var->xres, &var->yres,
 	                            &var->bits_per_pixel, &bytes_per_pixel,
 	                            &bytes_per_line, &accel_flags,
-	                            &fn_x, &fn_y, &_env)) {
+	                            &fn_x, &fn_y, &_env)
+	    || DICE_HAS_EXCEPTION(&_env)) {
 		LOG_printf("Cannot get graphics mode!\n");
 		return -ENODEV;
 	}
@@ -612,7 +615,8 @@ static int l4fb_con_init(struct fb_var_screeninfo *var,
 	                              &var->red.offset, &var->red.length,
 				      &var->green.offset, &var->green.length,
 				      &var->blue.offset, &var->blue.length,
-				      &_env)) {
+				      &_env)
+	    || DICE_HAS_EXCEPTION(&_env)) {
 		LOG_printf("Cannot get RGB pixel values!\n");
 		return -ENODEV;
 	}
@@ -664,7 +668,8 @@ static void l4fb_con_exit(void)
 	DICE_DECLARE_ENV(_env);
 	int res;
 
-	if (con_vc_close_call(&vc_id, &_env))
+	if (con_vc_close_call(&vc_id, &_env)
+	    || DICE_HAS_EXCEPTION(&_env))
 		printk("Can't close console!\n");
 
 	if ((res = l4rm_detach((void *)l4fb_fix.smem_start)))

@@ -387,14 +387,12 @@ static inline int l4x_port_emulation(struct pt_regs *regs)
 				case 0x3c1:
 					regs->eax = -1;
 					regs->eip++;
-					per_cpu(utcb_snd_size, smp_processor_id()) = L4_UTCB_EXCEPTION_REGS_SIZE;
 					return 1;
 			};
 		case 0xee: /* out al, dx */
 			switch (regs->edx & 0xffff) {
 				case 0x3c0:
 					regs->eip++;
-					per_cpu(utcb_snd_size, smp_processor_id()) = L4_UTCB_EXCEPTION_REGS_SIZE;
 					return 1;
 			};
 	};
@@ -439,7 +437,6 @@ static int l4x_kdebug_emulation(struct pt_regs *regs)
 		outchar('\n');
 		enter_kdebug("User program enter_kdebug");
 
-		per_cpu(utcb_snd_size, smp_processor_id()) = L4_UTCB_EXCEPTION_REGS_SIZE;
 		return 1; /* handled */
 
 	} else if (op == 0x3c) {
@@ -485,7 +482,6 @@ static int l4x_kdebug_emulation(struct pt_regs *regs)
 				return 0; /* Did not understand */
 		};
 		regs->eip += 3;
-		per_cpu(utcb_snd_size, smp_processor_id()) = L4_UTCB_EXCEPTION_REGS_SIZE;
 		return 1; /* handled */
 	}
 
@@ -550,7 +546,6 @@ static inline int l4x_dispatch_exception(struct task_struct *p,
 		LOG_printf("eax: %08lx ebx: %08lx ecx: %08lx edx: %08lx\n",
 		           regs->eax, regs->ebx, regs->ecx,
 		           regs->edx);
-		per_cpu(utcb_snd_size, smp_processor_id()) = L4_UTCB_EXCEPTION_REGS_SIZE;
 		return 0;
 	} else if (t->trap_no == 0xd) {
 		if (l4x_hybrid_begin(p, t))

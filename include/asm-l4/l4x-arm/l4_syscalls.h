@@ -4,10 +4,11 @@
 /*
  * Return syscall nr, or -1 if process is not on a syscall.
  */
-static inline int l4x_l4syscall_get_nr(l4_utcb_t *utcb)
+static inline int l4x_l4syscall_get_nr(unsigned long error_code,
+                                       unsigned long ip)
 {
 	int syscall_nr = 0;
-	unsigned long val = ~utcb->exc.pc;
+	unsigned long val = ~ip;
 
 	if (val < 0x8
 	    || val >= (l4x_fiasco_nr_of_syscalls * 4 + 8)

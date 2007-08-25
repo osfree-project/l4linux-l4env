@@ -402,8 +402,8 @@ static int l4x_thread_create(struct task_struct *p, unsigned long clone_flags,
 	int i;
 
 	/* first, allocate task id for  client task */
-	if (!inkernel) /* is this a user process? */
-		t->task_start_fork = !(clone_flags & CLONE_VM);
+	if (!inkernel && clone_flags & CLONE_VM) /* is this a user process and vm-cloned? */
+		t->cloner = current->thread.user_thread_id;
 
 	for (i = 0; i < NR_CPUS; i++)
 		p->thread.user_thread_ids[i] = L4_NIL_ID;

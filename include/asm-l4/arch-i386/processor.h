@@ -353,10 +353,10 @@ struct thread_struct {
 	unsigned long eip;
 	l4_threadid_t user_thread_id;		/* L4 Thread ID of the process */
 	l4_threadid_t user_thread_ids[NR_CPUS];
+	l4_threadid_t cloner;			/* ID of the one who did clone(CLONE_VM) */
 	unsigned int  start_cpu;
 	unsigned long threads_up;
 	unsigned int initial_state_set : 1;	/* 1 if initial state was set */
-	unsigned int task_start_fork : 1;	/* 1 if forking */
 	unsigned int started : 1;		/* set if created successfully */
 	unsigned int is_hybrid : 1;		/* set if hybrid task */
 	unsigned int restart : 1;		/* restart - for exec */
