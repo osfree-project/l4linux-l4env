@@ -440,11 +440,12 @@ static int call_iopager(l4_fpage_t iofp)
 	int error;
 	l4_msgdope_t result;
 	l4_umword_t dummy1 = 0, dummy2 = 0;
+	l4_msgtag_t tag = l4_msgtag(L4_MSGTAG_IO_PAGE_FAULT, 0, 0, 0);
 
-	error = l4_ipc_call(l4x_start_thread_pager_id, L4_IPC_SHORT_MSG,
-	                    iofp.raw, ~0xeUL,
-	                    L4_IPC_IOMAPMSG(0, L4_WHOLE_IOADDRESS_SPACE),
-	                    &dummy1, &dummy2, L4_IPC_NEVER, &result);
+	error = l4_ipc_call_tag(l4x_start_thread_pager_id, L4_IPC_SHORT_MSG,
+	                        iofp.raw, ~0xeUL, tag,
+	                        L4_IPC_IOMAPMSG(0, L4_WHOLE_IOADDRESS_SPACE),
+	                        &dummy1, &dummy2, L4_IPC_NEVER, &result, &tag);
 	if (error == 0
 	    && ((dummy1 == 1 && dummy2 == 1)|| result.md.fpage_received))
 		return 1;
