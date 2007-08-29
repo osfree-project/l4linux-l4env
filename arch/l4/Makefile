@@ -133,7 +133,7 @@ L4LX_E_L-$(CONFIG_L4_ORE_DRV)   += -lore
 L4LX_E_L-$(CONFIG_L4_IRQ_OMEGA0) += -lomega0
 L4LX_E_L-$(CONFIG_L4_PDSPBLK_DRV) += -lpers_dsp
 L4LX_E_L-$(CONFIG_L4_USE_L4VMM)	+= -ll4vmm$(if $(CONFIG_L4_USE_L4VMM_DBG),-dbg) \
-                                   -ll4vmm-c -ll4vmm-cxx
+                                   -ll4vmm-devices -ll4vmm-c -ll4vmm-cxx
 
 # Extra includes
 L4LX_E_I-$(CONFIG_L4_NEED_DSI)	+= -I$(srctree)/arch/l4/lib/support
