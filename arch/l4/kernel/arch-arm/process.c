@@ -359,6 +359,7 @@ void flush_thread(void)
 	current->thread.started = 0;
 	current->thread.threads_up = 0;
 	current->thread.user_thread_id = L4_NIL_ID;
+	current->thread.cloner = L4_NIL_ID;
 
 	memset(thread->used_cp, 0, sizeof(thread->used_cp));
 	memset(&tsk->thread.debug, 0, sizeof(struct debug_info));

@@ -1,5 +1,5 @@
 #ifndef __ARCH_IOREMAP_C_INCLUDED__
-#error Don't compile this file directly.
+#error Do not compile this file directly.
 #endif
 
 #include <asm/generic/io.h>

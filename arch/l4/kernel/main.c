@@ -1245,7 +1245,7 @@ void l4env_load_initrd(char *command_line)
 		LOG_printf("l4env_rd_path: %s\n", l4env_rd_path);
 	}
 
-	if (l4env_rd_path && *l4env_rd_path) {
+	if (*l4env_rd_path) {
 		LOG_printf("Loading: %s\n", l4env_rd_path);
 
 		if (fprov_load_initrd(l4env_rd_path,
@@ -1343,12 +1343,6 @@ int main(int argc, char **argv)
 	}
 	LOG_printf("Kernel command line (%d args): %s\n",
 	           argc - 1, boot_command_line);
-
-	if (strstr(boot_command_line, "noreplacement")) {
-		LOG_printf("Do not use the 'noreplacement' option "
-		           "or strange things may happen.\n");
-		enter_kdebug("noreplacement option found");
-	}
 
 	/* See if we find a showpfexc=1 or showghost=1 in the command line */
 	if ((p = strstr(boot_command_line, "showpfexc=")))
@@ -1469,6 +1463,7 @@ int main(int argc, char **argv)
 	l4x_ferret_init();
 #endif
 
+#ifdef CONFIG_L4_EXTERNAL_RTC
 	/* Make sure RTC is ready */
 	{
 		l4_uint32_t seconds;
@@ -1479,6 +1474,7 @@ int main(int argc, char **argv)
 		if (i == 0)
 			LOG_printf("WARNING: RTC server does not respond!\n");
 	}
+#endif
 
 #endif /* ARCH_x86 */
 

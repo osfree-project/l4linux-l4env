@@ -133,7 +133,8 @@ L4LX_E_L-$(CONFIG_L4_ORE_DRV)   += -lore
 L4LX_E_L-$(CONFIG_L4_IRQ_OMEGA0) += -lomega0
 L4LX_E_L-$(CONFIG_L4_PDSPBLK_DRV) += -lpers_dsp
 L4LX_E_L-$(CONFIG_L4_USE_L4VMM)	+= -ll4vmm$(if $(CONFIG_L4_USE_L4VMM_DBG),-dbg) \
-                                   -ll4vmm-devices -ll4vmm-c -ll4vmm-cxx
+                                   -ll4vmm-c -ll4vmm-cxx
+L4LX_E_L_O-$(CONFIG_L4_USE_L4VMM) += -ll4vmm-devices$(if $(CONFIG_L4_USE_L4VMM_DBG),-dbg).o \
 
 # Extra includes
 L4LX_E_I-$(CONFIG_L4_NEED_DSI)	+= -I$(srctree)/arch/l4/lib/support
@@ -185,7 +186,7 @@ MACH_INC_arm	:= -Iinclude/asm-l4/$(BASEARCH)-arch
 LDFLAGS_LDSO	= --dynamic-linker libld-l4.s.so \
 		   $(L4OBJ)/lib/$(L4_MK_ARCH)_$(L4_MK_CPU)/crt0.o
 
-LDFLAGS_vmlinux	+= $(LDFLAGS_LDSO) $(L4LIBS) -z now
+LDFLAGS_vmlinux	+= $(LDFLAGS_LDSO) $(L4LIBS) $(L4LX_E_L_O-y) -z now
 CPPFLAGS	+= -Iinclude/asm-l4/l4-arch -Iinclude/asm-l4/$(BASEARCH)-arch \
 		   $(MACH_INC_$(BASEARCH)) $(L4INC) $(CPPFLAGS_SYSENTER-y) \
 		   $(L4BID_CPPFLAGS_SYSCALLS-y)

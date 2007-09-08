@@ -371,6 +371,7 @@ void flush_thread(void)
 	current->thread.started = 0;
 	current->thread.threads_up = 0;
 	current->thread.user_thread_id = L4_NIL_ID;
+	current->thread.cloner = L4_NIL_ID;
 
 	/* i386 does this in start_thread but we have to do it earlier since
 	   we have to access user space in do_execve */
