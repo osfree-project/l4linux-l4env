@@ -127,6 +127,9 @@ config L4_PDSPBLK_DRV
 	  This driver implements a block device which is backed by the
 	  persistent dataspace service.
 
+comment "Enable Linux framebuffer support for framebuffer driver!"
+	depends on !FRAMEBUFFER_CONSOLE
+
 config L4_FB_DRIVER
 	bool "Framebuffer driver for l4con and DOpE (input/output)."
 	default y
