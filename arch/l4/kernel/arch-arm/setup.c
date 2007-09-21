@@ -845,7 +845,9 @@ void __init setup_arch(char **cmdline_p)
 #endif
 #endif
 
+#if defined(CONFIG_BLK_DEV_INITRD) && defined(CONFIG_L4_L4ENV)
 	l4env_load_initrd(from);
+#endif
 }
 
 

@@ -296,7 +296,8 @@ chkl4conf:
 #          this should probably be fixed
 
 DIS_OPTS := HIGHMEM4G HIGHMEM64G SMP PREEMPT PCI_GOANY PCI_GOBIOS HPET_TIMER \
-            X86_MCE X86_MCE MTRR PARAVIRT KEXEC MCA
+            X86_MCE X86_MCE MTRR PARAVIRT KEXEC MCA SOFTWARE_SUSPEND APM \
+	    CPU_FREQ HUGETLBFS HUGETLB_PAGE
 
 check_linux_config:
 	@$(foreach i,$(addprefix CONFIG_,$(DIS_OPTS)),     \
