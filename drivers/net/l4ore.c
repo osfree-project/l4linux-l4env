@@ -212,7 +212,7 @@ static int l4x_ore_open(struct net_device *netdev)
 
 	priv->irq_thread = l4lx_thread_create(l4x_ore_irq_thread,
 	                                      NULL, &netdev, sizeof(netdev),
-	                                      -1, "L4OreRcv");
+	                                      CONFIG_L4_PRIO_L4ORE, "L4OreRcv");
 	if (l4_is_invalid_id(priv->irq_thread)) {
 		printk("%s: Cannot create thread\n", netdev->name);
 		err = -EBUSY;

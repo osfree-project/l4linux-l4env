@@ -122,7 +122,7 @@ unsigned int fastcall do_IRQ(int irq, struct pt_regs *regs)
 	return 0;
 }
 
-static void __init l4x_timer_init(void)
+static void l4x_timer_init(void)
 {
 	set_irq_chip   (0, &l4_irq_timer_chip);
 	set_irq_handler(0, handle_simple_irq);

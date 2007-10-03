@@ -208,7 +208,7 @@ int l4lx_task_create_pager(l4_threadid_t dest, l4_threadid_t pager)
 		return !l4ts_create_task(&dest, 0, 0,
 		                         L4_TASK_NEW_ALIEN
 		                          | L4_TASK_NEW_RAISE_EXCEPTION,
-		                         &pager, CONFIG_L4_PRIO_USER_PROCESS,
+		                         &pager, CONFIG_L4_PRIO_SERVER_PROC,
 		                         "L4Linux task", 0);
 	} else {
 		/* Start new thread within existing address space */
@@ -222,7 +222,7 @@ int l4lx_task_create_pager(l4_threadid_t dest, l4_threadid_t pager)
 		                          | L4_THREAD_EX_REGS_RAISE_EXCEPTION),
 		   0x54, 0x78, &invid, &pager, &o, &o, &o);
 
-		l4lx_task_prio_set(dest, CONFIG_L4_PRIO_USER_PROCESS);
+		l4lx_task_prio_set(dest, CONFIG_L4_PRIO_SERVER_PROC);
 	}
 
 	return 1;

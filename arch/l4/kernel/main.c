@@ -73,19 +73,20 @@
 #endif
 
 // -- Configuration check
+#ifdef CONFIG_L4_CONFIG_CHECKS
+ #ifdef CONFIG_L4_FB_DRIVER
+  #if defined(CONFIG_SERIO_I8042) || defined(CONFIG_SERIO_LIBPS2) \
+      || defined(CONFIG_VGA_CONSOLE)
+   #warning WARNING: L4FB enabled and also CONFIG_SERIO_I8042 or CONFIG_SERIO_LIBPS2 or CONFIG_VGA_CONSOLE
+   #error WARNING: This is usually not wanted.
+  #endif
 
-#ifdef CONFIG_L4_FB_DRIVER
- #if defined(CONFIG_SERIO_I8042) || defined(CONFIG_SERIO_LIBPS2) \
-     || defined(CONFIG_VGA_CONSOLE)
-  #warning WARNING: L4FB enabled and also CONFIG_SERIO_I8042 or CONFIG_SERIO_LIBPS2 or CONFIG_VGA_CONSOLE
-  #warning WARNING: This is usually not wanted.
- #endif
-
- #ifndef CONFIG_INPUT_EVDEV
-  #warning WARNING: L4FB enabled but not CONFIG_INPUT_EVDEV, you probably want to enable this option.
- #endif
- #ifndef CONFIG_INPUT_MOUSEDEV
-  #warning WARNING: L4FB enabled but not CONFIG_INPUT_MOUSEDEV, you probably want to enable this option.
+  #ifndef CONFIG_INPUT_EVDEV
+   #warning WARNING: L4FB enabled but not CONFIG_INPUT_EVDEV, you probably want to enable this option.
+  #endif
+  #ifndef CONFIG_INPUT_MOUSEDEV
+   #warning WARNING: L4FB enabled but not CONFIG_INPUT_MOUSEDEV, you probably want to enable this option.
+  #endif
  #endif
 #endif
 
@@ -170,6 +171,7 @@ const int l4thread_max_threads = 128;
 static struct l4env_phys_virt_mem l4env_phys_virt_addrs[L4ENV_PHYS_VIRT_ADDRS_MAX_ITEMS] __nosavedata;
 int l4env_phys_virt_addr_items;
 
+#ifdef CONFIG_L4_CONFIG_CHECKS
 static const unsigned long required_kernel_abi_version = 8;
 static const char *required_kernel_features[] =
   { "exception_ipc",
@@ -181,6 +183,47 @@ static const char *required_kernel_features[] =
     "segments",
 #endif
   };
+
+static void l4x_configuration_sanity_check(const char *cmdline)
+{
+	char *p;
+	int i;
+
+	for (i = 0; i < sizeof(required_kernel_features)
+		          / sizeof(required_kernel_features[0]); i++) {
+		if (!l4sigma0_kip_kernel_has_feature(required_kernel_features[i])) {
+			LOG_printf("The running kernel does not have the\n"
+			           "      %s\n"
+			           "feature enabled!\n",
+			           required_kernel_features[i]);
+			enter_kdebug("kernel feature missing!");
+		}
+	}
+
+	if (l4sigma0_kip_kernel_abi_version() < required_kernel_abi_version) {
+		LOG_printf("The kernel ABI version is too low: kernel has %ld, "
+		           "I need %ld\n",
+		           l4sigma0_kip_kernel_abi_version(),
+		           required_kernel_abi_version);
+		enter_kdebug("Stop!");
+	}
+
+	if (strstr(cmdline, "console=ttyS")) {
+		LOG_printf("Console output set to ttySx. Not recommended.\n");
+		enter_kdebug("console=ttyS in command line");
+	}
+	if ((p = strstr(cmdline, "mem="))
+	    && (memparse(p + 4, &p) < (16 << 20))) {
+		LOG_printf("Minimal 16MB recommended.\n");
+		enter_kdebug("Increases value in mem= option.");
+	}
+}
+#else
+static void l4x_configuration_sanity_check(const char *cmdline)
+{
+	LOG_printf("Configuration checks disabled, you know what you're doing.\n");
+}
+#endif
 
 /* Only needed for environment, the Linux kernel isn't using errno */
 int errno;
@@ -664,7 +707,7 @@ void setup_l4env_memory(char *cmdl,
 
 	LOG_printf("Main memory size: %ldMB\n", l4env_mainmem_size >> 20);
 	if (l4env_mainmem_size < (4 << 20)) {
-		LOG_printf("Not enough main memory!\n");
+		LOG_printf("Not enough main memory - aborting!\n");
 		l4x_exit_l4linux();
 	}
 
@@ -894,7 +937,7 @@ void l4x_cpu_spawn(int cpu, struct task_struct *idle)
 
 	//LOG_printf("Launching %s at %p\n", s, __cpu_starter);
 	l4x_cpu_threads[cpu] = l4lx_thread_create
-		(__cpu_starter, NULL, NULL, 0, CONFIG_L4_PRIO_SERVER, s);
+		(__cpu_starter, NULL, NULL, 0, CONFIG_L4_PRIO_SERVER_PROC, s);
 
 	l4x_cpu_idler[cpu] = idle;
 
@@ -1037,7 +1080,7 @@ static void l4x_repnop_init(void)
 	                                   l4x_repnop_stack
 	                                     + sizeof(l4x_repnop_stack),
 	                                   NULL, 0,
-	                                   CONFIG_L4_PRIO_SERVER,
+	                                   CONFIG_L4_PRIO_SERVER_PROC,
 	                                   "nop");
 }
 // repnop end
@@ -1352,24 +1395,7 @@ int main(int argc, char **argv)
 
 	l4lx_kinfo = l4sigma0_kip_map(L4_INVALID_ID);
 
-	for (i = 0; i < sizeof(required_kernel_features)
-		          / sizeof(required_kernel_features[0]); i++) {
-		if (!l4sigma0_kip_kernel_has_feature(required_kernel_features[i])) {
-			LOG_printf("The running kernel does not have the\n"
-			           "      %s\n"
-			           "feature enabled!\n",
-			           required_kernel_features[i]);
-			enter_kdebug("kernel feature missing!");
-		}
-	}
-
-	if (l4sigma0_kip_kernel_abi_version() < required_kernel_abi_version) {
-		LOG_printf("The kernel ABI version is too low: kernel has %ld, "
-		           "I need %ld\n",
-		           l4sigma0_kip_kernel_abi_version(),
-		           required_kernel_abi_version);
-		enter_kdebug("Stop!");
-	}
+	l4x_configuration_sanity_check(boot_command_line);
 
 	if (l4sigma0_kip_kernel_has_feature("pl0_hack"))
 		l4x_fiasco_nr_of_syscalls += 2;
@@ -1488,7 +1514,7 @@ int main(int argc, char **argv)
 	                             (char *)init_stack + sizeof(init_stack),
 	                             &l4x_start_thread_id,
 	                             sizeof(l4x_start_thread_id),
-	                             CONFIG_L4_PRIO_SERVER,
+	                             CONFIG_L4_PRIO_SERVER_PROC,
 	                             "cpu0");
 
 	l4x_cpu_thread_set(0, main_id);
@@ -2344,7 +2370,7 @@ void l4x_thread_set_pc(l4_threadid_t thread, void *pc)
 
 void l4x_setup_threads(void)
 {
-	l4lx_thread_prio_set(linux_server_thread_id, CONFIG_L4_PRIO_SERVER);
+	l4lx_thread_prio_set(linux_server_thread_id, CONFIG_L4_PRIO_SERVER_PROC);
 
 	/* init task management subsystem */
 	l4lx_task_init();	/* do this after rmgr_init() if used */

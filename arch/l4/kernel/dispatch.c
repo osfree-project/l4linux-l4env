@@ -426,7 +426,7 @@ void l4x_idle(void)
 			cpu, utcb, PRINTF_L4TASK_ARG(l4_myself()));
 
 	idler_thread[cpu] = l4lx_thread_create(idler_func, NULL, NULL, 0,
-	                                       CONFIG_L4_PRIO_SERVER + 1, s);
+	                                       CONFIG_L4_PRIO_IDLER, s);
 	if (l4_is_invalid_id(idler_thread[cpu])) {
 		LOG_printf("Could not create idler thread... exiting\n");
 		l4x_exit_l4linux();

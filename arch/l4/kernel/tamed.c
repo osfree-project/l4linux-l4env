@@ -371,7 +371,7 @@ void l4x_tamed_init(int nr)
 	tamed_per_nr(cli_sem_thread_id, nr) =
 	  l4lx_thread_create(cli_sem_thread,
 	                     tamed_per_nr(stack_mem, nr) + sizeof(tamed_per_nr(stack_mem, 0)),
-	                     &nr, sizeof(nr), 0xa1, s);
+	                     &nr, sizeof(nr), CONFIG_L4_PRIO_TAMER, s);
 
 	LOG_printf("Tamer%d is " PRINTF_L4TASK_FORM "\n",
 	           nr,

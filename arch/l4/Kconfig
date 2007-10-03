@@ -278,24 +278,53 @@ config L4_TAMED
 
 menu "Priority configuration"
 
-config L4_PRIO_USER_PROCESS
-	int "L4 priority of user processes"
-	default 10
+config L4_PRIO_SERVER_PROC
+	int "L4 priority of the Linux server and processes"
+	default 64
 	help
-	  Define the L4 priority of user processes.
+	  This value defines the L4 priority of the Linux server and it's
+	  user processes.
 
-config L4_PRIO_IRQ_OFFSET
-	int "Start of L4 priorities for IRQs"
-	default 129
+	  Leave unchanged if unsure.
+
+config L4_PRIO_IDLER
+	int "Priority of idler thread"
+	default 65
 	help
-	  This value defines the offset where the IRQ priorities are
+	  Leave unchanged if unsure.
+
+config L4_PRIO_IRQ_BASE
+	int "Start of L4 priorities for IRQs"
+	default 66
+	help
+	  This value defines the base where the IRQ priorities are
 	  starting.
 
-config L4_PRIO_SERVER
-	int "L4 priority of the Linux server"
-	default 100
+	  Leave unchanged if unsure.
+
+config L4_PRIO_TAMER
+	int "Priority of tamer thread"
+	default 85
 	help
-	  This value defines the L4 priority of the Linux server.
+	  Leave unchanged if unsure.
+
+config L4_PRIO_L4FB_INPUT
+	int "Priority of l4fb input thread"
+	default 70
+	help
+	  Leave unchanged if unsure.
+
+config L4_PRIO_L4FB_REFRESH
+	int "Priority of l4fb refresh thread"
+	default 70
+	help
+	  Leave unchanged if unsure.
+
+config L4_PRIO_L4ORE
+	int "Priority of l4ore receive thread"
+	default 70
+	help
+	  Leave unchanged if unsure.
 
 endmenu # priority configuration
 
@@ -380,6 +409,13 @@ config L4_USE_L4VMM_DBG
 	  bigger and slower than a normal version.
 
 	  If unsure, say N.
+
+config L4_CONFIG_CHECKS
+	bool "Configuration sanity checks"
+	default y
+	help
+	  Leave this enabled.
+	  
 
 config L4_ARM_PLATFORM_ISG
 	bool "Enable ISG"

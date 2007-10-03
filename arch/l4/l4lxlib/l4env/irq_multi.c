@@ -43,9 +43,9 @@ static l4_threadid_t irq_ths[1];
 int l4lx_irq_prio_get(unsigned int irq)
 {
 	if (irq == 0)
-		return CONFIG_L4_PRIO_IRQ_OFFSET + 1;
+		return CONFIG_L4_PRIO_IRQ_BASE + 1;
 
-	return CONFIG_L4_PRIO_IRQ_OFFSET;
+	return CONFIG_L4_PRIO_IRQ_BASE;
 }
 
 

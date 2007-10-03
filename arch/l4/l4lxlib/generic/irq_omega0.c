@@ -102,7 +102,7 @@ void l4lx_irq_init(void)
 int l4lx_irq_prio_get(unsigned int irq)
 {
 	if (irq < NR_IRQS)
-		return CONFIG_L4_PRIO_IRQ_OFFSET + irq_prio[irq];
+		return CONFIG_L4_PRIO_IRQ_BASE + irq_prio[irq];
 
 	enter_kdebug("l4lx_irq_prio_get: wrong IRQ!");
 	return -1;

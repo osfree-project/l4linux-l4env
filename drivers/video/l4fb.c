@@ -456,7 +456,9 @@ static int l4fb_dope_input_setup(void)
 	dope_bind(dope_app_id, "l4lxvscr", "release", l4fb_dope_input_callback, (void *)0x878);
 
 	l4fb_input_thread = l4lx_thread_create(l4fb_dope_input_thread,
-	                                       NULL, NULL, 0, 144, "L4DOpEinput");
+	                                       NULL, NULL, 0,
+	                                       CONFIG_L4_PRIO_L4FB_INPUT,
+	                                       "L4DOpEinput");
 	if (l4_is_invalid_id(l4fb_input_thread)) {
 		enter_kdebug("l4dopeinput thread err!");
 		return -ENODEV;
@@ -525,7 +527,9 @@ static void l4fb_con_update_thread(void *data)
 static int l4fb_con_input_setup(l4_threadid_t *id)
 {
 	l4fb_input_thread = l4lx_thread_create(l4fb_con_input_thread,
-	                                       NULL, NULL, 0, 144, "L4ConInput");
+	                                       NULL, NULL, 0,
+	                                       CONFIG_L4_PRIO_L4FB_INPUT,
+	                                       "L4ConInput");
 	if (l4_is_invalid_id(l4fb_input_thread)) {
 		enter_kdebug("l4coninput thread error!");
 		return -ENODEV;
@@ -541,7 +545,9 @@ static void l4fb_create_refresher_thread(void (*refresher_thread)(void *),
 		return;
 
 	l4fb_refresher_thread = l4lx_thread_create(refresher_thread,
-	                                           NULL, NULL, 0, 144, name_tag);
+	                                           NULL, NULL, 0,
+	                                           CONFIG_L4_PRIO_L4FB_REFRESH,
+	                                           name_tag);
 	if (l4_is_invalid_id(l4fb_refresher_thread)) {
 		printk("Cannot create %s\n", name_tag);
 		enter_kdebug("l4fb: refresh thread create error!");
