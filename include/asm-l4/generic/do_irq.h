@@ -9,6 +9,10 @@
 #include <asm/l4lxapi/irq.h>
 #include <asm/l4x/exception.h>
 
+#ifdef ARCH_arm
+unsigned int do_IRQ(int irq, struct pt_regs *regs);
+#endif
+
 static inline void l4x_do_IRQ(int irq, struct thread_info *ctx)
 {
 	unsigned long flags, old_cpu_state;

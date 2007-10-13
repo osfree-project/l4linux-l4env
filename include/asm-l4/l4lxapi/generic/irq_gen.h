@@ -22,8 +22,6 @@ void l4lx_irq_dbg_spin_wheel(unsigned int irq);
 #define l4lx_irq_dbg_spin_wheel(irq) do { } while (0)
 #endif /* ! CONFIG_L4_IRQ_WHEELS */
 
-extern fastcall unsigned int do_IRQ(int irq, struct pt_regs *regs);
-
 extern spinlock_t l4lx_irq_pic_lock;
 extern unsigned long irq_threads_started;
 extern l4_threadid_t irq_id[NR_IRQS];

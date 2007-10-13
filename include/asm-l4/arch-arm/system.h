@@ -249,6 +249,7 @@ static inline void set_copro_access(unsigned int val)
 {
 	asm volatile("mcr p15, 0, %0, c1, c0, 2 @ set copro access"
 	  : : "r" (val) : "cc");
+	isb();
 }
 
 /*
@@ -271,16 +272,6 @@ do {											\
 	l4x_switch_to(prev, next);							\
 	last = __switch_to(prev,task_thread_info(prev), task_thread_info(next));	\
 } while (0)
-
-/*
- * On SMP systems, when the scheduler does migration-cost autodetection,
- * it needs a way to flush as much of the CPU's caches as possible.
- *
- * TODO: fill this in!
- */
-static inline void sched_cacheflush(void)
-{
-}
 
 #if defined(CONFIG_CPU_SA1100) || defined(CONFIG_CPU_SA110)
 /*

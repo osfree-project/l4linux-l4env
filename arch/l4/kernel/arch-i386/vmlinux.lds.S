@@ -67,7 +67,9 @@ SECTIONS
   	__stop___ex_table = .;
   }
 
-  BUG_TABLE
+  NOTES /* :text :note */
+
+  BUG_TABLE /* :text */
 
   . = ALIGN(4);
   .tracedata : AT(ADDR(.tracedata) - LOAD_OFFSET) {
@@ -103,6 +105,7 @@ SECTIONS
 
   . = ALIGN(4096);
   .data.page_aligned : AT(ADDR(.data.page_aligned) - LOAD_OFFSET) {
+	*(.data.page_aligned)
 	*(.data.idt)
   }
 
@@ -195,6 +198,7 @@ SECTIONS
   .data.percpu  : AT(ADDR(.data.percpu) - LOAD_OFFSET) {
 	__per_cpu_start = .;
 	*(.data.percpu)
+	*(.data.percpu.shared_aligned)
 	__per_cpu_end = .;
   }
   __init_end = .;
@@ -282,6 +286,4 @@ SECTIONS
   STABS_DEBUG
 
   DWARF_DEBUG
-
-/*  NOTES */
 }

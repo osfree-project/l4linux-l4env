@@ -21,7 +21,7 @@
 #include <asm/apic.h>
 #include <asm/uaccess.h>
 
-DEFINE_PER_CPU(irq_cpustat_t, irq_stat) ____cacheline_internodealigned_in_smp;
+DEFINE_PER_CPU_SHARED_ALIGNED(irq_cpustat_t, irq_stat);
 EXPORT_PER_CPU_SYMBOL(irq_stat);
 
 DEFINE_PER_CPU(struct pt_regs *, irq_regs);
@@ -68,7 +68,7 @@ static union irq_ctx *softirq_ctx[NR_CPUS] __read_mostly;
  * SMP cross-CPU interrupts have their own specific
  * handlers).
  */
-fastcall unsigned int do_IRQ(int irq, struct pt_regs *regs)
+unsigned int do_IRQ(int irq, struct pt_regs *regs)
 {	
 	struct pt_regs *old_regs;
 	/* high bit used in ret_from_ code */
@@ -149,15 +149,11 @@ fastcall unsigned int do_IRQ(int irq, struct pt_regs *regs)
 
 #ifdef CONFIG_4KSTACKS_ALWAYS_DISABLED_FOR_L4LX
 
-/*
- * These should really be __section__(".bss.page_aligned") as well, but
- * gcc's 3.0 and earlier don't handle that correctly.
- */
 static char softirq_stack[NR_CPUS * THREAD_SIZE]
-		__attribute__((__aligned__(THREAD_SIZE)));
+		__attribute__((__section__(".bss.page_aligned")));
 
 static char hardirq_stack[NR_CPUS * THREAD_SIZE]
-		__attribute__((__aligned__(THREAD_SIZE)));
+		__attribute__((__section__(".bss.page_aligned")));
 
 /*
  * allocate per-cpu stacks for hardirq and for softirq processing

@@ -24,8 +24,10 @@
 pgd_t *get_pgd_slow(struct mm_struct *mm)
 {
 	pgd_t *new_pgd, *init_pgd;
+#ifdef NOT_FOR_L4
 	pmd_t *new_pmd, *init_pmd;
 	pte_t *new_pte, *init_pte;
+#endif
 
 	new_pgd = (pgd_t *)__get_free_pages(GFP_KERNEL, 2);
 	if (!new_pgd)
@@ -42,7 +44,7 @@ pgd_t *get_pgd_slow(struct mm_struct *mm)
 
 	clean_dcache_area(new_pgd, PTRS_PER_PGD * sizeof(pgd_t));
 
-#if 0
+#ifdef NOT_FOR_L4
 	if (!vectors_high()) {
 		/*
 		 * On ARM, first page must always be allocated since it
@@ -66,9 +68,9 @@ pgd_t *get_pgd_slow(struct mm_struct *mm)
 
 	return new_pgd;
 
-no_pte:
+//l4/no_pte:
 	pmd_free(new_pmd);
-no_pmd:
+//l4/no_pmd:
 	free_pages((unsigned long)new_pgd, 2);
 no_pgd:
 	return NULL;

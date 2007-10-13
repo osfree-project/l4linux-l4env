@@ -148,8 +148,8 @@ void do_bad_area(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 		__do_kernel_fault(mm, addr, fsr, regs);
 }
 
-#define VM_FAULT_BADMAP		(-20)
-#define VM_FAULT_BADACCESS	(-21)
+#define VM_FAULT_BADMAP		0x010000
+#define VM_FAULT_BADACCESS	0x020000
 
 static int
 __do_page_fault(struct mm_struct *mm, unsigned long addr, unsigned int fsr,
@@ -186,20 +186,20 @@ good_area:
 	 */
 survive:
 	fault = handle_mm_fault(mm, vma, addr & PAGE_MASK, fsr & (1 << 1));
-
-	/*
-	 * Handle the "normal" cases first - successful and sigbus
-	 */
-	switch (fault) {
-	case VM_FAULT_MAJOR:
-		tsk->maj_flt++;
-		return fault;
-	case VM_FAULT_MINOR:
-		tsk->min_flt++;
-	case VM_FAULT_SIGBUS:
-		return fault;
+	if (unlikely(fault & VM_FAULT_ERROR)) {
+		if (fault & VM_FAULT_OOM)
+			goto out_of_memory;
+		else if (fault & VM_FAULT_SIGBUS)
+			return fault;
+		BUG();
 	}
+	if (fault & VM_FAULT_MAJOR)
+		tsk->maj_flt++;
+	else
+		tsk->min_flt++;
+	return fault;
 
+out_of_memory:
 	if (!is_init(tsk))
 		goto out;
 
@@ -252,7 +252,7 @@ do_page_fault(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 	/*
 	 * Handle the "normal" case first - VM_FAULT_MAJOR / VM_FAULT_MINOR
 	 */
-	if (fault >= VM_FAULT_MINOR)
+	if (likely(!(fault & (VM_FAULT_ERROR | VM_FAULT_BADMAP | VM_FAULT_BADACCESS))))
 		return 0;
 
 	/*
@@ -262,8 +262,7 @@ do_page_fault(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 	//if (!user_mode(regs))
 	//	goto no_context;
 
-	switch (fault) {
-	case VM_FAULT_OOM:
+	if (fault & VM_FAULT_OOM) {
 		/*
 		 * We ran out of memory, or some other thing
 		 * happened to us that made us unable to handle
@@ -272,17 +271,15 @@ do_page_fault(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 		printk("VM: killing process %s\n", tsk->comm);
 		do_exit(SIGKILL);
 		return -1;
-
-	case VM_FAULT_SIGBUS:
+	}
+	if (fault & VM_FAULT_SIGBUS) {
 		/*
 		 * We had some memory, but were unable to
 		 * successfully fix up this page fault.
 		 */
 		sig = SIGBUS;
 		code = BUS_ADRERR;
-		break;
-
-	default:
+	} else {
 		/*
 		 * Something tried to access memory that
 		 * isn't in our memory map..
@@ -290,7 +287,6 @@ do_page_fault(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 		sig = SIGSEGV;
 		code = fault == VM_FAULT_BADACCESS ?
 			SEGV_ACCERR : SEGV_MAPERR;
-		break;
 	}
 
 	if (fsr & PF_EUSER) __do_user_fault(tsk, addr, fsr, sig, code, regs);

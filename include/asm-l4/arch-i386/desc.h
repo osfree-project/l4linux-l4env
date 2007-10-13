@@ -9,6 +9,7 @@
 #include <linux/preempt.h>
 #include <linux/smp.h>
 #include <linux/percpu.h>
+#include <linux/sched.h>
 
 #include <asm/mmu.h>
 
@@ -74,7 +75,7 @@ static inline void pack_gate(__u32 *a, __u32 *b,
 #define load_TLS(t, cpu) native_load_tls(t, cpu)
 #define set_ldt native_set_ldt
 
-#define write_ldt_entry(dt, entry, a, b) write_dt_entry(dt, entry, a, b)
+#define write_ldt_entry(dt, entry, a, b) write_dt_entry_l4(dt, entry, a, b)
 #define write_gdt_entry(dt, entry, a, b) write_dt_entry(dt, entry, a, b)
 #define write_idt_entry(dt, entry, a, b) write_dt_entry(dt, entry, a, b)
 #endif
@@ -84,6 +85,13 @@ static inline void write_dt_entry(struct desc_struct *dt,
 {
 	dt[entry].a = entry_low;
 	dt[entry].b = entry_high;
+}
+
+static inline void write_dt_entry_l4(struct desc_struct *dt,
+                                     int entry, u32 entry_low, u32 entry_high)
+{
+	write_dt_entry(dt, entry, entry_low, entry_high);
+	fiasco_ldt_set(dt + entry, LDT_ENTRY_SIZE, entry, current->thread.user_thread_id.id.task);
 }
 
 static inline void native_set_ldt(const void *addr, unsigned int entries)

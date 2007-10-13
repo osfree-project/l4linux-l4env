@@ -17,6 +17,7 @@
 #include <linux/profile.h>
 #include <linux/errno.h>
 #include <linux/mm.h>
+#include <linux/err.h>
 #include <linux/cpu.h>
 #include <linux/smp.h>
 #include <linux/seq_file.h>
@@ -537,6 +538,7 @@ static void ipi_call_function(unsigned int cpu)
 	void *info = data->info;
 	int wait = data->wait;
 
+	LOG_printf("%s %d\n", __func__, cpu);
 	cpu_clear(cpu, data->pending);
 
 	func(info);
@@ -669,7 +671,7 @@ void smp_send_stop(void)
 /*
  * not supported here
  */
-int __init setup_profiling_timer(unsigned int multiplier)
+int setup_profiling_timer(unsigned int multiplier)
 {
 	return -EINVAL;
 }

@@ -123,7 +123,10 @@ void __init select_idle_routine(const struct cpuinfo_x86 *c)
 
 void show_regs(struct pt_regs * regs)
 {
-	printk("\n");
+#ifdef NOT_FOR_L4
+	unsigned long cr0 = 0L, cr2 = 0L, cr3 = 0L, cr4 = 0L;
+	unsigned long d0, d1, d2, d3, d6, d7;
+#endif
 
 	if (!regs) {
 		printk("Can't print regs from interrupt handler: &pt_regs == 0!");
@@ -147,6 +150,24 @@ void show_regs(struct pt_regs * regs)
 		regs->esi, regs->edi, regs->ebp);
 	printk(" DS: %04x ES: %04x FS: %04x\n",
 	       0xffff & regs->xds,0xffff & regs->xes, 0xffff & regs->xfs);
+
+#ifdef NOT_FOR_L4
+	cr0 = read_cr0();
+	cr2 = read_cr2();
+	cr3 = read_cr3();
+	cr4 = read_cr4_safe();
+	printk("CR0: %08lx CR2: %08lx CR3: %08lx CR4: %08lx\n", cr0, cr2, cr3, cr4);
+
+	get_debugreg(d0, 0);
+	get_debugreg(d1, 1);
+	get_debugreg(d2, 2);
+	get_debugreg(d3, 3);
+	printk("DR0: %08lx DR1: %08lx DR2: %08lx DR3: %08lx\n",
+			d0, d1, d2, d3);
+	get_debugreg(d6, 6);
+	get_debugreg(d7, 7);
+	printk("DR6: %08lx DR7: %08lx\n", d6, d7);
+#endif
 
 	//show_trace(NULL, &regs->esp);
 	{
@@ -457,6 +478,19 @@ int dump_task_regs(struct task_struct *tsk, elf_gregset_t *regs)
 	return 1;
 }
 
+#ifdef CONFIG_SECCOMP
+void hard_disable_TSC(void)
+{
+}
+
+void disable_TSC(void)
+{
+}
+
+void hard_enable_TSC(void)
+{
+}
+#endif /* CONFIG_SECCOMP */
 
 /* fork/exec system calls (copied from arch/i386/kernel/process.c) */
 

@@ -160,7 +160,7 @@ extern int __get_user_bad(void);
 
 #define get_user(x,p)							\
 	({								\
-		const register typeof(*(p)) __user *__p asm("r0") = (p);\
+		register const typeof(*(p)) __user *__p asm("r0") = (p);\
 		register unsigned long __r2 asm("r2");			\
 		register int __e asm("r0");				\
 		switch (sizeof(*(__p))) {				\
@@ -467,11 +467,9 @@ do {									\
 #endif
 
 #ifdef CONFIG_MMU
-#if 0
 extern unsigned long __must_check __copy_from_user(void *to, const void __user *from, unsigned long n);
 extern unsigned long __must_check __copy_to_user(void __user *to, const void *from, unsigned long n);
 extern unsigned long __must_check __clear_user(void __user *addr, unsigned long n);
-#endif
 #define __copy_to_user copy_to_user
 #define __copy_from_user copy_from_user
 #else

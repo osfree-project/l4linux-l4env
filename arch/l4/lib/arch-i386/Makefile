@@ -9,6 +9,7 @@ lib-y	+= ../../../i386/lib/delay.o
 lib-y	+= ../../../i386/lib/mmx.o
 lib-y	+= ../../../i386/lib/strstr.o
 lib-y	+= ../../../i386/lib/semaphore.o
+lib-y	+= ../../../i386/lib/string.o
 
 lib-y	+= ../proc.o
 lib-y	+= ../memcpy_user.o

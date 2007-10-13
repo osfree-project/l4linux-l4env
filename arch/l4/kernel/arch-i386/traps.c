@@ -41,6 +41,10 @@
 #include <linux/mca.h>
 #endif
 
+#if defined(CONFIG_EDAC)
+#include <linux/edac.h>
+#endif
+
 #include <asm/processor.h>
 #include <asm/system.h>
 #include <asm/io.h>
@@ -102,36 +106,45 @@ void machine_check(void);
 int kstack_depth_to_print = 24;
 static unsigned int code_bytes = 64;
 
-static inline int valid_stack_ptr(struct thread_info *tinfo, void *p)
+static inline int valid_stack_ptr(struct thread_info *tinfo, void *p, unsigned size)
 {
 	return	p > (void *)tinfo &&
-		p < (void *)tinfo + THREAD_SIZE - 3;
+		p <= (void *)tinfo + THREAD_SIZE - size;
 }
+
+/* The form of the top of the frame on the stack */
+struct stack_frame {
+	struct stack_frame *next_frame;
+	unsigned long return_address;
+};
 
 static inline unsigned long print_context_stack(struct thread_info *tinfo,
 				unsigned long *stack, unsigned long ebp,
 				struct stacktrace_ops *ops, void *data)
 {
-	unsigned long addr;
-
 #ifdef	CONFIG_FRAME_POINTER
-	while (valid_stack_ptr(tinfo, (void *)(ebp + 4))) {
-		unsigned long new_ebp;
-		addr = *(unsigned long *)(ebp + 4);
+	struct stack_frame *frame = (struct stack_frame *)ebp;
+	while (valid_stack_ptr(tinfo, frame, sizeof(*frame))) {
+		struct stack_frame *next;
+		unsigned long addr;
+
+		addr = frame->return_address;
 		ops->address(data, addr);
 		/*
 		 * break out of recursive entries (such as
 		 * end_of_stack_stop_unwind_function). Also,
 		 * we can never allow a frame pointer to
 		 * move downwards!
-	 	 */
-	 	new_ebp = *(unsigned long *)ebp;
-		if (new_ebp <= ebp)
+		 */
+		next = frame->next_frame;
+		if (next <= frame)
 			break;
-		ebp = new_ebp;
+		frame = next;
 	}
 #else
-	while (valid_stack_ptr(tinfo, stack)) {
+	while (valid_stack_ptr(tinfo, stack, sizeof(*stack))) {
+		unsigned long addr;
+
 		addr = *stack++;
 		if (__kernel_text_address(addr))
 			ops->address(data, addr);
@@ -154,7 +167,7 @@ void dump_trace(struct task_struct *task, struct pt_regs *regs,
 	if (!stack) {
 		unsigned long dummy;
 		stack = &dummy;
-		if (task && task != current)
+		if (task != current)
 			stack = (unsigned long *)task->thread.esp;
 	}
 
@@ -213,6 +226,7 @@ static void print_trace_address(void *data, unsigned long addr)
 {
 	printk("%s [<%08lx>] ", (char *)data, addr);
 	print_symbol("%s\n", addr);
+	touch_nmi_watchdog();
 }
 
 static struct stacktrace_ops print_trace_ops = {
@@ -396,7 +410,7 @@ void die(const char * str, struct pt_regs * regs, long err)
 		unsigned long esp;
 		unsigned short ss;
 
-		report_bug(regs->eip);
+		report_bug(regs->eip, regs);
 
 		printk(KERN_EMERG "%s: %04lx [#%d]\n", str, err & 0xffff, ++die_counter);
 #ifdef CONFIG_PREEMPT
@@ -439,6 +453,7 @@ void die(const char * str, struct pt_regs * regs, long err)
 
 	bust_spinlocks(0);
 	die.lock_owner = -1;
+	add_taint(TAINT_DIE);
 	spin_unlock_irqrestore(&die.lock, flags);
 
 	if (!regs)
@@ -525,6 +540,17 @@ fastcall void do_nmi(struct pt_regs * regs, long error_code)
 {
 }
 
+void stop_nmi(void)
+{
+	printk("%s called\n", __func__);
+}
+
+void restart_nmi(void)
+{
+	printk("%s called\n", __func__);
+}
+
+
 void do_spurious_interrupt_bug(struct pt_regs * regs, long error_code)
 {
 }
@@ -564,6 +590,7 @@ asmlinkage void math_state_restore(void)
 	thread->status |= TS_USEDFPU;	/* So we fnsave on switch_to() */
 	tsk->fpu_counter++;
 }
+EXPORT_SYMBOL_GPL(math_state_restore);
 
 /* Called from init/main.c */
 void __init trap_init(void)

@@ -78,8 +78,8 @@ cflags-y += -maccumulate-outgoing-args
 CFLAGS				+= $(shell if [ $(call cc-version) -lt 0400 ] ; then echo $(call cc-option,-fno-unit-at-a-time); fi ;)
 
 # do binutils support CFI?
-cflags-y += $(call as-instr,.cfi_startproc\n.cfi_endproc,-DCONFIG_AS_CFI=1,)
-AFLAGS += $(call as-instr,.cfi_startproc\n.cfi_endproc,-DCONFIG_AS_CFI=1,)
+cflags-y += $(call as-instr,.cfi_startproc\n.cfi_rel_offset esp${comma}0\n.cfi_endproc,-DCONFIG_AS_CFI=1,)
+AFLAGS += $(call as-instr,.cfi_startproc\n.cfi_rel_offset esp${comma}0\n.cfi_endproc,-DCONFIG_AS_CFI=1,)
 
 # is .cfi_signal_frame supported too?
 cflags-y += $(call as-instr,.cfi_startproc\n.cfi_signal_frame\n.cfi_endproc,-DCONFIG_AS_CFI_SIGNAL_FRAME=1,)
@@ -139,6 +139,18 @@ L4LX_E_L_O-$(CONFIG_L4_USE_L4VMM) += -ll4vmm-devices$(if $(CONFIG_L4_USE_L4VMM_D
 # Extra includes
 L4LX_E_I-$(CONFIG_L4_NEED_DSI)	+= -I$(srctree)/arch/l4/lib/support
 
+L4LIBS		= -L$(L4OBJ)/lib/$(L4_MK_ARCH)_$(L4_MK_CPU)/$(L4_MK_API) \
+		  -L$(L4OBJ)/lib/$(L4_MK_ARCH)_$(L4_MK_CPU) \
+		  -L$(L4OBJ)/lib
+
+
+L4INC		= -I$(L4OBJ)/include/$(L4_MK_ARCH)/$(L4_MK_API) \
+		  -I$(L4OBJ)/include/$(L4_MK_ARCH) \
+		  -I$(L4OBJ)/include/$(L4_MK_API) \
+		  -I$(L4OBJ)/include \
+		  -I$(L4BID_DICEDIR)/include \
+		  $(L4LX_E_I-y)
+
 head-y := arch/l4/kernel/head.o arch/l4/kernel/init_task.o
 
 libs-y				+= arch/l4/lib/arch-$(BASEARCH)/	\
@@ -159,26 +171,13 @@ ifeq ($(BASEARCH),arm)
 core-$(CONFIG_FPE_NWFPE)	+= arch/arm/nwfpe/
 endif
 
-libs-y				+= -lio-ll -ldm_phys -lgeneric_fprov -ll4util \
-				   -ll4sys $(L4LX_E_L-y)
+libs-y				+= $(L4LIBS) -lio-ll -ldm_phys -lgeneric_fprov \
+				   -ll4util -ll4sys $(L4LX_E_L-y)
 
 libs-$(CONFIG_L4_FERRET)	+= -lferret_client -lferret_producer \
 				   -lferret_init
 
 boot := arch/l4/boot
-
-L4LIBS		= -L$(L4OBJ)/lib/$(L4_MK_ARCH)_$(L4_MK_CPU)/$(L4_MK_API) \
-		  -L$(L4OBJ)/lib/$(L4_MK_ARCH)_$(L4_MK_CPU) \
-		  -L$(L4OBJ)/lib \
-		  -lloader.s
-
-
-L4INC		= -I$(L4OBJ)/include/$(L4_MK_ARCH)/$(L4_MK_API) \
-		  -I$(L4OBJ)/include/$(L4_MK_ARCH) \
-		  -I$(L4OBJ)/include/$(L4_MK_API) \
-		  -I$(L4OBJ)/include \
-		  -I$(L4BID_DICEDIR)/include \
-		  $(L4LX_E_I-y)
 
 MACH_INC_i386	:= -Iinclude/asm-l4/$(BASEARCH)-arch/asm/mach-default
 MACH_INC_arm	:= -Iinclude/asm-l4/$(BASEARCH)-arch
@@ -186,7 +185,7 @@ MACH_INC_arm	:= -Iinclude/asm-l4/$(BASEARCH)-arch
 LDFLAGS_LDSO	= --dynamic-linker libld-l4.s.so \
 		   $(L4OBJ)/lib/$(L4_MK_ARCH)_$(L4_MK_CPU)/crt0.o
 
-LDFLAGS_vmlinux	+= $(LDFLAGS_LDSO) $(L4LIBS) $(L4LX_E_L_O-y) -z now
+LDFLAGS_vmlinux	+= $(LDFLAGS_LDSO) -lloader.s $(L4LX_E_L_O-y) -z now
 CPPFLAGS	+= -Iinclude/asm-l4/l4-arch -Iinclude/asm-l4/$(BASEARCH)-arch \
 		   $(MACH_INC_$(BASEARCH)) $(L4INC) $(CPPFLAGS_SYSENTER-y) \
 		   $(L4BID_CPPFLAGS_SYSCALLS-y)

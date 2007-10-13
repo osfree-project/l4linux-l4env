@@ -2507,6 +2507,7 @@ void kdb_ke(void)
 }
 
 #ifdef CONFIG_L4_DEBUG_SEGFAULTS
+#include <linux/fs.h>
 void l4x_print_vm_area_maps(struct task_struct *p)
 {
 	struct vm_area_struct *vma = p->mm->mmap;

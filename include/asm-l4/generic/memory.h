@@ -74,6 +74,15 @@ static inline pte_t *lookup_pte(pgd_t *page_dir, unsigned long address)
 	return pte;
 }
 
+static inline int l4x_pte_read(pte_t pte)
+{
+#ifdef ARCH_x86
+	return pte_val(pte) & _PAGE_USER;
+#else
+	return pte_val(pte) & L_PTE_USER;
+#endif
+}
+
 static inline unsigned long parse_ptabs_read(unsigned long address,
                                              unsigned long *offset) 
 {
@@ -91,7 +100,7 @@ static inline unsigned long parse_ptabs_read(unsigned long address,
 
 		if (ptep == NULL)
 			ptep = lookup_pte((pgd_t *)current->mm->pgd, address);
-		if (!pte_present(*ptep) || !pte_read(*ptep))
+		if (!pte_present(*ptep) || !l4x_pte_read(*ptep))
 			panic("parse_ptabs_read: pte page still not present\n");
 	}
 	*ptep   = pte_mkyoung(*ptep);
