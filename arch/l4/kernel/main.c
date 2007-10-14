@@ -34,7 +34,6 @@
 #include <l4/semaphore/semaphore.h>
 #include <l4/sys/kdebug.h>
 #include <l4/sys/syscalls.h>
-#include <l4/sys/utcb.h>
 #include <l4/sigma0/kip.h>
 #include <l4/sigma0/sigma0.h>
 #include <l4/util/cpu.h>
@@ -63,6 +62,7 @@
 #include <asm/l4x/iodb.h>
 #include <asm/l4x/exception.h>
 #include <asm/l4x/lx_syscalls.h>
+#include <asm/l4x/utcb.h>
 
 #ifdef ARCH_x86
 #include <l4/rtc/rtc.h>
@@ -92,7 +92,6 @@
 
 // --
 
-l4_utcb_t *l4_utcb_l4lx_server[NR_CPUS];
 
 #ifdef ARCH_x86
 struct desc_struct cpu_gdt_table[GDT_ENTRIES];
@@ -100,6 +99,8 @@ struct Xgt_desc_struct early_gdt_descr;
 
 unsigned l4x_fiasco_gdt_entry_offset;
 struct desc_struct boot_gdt;
+
+l4_utcb_t *l4x_utcb_pointer[L4X_UTCB_POINTERS];
 
 #ifdef CONFIG_SMP
 unsigned long io_apic_irqs;
@@ -299,6 +300,13 @@ void *l4env_phys_to_virt(unsigned long address)
 	return __va(address);
 }
 EXPORT_SYMBOL(l4env_phys_to_virt);
+
+
+/* Overwrite weak UTCB getter from L4Env */
+l4_utcb_t *l4env_utcb_get(void)
+{
+	return l4x_utcb_get(l4_myself());
+}
 
 /* ---------------------------------------------------------------- */
 
@@ -909,7 +917,7 @@ static void __cpu_starter(void *x)
 	BUG_ON(error);
 
 	l4lx_thread_pager_change(l4_myself(), l4x_start_thread_id);
-	l4_utcb_set_l4lx(cpu, l4_utcb_get());
+	l4x_utcb_set(l4_myself(), l4_utcb_get());
 	l4_utcb_inherit_fpu(l4_utcb_get(), 1);
 
 #ifdef ARCH_x86
@@ -1128,7 +1136,7 @@ static void l4env_linux_startup(void *data)
 
 	l4lx_thread_pager_change(linux_server_thread_id, caller_id);
 
-	l4_utcb_set_l4lx(0, l4_utcb_get());
+	l4x_utcb_set(linux_server_thread_id, l4_utcb_get());
 	l4_utcb_inherit_fpu(l4_utcb_get(), 1);
 #ifdef ARCH_x86
 	asm volatile("movl %%ds,  %%eax \n"
@@ -2453,6 +2461,7 @@ void l4x_prepare_irq_thread(struct thread_info *ti)
 
 	/* Set pager */
 	l4lx_thread_set_kernel_pager(l4_myself());
+	l4x_utcb_set(l4_myself(), l4_utcb_get());
 
 #ifdef ARCH_x86
 	switch_to_new_gdt();

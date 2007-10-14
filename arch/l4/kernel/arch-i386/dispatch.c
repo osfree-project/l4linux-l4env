@@ -43,6 +43,7 @@
 #include <asm/l4x/iodb.h>
 #include <asm/l4x/l4_syscalls.h>
 #include <asm/l4x/lx_syscalls.h>
+#include <asm/l4x/utcb.h>
 
 #define TBUF_TID(tid) ((tid.id.task << 8) | tid.id.lthread)
 #if 0
@@ -279,8 +280,7 @@ static inline void dispatch_system_call(struct task_struct *p)
 
 	//syscall_count++;
 
-	//utcb_to_thread_struct(l4_utcb_get_l4lx(smp_processor_id()), t); /* XXX Hmm, we don't need to copy eax */
-	regsp->orig_eax = syscall = regsp->eax; //l4_utcb_get_l4lx(smp_processor_id())->exc.eax;
+	regsp->orig_eax = syscall = regsp->eax;
 	regsp->eax = -ENOSYS;
 
 #ifdef CONFIG_L4_FERRET_SYSCALL_COUNTER
@@ -350,9 +350,6 @@ static inline void dispatch_system_call(struct task_struct *p)
 
 	if (need_resched())
 		schedule();
-
-	/* Prepare UTCB reply */
-	//thread_struct_to_utcb(t, l4_utcb_get_l4lx(smp_processor_id()), L4_UTCB_EXCEPTION_REGS_SIZE);
 
 #if 0
 	LOG_printf("Syscall %3d for %s(%d at %p): return %lx\n",

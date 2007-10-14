@@ -39,6 +39,7 @@
 #include <asm/l4x/exception.h>
 #include <asm/l4x/l4_syscalls.h>
 #include <asm/l4x/lx_syscalls.h>
+#include <asm/l4x/utcb.h>
 
 #define TBUF_TID(tid) ((tid.id.task << 8) | tid.id.lthread)
 #if 0

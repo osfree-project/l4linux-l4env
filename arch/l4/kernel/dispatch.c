@@ -412,7 +412,7 @@ void l4x_idle(void)
 	l4_msgdope_t dummydope;
 	l4_msgtag_t tag;
 	int cpu = smp_processor_id();
-	l4_utcb_t *utcb = l4_utcb_get_l4lx(cpu);
+	l4_utcb_t *utcb = l4x_utcb_get(l4_myself());
 	char s[9];
 
 #ifdef CONFIG_SMP
@@ -488,13 +488,13 @@ void l4x_idle(void)
 
 			/* Paranoia */
 			if (!l4_msgtag_is_exception(tag)
-			    || !l4x_is_triggered_exception(l4_utcb_exc_typeval(l4_utcb_get_l4lx(smp_processor_id())))) {
+			    || !l4x_is_triggered_exception(l4_utcb_exc_typeval(l4x_utcb_get(l4_myself())))) {
 				LOG_printf("idler%d: src=" PRINTF_L4TASK_FORM " exc-val = 0x%lx (d0 = %lx, d1 = %lx, tag = %lx)\n",
-				           cpu, PRINTF_L4TASK_ARG(src_id), l4_utcb_exc_typeval(l4_utcb_get_l4lx(smp_processor_id())), data0, data1, l4_msgtag_label(tag));
+				           cpu, PRINTF_L4TASK_ARG(src_id), l4_utcb_exc_typeval(l4x_utcb_get(l4_myself())), data0, data1, l4_msgtag_label(tag));
 				enter_kdebug("Uhh, no exc?!");
 			}
 		} else
-			l4x_hybrid_return(src_id, l4_utcb_get_l4lx(smp_processor_id()), data0, data1, tag);
+			l4x_hybrid_return(src_id, l4x_utcb_get(l4_myself()), data0, data1, tag);
 	}
 }
 
@@ -667,7 +667,7 @@ restart_loop:
 			= p->thread.user_thread_ids[smp_processor_id()];
 
 reply_IPC:
-		thread_struct_to_utcb(t, l4_utcb_get_l4lx(smp_processor_id()),
+		thread_struct_to_utcb(t, l4x_utcb_get(l4_myself()),
 		                      L4_UTCB_EXCEPTION_REGS_SIZE);
 
 		per_cpu(l4x_current_proc_run, smp_processor_id()) = current_thread_info();
@@ -740,7 +740,7 @@ only_receive_IPC:
 				goto only_receive_IPC;
 			}
 
-			l4x_hybrid_return(src_id, l4_utcb_get_l4lx(smp_processor_id()),
+			l4x_hybrid_return(src_id, l4x_utcb_get(l4_myself()),
 			                  data0, data1, tag);
 
 			goto only_receive_IPC;
@@ -748,7 +748,7 @@ only_receive_IPC:
 
 		// copy utcb now that we have made sure to have received
 		// from t
-		utcb_to_thread_struct(l4_utcb_get_l4lx(smp_processor_id()), t);
+		utcb_to_thread_struct(l4x_utcb_get(l4_myself()), t);
 	} /* endless loop */
 
 	enter_kdebug("end of dispatch loop!?");
