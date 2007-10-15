@@ -218,6 +218,13 @@ static void l4x_configuration_sanity_check(const char *cmdline)
 		LOG_printf("Minimal 16MB recommended.\n");
 		enter_kdebug("Increases value in mem= option.");
 	}
+
+#ifndef CONFIG_L4_SERIAL
+	if (strstr(cmdline, "console=ttyLv")) {
+		LOG_printf("Console output set to ttyLvx but driver not compiled in.\n");
+		enter_kdebug("L4 serial driver not enabled");
+	}
+#endif
 }
 #else
 static void l4x_configuration_sanity_check(const char *cmdline)
