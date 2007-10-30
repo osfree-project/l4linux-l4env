@@ -31,6 +31,6 @@
 #define VDSO_HIGH_BASE (UPAGE_USER_ADDRESS)
 
 #undef VDSO_SYM
-#define VDSO_SYM(x) (x)
+#define VDSO_SYM(x) ((unsigned long)(x))
 
 #endif /* ! __ASM_L4__ARCH_I386__ELF_H__ */

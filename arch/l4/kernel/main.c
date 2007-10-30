@@ -661,11 +661,11 @@ static void l4env_register_pointer_section(void *p_in_addr,
 	l4env_register_region((void *)addr, size, allow_noncontig, tag);
 }
 
-void setup_l4env_memory(char *cmdl,
-                        unsigned long *main_mem_start,
-                        unsigned long *main_mem_size,
-                        unsigned long *isa_dma_mem_start,
-                        unsigned long *isa_dma_mem_size)
+void __init setup_l4env_memory(char *cmdl,
+                               unsigned long *main_mem_start,
+                               unsigned long *main_mem_size,
+                               unsigned long *isa_dma_mem_start,
+                               unsigned long *isa_dma_mem_size)
 {
 	int res;
 	char *memstr;
@@ -1128,7 +1128,7 @@ static long l4x_blink(long time)
 	return 0;
 }
 
-static void l4env_linux_startup(void *data)
+static void __init l4env_linux_startup(void *data)
 {
 	l4_threadid_t caller_id = *(l4_threadid_t *)data;
 	l4_msgdope_t result;
@@ -1344,7 +1344,7 @@ static l4vmm_config_t l4vmm_config = {
 };
 #endif
 
-static void l4x_l4vmm_init(void)
+static void __init l4x_l4vmm_init(void)
 {
 #ifdef CONFIG_L4_USE_L4VMM
 	char s[128];
@@ -1376,7 +1376,7 @@ static void l4x_l4vmm_init(void)
 #endif
 }
 
-int main(int argc, char **argv)
+int __init_refok main(int argc, char **argv)
 {
 	l4_threadid_t main_id;
 	l4_msgdope_t result;
@@ -2065,7 +2065,7 @@ enum {
 	L4X_SERVER_EXIT = 0xd0000000,
 };
 
-static void l4x_server_loop(void)
+static void __noreturn l4x_server_loop(void)
 {
 	int do_wait = 1;
 	l4_msgtag_t tag = (l4_msgtag_t){0};
@@ -2101,7 +2101,7 @@ static void l4x_server_loop(void)
 }
 
 
-void __attribute__((noreturn)) l4x_exit_l4linux(void)
+void __noreturn l4x_exit_l4linux(void)
 {
 	l4_msgdope_t result;
 
@@ -2158,6 +2158,7 @@ void l4x_swsusp_after_resume(void)
 /* we need to remember virtual mappings to restore them after resume */
 
 #include <asm/generic/vmalloc.h>
+#include <asm/generic/suspres.h>
 #include <asm/l4lxapi/memory.h>
 
 struct l4x_virtual_mem_struct {
@@ -2212,26 +2213,11 @@ static void l4x_virtual_mem_handle_pages(enum l4x_virtual_mem_type t)
 	}
 }
 
-/* ---- */
-
-#include <asm/generic/suspres.h>
-
-#include <linux/bootmem.h>
-
-struct l4x_suspend_resume_struct {
-	struct list_head list;
-	void (*func)(enum l4x_suspend_resume_state);
-};
-
 static LIST_HEAD(suspres_func_list);
 
-void l4x_suspend_resume_register(void (*func)(enum l4x_suspend_resume_state))
+void l4x_suspend_resume_register(void (*func)(enum l4x_suspend_resume_state),
+                                 struct l4x_suspend_resume_struct *e)
 {
-	struct l4x_suspend_resume_struct *e;
-	if (slab_is_available())
-		e = kmalloc(sizeof(*e), GFP_ATOMIC); // may be called with irqs off
-	else
-		e = alloc_bootmem(sizeof(*e));
 	if (!e)
 		return;
 

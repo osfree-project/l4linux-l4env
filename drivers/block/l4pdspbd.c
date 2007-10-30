@@ -74,7 +74,7 @@ static void transfer(struct l4pdspbd_device *dev, unsigned long sector_start,
 		memcpy(buffer, buffer_addr + byte_start, byte_count);
 }
 
-static void request(request_queue_t *q)
+static void request(struct request_queue *q)
 {
 	struct request *req;
 

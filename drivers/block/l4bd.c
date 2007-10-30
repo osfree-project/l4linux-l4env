@@ -243,7 +243,7 @@ static void l4bd_transfer(struct l4bd_device *dev, unsigned long sector_start,
 	}
 }
 
-static void l4bd_request(request_queue_t *q)
+static void l4bd_request(struct request_queue *q)
 {
 	struct request *req;
 

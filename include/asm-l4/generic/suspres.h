@@ -6,10 +6,17 @@ enum l4x_suspend_resume_state {
 	L4X_RESUME,
 };
 
+struct l4x_suspend_resume_struct {
+	struct list_head list;
+	void (*func)(enum l4x_suspend_resume_state);
+};
+
 #ifdef CONFIG_PM
-void l4x_suspend_resume_register(void (*func)(enum l4x_suspend_resume_state));
+void l4x_suspend_resume_register(void (*func)(enum l4x_suspend_resume_state),
+                                 struct l4x_suspend_resume_struct *e);
 #else
-static inline void l4x_suspend_resume_register(void (*func)(enum l4x_suspend_resume_state))
+static inline void l4x_suspend_resume_register(void (*func)(enum l4x_suspend_resume_state),
+                                               struct l4x_suspend_resume_struct *e)
 {}
 #endif
 

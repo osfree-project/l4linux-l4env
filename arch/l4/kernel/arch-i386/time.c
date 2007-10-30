@@ -113,6 +113,7 @@ EXPORT_SYMBOL(rtc_cmos_write);
 
 static int set_rtc_mmss(unsigned long nowtime)
 {
+#ifndef CONFIG_L4_EXTERNAL_RTC
 	int retval;
 	unsigned long flags;
 
@@ -123,6 +124,9 @@ static int set_rtc_mmss(unsigned long nowtime)
 	spin_unlock_irqrestore(&rtc_lock, flags);
 
 	return retval;
+#else
+	return -1;
+#endif
 }
 
 

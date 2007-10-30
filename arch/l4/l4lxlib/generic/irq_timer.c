@@ -115,6 +115,7 @@ unsigned int l4lx_irq_timer_startup(unsigned int irq)
 {
 	char thread_name[15];
 	int cpu = 0;
+	static struct l4x_suspend_resume_struct susp_res;
 
 	printk("%s(%d)\n", __func__, irq);
 
@@ -123,7 +124,7 @@ unsigned int l4lx_irq_timer_startup(unsigned int irq)
 
 	BUG_ON(TIMER_IRQ != irq);
 
-	l4x_suspend_resume_register(suspend_resume_func);
+	l4x_suspend_resume_register(suspend_resume_func, &susp_res);
 
 	sprintf(thread_name, "timer.i%d", irq);
 	irq_id[irq] = l4lx_thread_create
