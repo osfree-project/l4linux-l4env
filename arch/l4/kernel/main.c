@@ -225,8 +225,9 @@ static void l4x_configuration_sanity_check(const char *cmdline)
 		enter_kdebug("L4 serial driver not enabled");
 	}
 #endif
-#if !defined(CONFIG_L4_FB_DRIVER) && !defined(CONFIG_VGA_CONSOLE)
-	enter_kdebug("L4_FB_DRIVER nor VGA_CONSOLE enabled, choose one");
+#if defined(ARCH_x86) && !defined(CONFIG_L4_FB_DRIVER) && !defined(CONFIG_VGA_CONSOLE)
+	LOG_printf("L4_FB_DRIVER nor VGA_CONSOLE enabled, choose one");
+	enter_kdebug("Read this");
 #endif
 }
 #else
