@@ -112,6 +112,7 @@ SECTIONS
 
         .rel.plt       : { *(.rel.plt) }
 
+	NOTES
 
 	RODATA
 

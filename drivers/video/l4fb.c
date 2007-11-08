@@ -949,19 +949,19 @@ MODULE_DESCRIPTION("Frame buffer driver for L4 con and DOpE");
 MODULE_LICENSE("GPL");
 
 
-module_param(refreshsleep, int, 0);
+module_param(refreshsleep, int, 0444);
 MODULE_PARM_DESC(refreshsleep, "Sleep between frame buffer refreshs in ms");
 module_param(xpos, int, 0);
 MODULE_PARM_DESC(xpos, "X position of the DOpE window");
 module_param(ypos, int, 0);
 MODULE_PARM_DESC(ypos, "Y position of the DOpE window");
-module_param_string(title, window_title, sizeof(window_title), 0);
+module_param_string(title, window_title, sizeof(window_title), 0444);
 MODULE_PARM_DESC(title, "Title of the DOpE window");
-module_param(xres, uint, 0);
+module_param(xres, uint, 0444);
 MODULE_PARM_DESC(xres, "Width of DOpE window in pixels");
-module_param(yres, uint, 0);
+module_param(yres, uint, 0444);
 MODULE_PARM_DESC(yres, "Height of DOpE window in pixels");
-module_param(depth, uint, 0);
+module_param(depth, uint, 0444);
 MODULE_PARM_DESC(depth, "Color depth");
 module_param(nograb, uint, 0);
 MODULE_PARM_DESC(nograb, "Do not grab window focus with mouse (DOpE only)");

@@ -18,7 +18,10 @@ CHECKFLAGS	:= -D__arm__
 
 L4_MK_ARCH	:= arm
 L4_MK_ARCH_CAP	:= ARM
+OBJCOPYARCH	:= elf32-littlearm
+
 else
+
 # x86 selection
 L4API		:= v2
 BASEARCH	:= i386
@@ -27,6 +30,8 @@ CHECKFLAGS	:= -D__i386__
 
 L4_MK_ARCH	:= x86
 L4_MK_ARCH_CAP	:= X86
+
+OBJCOPYARCH	:= elf32-i386
 endif
 
 export BASEARCH L4_MK_ARCH
@@ -50,6 +55,8 @@ LDFLAGS_vmlinux_i386 := --emit-relocs
 endif
 LDFLAGS_vmlinux_arm  := --no-warn-mismatch
 LDFLAGS_vmlinux	:= $(LDFLAGS_vmlinux_$(BASEARCH))
+
+OBJCOPYFLAGS    := -O $(OBJCOPYARCH) -R .note -R .note.gnu.build-id -R .comment -S
 
 L4_MK_API	:= l4$(L4API)
 L4_MK_CPU	:= $(patsubst "%",%,$(CONFIG_L4_MK_CPU_$(L4_MK_ARCH_CAP)))
@@ -196,23 +203,12 @@ CPPFLAGS	+= -DL4API_$(L4_MK_API)
 # IDL also generates header files
 CPPFLAGS	+= -I$(obj)/arch/l4/idl
 
-all: vmlinuz
+all: vmlinuzimage
 
-SUFFIX = $(patsubst "%",%,$(CONFIG_L4_VMLINUZ_SUFFIX))
+boot := arch/l4/boot
 
-quiet_cmd_compr = COMPR   $< to vmlinuz$(SUFFIX)
-      cmd_compr = gzip -c vmlinux > vmlinuz$(SUFFIX)
-
-CLEAN_FILES	+= vmlinuz$(SUFFIX)
-
-quiet_cmd_localinst = LOCINST vmlinuz$(SUFFIX)
-      cmd_localinst = ([ -x "$(srctree)/arch/l4/install.local" ] &&		\
-	                $(srctree)/arch/l4/install.local vmlinuz$(SUFFIX) $(BASEARCH))\
-			  || true
-
-vmlinuz: vmlinux
-	$(call cmd,compr);
-	$(call cmd,localinst)
+vmlinuzimage: vmlinux
+	$(Q)$(MAKE) $(build)=$(boot) $@
 
 mtags:
 	(cd $(srctree) && $(MAKE) tags > /dev/null 2>&1; \

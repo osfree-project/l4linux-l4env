@@ -347,11 +347,11 @@ static void l4x_hybrid_return(l4_threadid_t src_id,
 
 out_fail:
 	LOG_printf("%s: Invalid hybrid return for " PRINTF_L4TASK_FORM " ("
-	           "%p, %lx, %lx, %d, %lx)!\n",
+	           "%p, %lx, %lx, %d, %lx, %lx)!\n",
 	           __func__, PRINTF_L4TASK_ARG(src_id),
 	           h, l4_utcb_exc_typeval(utcb), utcb->exc.err,
 	           l4x_l4syscall_get_nr(utcb->exc.err, l4_utcb_exc_pc(utcb)),
-	           l4_utcb_exc_pc(utcb));
+	           l4_utcb_exc_pc(utcb), tag.raw);
 	LOG_printf("%s: Currently running: " PRINTF_L4TASK_FORM "\n",
 	           __func__, PRINTF_L4TASK_ARG(current->thread.user_thread_id));
 	enter_kdebug("hybrid_return failed");
