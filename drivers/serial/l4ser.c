@@ -12,6 +12,7 @@
 #include <linux/module.h>
 #include <linux/ioport.h>
 #include <linux/init.h>
+#include <linux/irq.h>
 #include <linux/console.h>
 #include <linux/sysrq.h>
 #include <linux/device.h>
@@ -20,15 +21,55 @@
 #include <linux/serial_core.h>
 #include <linux/serial.h>
 
-#include <asm/irq.h>
 #include <l4/sys/kdebug.h>
+#include <l4/sys/syscalls.h>
 #include <asm/generic/setup.h>
+
+#ifdef CONFIG_L4_CONS
+#include <asm/generic/do_irq.h>
+#include <l4/names/libnames.h>
+#include <asm/l4lxapi/thread.h>
+#include <l4/cons/cons-client.h>
+#include <l4/cons/event-server.h>
+#include <l4/log/log_printf.h>
+#endif
 
 /* This is the same major as the sa1100 one */
 #define SERIAL_L4SER_MAJOR	204
 #define MINOR_START		5
 
 static unsigned int vkey_enable;
+
+static struct uart_port	l4ser_port;
+
+#ifdef CONFIG_L4_CONS
+static struct irq_chip *l4ser_orig_irq_type;
+static unsigned int use_cons;
+static l4_threadid_t cons_id, ev_id = L4_INVALID_ID;
+#endif
+
+/*
+ * Interrupts are disabled on entering
+ */
+static void
+l4ser_console_write(struct console *co, const char *s, unsigned int count)
+{
+#ifdef CONFIG_L4_CONS
+	if (use_cons) {
+		DICE_DECLARE_ENV(env);
+
+		if (l4_is_invalid_id(ev_id))
+			return;
+
+		if (cons_client_output_string_call(&cons_id, count, s, &env)
+		    || DICE_HAS_EXCEPTION(&env)) {
+			LOG_printf("l4ser: console output error\n");
+		}
+		return;
+	}
+#endif
+	outnstring(s, count);
+}
 
 static void l4ser_stop_tx(struct uart_port *port)
 {
@@ -42,6 +83,24 @@ static void l4ser_enable_ms(struct uart_port *port)
 {
 }
 
+static int
+l4ser_getchar(void)
+{
+#ifdef CONFIG_L4_CONS
+	if (use_cons) {
+		DICE_DECLARE_ENV(env);
+		long ch;
+
+		if (cons_client_get_input_call(&cons_id, &ch, &env) == 1
+		    && !DICE_HAS_EXCEPTION(&env))
+			return ch;
+		return -1;
+	}
+#endif
+
+	return l4kd_inchar();
+}
+
 static void
 l4ser_rx_chars(struct uart_port *port)
 {
@@ -49,7 +108,7 @@ l4ser_rx_chars(struct uart_port *port)
 	unsigned int flg;
 	int ch;
 
-	while ((ch = l4kd_inchar()) != -1)  {
+	while ((ch = l4ser_getchar()) != -1)  {
 		//printk("LX:got char: {%d}\n", ch);
 
 		port->icount.rx++;
@@ -65,13 +124,31 @@ l4ser_rx_chars(struct uart_port *port)
 	return;
 }
 
+#ifdef CONFIG_L4_CONS
+void
+cons_event_ping_component(CORBA_Object _dice_corba_obj,
+                          CORBA_Server_Environment *_dice_corba_env)
+{
+	l4x_do_IRQ(L4X_IRQ_CONS, current_thread_info());
+}
+
+
+static void
+l4ser_event_thread(void *d)
+{
+	(void)d;
+	l4x_prepare_irq_thread(current_thread_info());
+	cons_event_server_loop(NULL);
+}
+#endif
+
 static void l4ser_tx_chars(struct uart_port *port)
 {
 	struct circ_buf *xmit = &port->info->xmit;
 	int c;
 
 	if (port->x_char) {
-		outchar(port->x_char);
+		l4ser_console_write(NULL, &port->x_char, 1);
 		port->icount.tx++;
 		port->x_char = 0;
 		return;
@@ -79,7 +156,7 @@ static void l4ser_tx_chars(struct uart_port *port)
 
 	while (!uart_circ_empty(xmit)) {
 		c = CIRC_CNT_TO_END(xmit->head, xmit->tail, UART_XMIT_SIZE);
-		outnstring(&xmit->buf[xmit->tail], c);
+		l4ser_console_write(NULL, &xmit->buf[xmit->tail], c);
 		xmit->tail = (xmit->tail + c) & (UART_XMIT_SIZE - 1);
 		port->icount.tx += c;
 	}
@@ -117,11 +194,38 @@ static void l4ser_break_ctl(struct uart_port *port, int break_state)
 {
 }
 
+static unsigned int l4ser_irq_startup(unsigned int irq)
+{
+	return 1;
+}
+
+static void l4ser_irq_dummy_void(unsigned int irq)
+{
+}
+
+struct irq_chip l4ser_irq_type = {
+	.name		= "L4Ore IRQ",
+	.startup	= l4ser_irq_startup,
+	.shutdown	= l4ser_irq_dummy_void,
+	.enable		= l4ser_irq_dummy_void,
+	.disable	= l4ser_irq_dummy_void,
+	.mask		= l4ser_irq_dummy_void,
+	.unmask		= l4ser_irq_dummy_void,
+	.ack		= l4ser_irq_dummy_void,
+	.end		= l4ser_irq_dummy_void,
+};
+
 static int l4ser_startup(struct uart_port *port)
 {
 	int retval;
 
 	if (port->irq) {
+#ifdef CONFIG_L4_CONS
+		if (use_cons) {
+			l4ser_orig_irq_type = irq_desc[port->irq].chip;
+			irq_desc[port->irq].chip = &l4ser_irq_type;
+		}
+#endif
 		retval = request_irq(port->irq, l4ser_int, 0, "L4-uart", port);
 		if (retval)
 			return retval;
@@ -134,8 +238,13 @@ static int l4ser_startup(struct uart_port *port)
 
 static void l4ser_shutdown(struct uart_port *port)
 {
-	if (port->irq)
+	if (port->irq) {
 		free_irq(port->irq, port);
+#ifdef CONFIG_L4_CONS
+		if (use_cons)
+			irq_desc[port->irq].chip = l4ser_orig_irq_type;
+#endif
+	}
 }
 
 static void l4ser_set_termios(struct uart_port *port, struct ktermios *termios,
@@ -189,42 +298,65 @@ static struct uart_ops l4ser_pops = {
 	.verify_port	= l4ser_verify_port,
 };
 
-static struct uart_port	l4ser_port;
-
 static void __init l4ser_init_ports(void)
 {
 	static int first = 1;
-
-	printk("%s\n", __func__);
-
-	if (!vkey_enable)
-		printk(KERN_WARNING "l4ser: input not enabled!\n");
 
 	if (!first)
 		return;
 	first = 0;
 
+#ifdef CONFIG_L4_CONS
+	if (use_cons) {
+		DICE_DECLARE_ENV(env);
+
+		char s[12];
+		if (!names_waitfor_name("cons", &cons_id, 10000)) {
+			LOG_printf("Server 'cons' not found, aborting.\n");
+			return;
+		}
+
+		ev_id = l4lx_thread_create(l4ser_event_thread, 0, NULL,
+		                           NULL, 0, CONFIG_L4_PRIO_L4ORE,
+		                           "consev");
+		if (l4_is_invalid_id(ev_id)) {
+			LOG_printf("Event thread creation failed, aborting.\n");
+			return;
+		}
+
+		snprintf(s, sizeof(s), "L4Linux%d", l4_myself().id.task);
+		s[sizeof(s)-1] = 0;
+
+		if (cons_client_create_call(&cons_id, s, &ev_id, &env)
+		    || DICE_HAS_EXCEPTION(&env)) {
+			LOG_printf("Failed to create console\n");
+			l4lx_thread_shutdown(ev_id);
+			ev_id = L4_INVALID_ID;
+			return;
+		}
+
+	} else
+#endif
+		if (!vkey_enable)
+			printk(KERN_WARNING "l4ser: input not enabled!\n");
+
 	l4ser_port.uartclk   = 3686400;
 	l4ser_port.ops       = &l4ser_pops;
 	l4ser_port.fifosize  = 8;
 	l4ser_port.line      = 0;
-	l4ser_port.irq       = vkey_enable ? l4lx_kinfo->vkey_irq : 0;
 	l4ser_port.iotype    = UPIO_MEM;
 	l4ser_port.membase   = (void *)1;
 	l4ser_port.mapbase   = 1;
 	l4ser_port.flags     = UPF_BOOT_AUTOCONF;
+#ifdef CONFIG_L4_CONS
+	if (use_cons)
+	  l4ser_port.irq     = L4X_IRQ_CONS;
+	else
+#endif
+	  l4ser_port.irq     = vkey_enable ? l4lx_kinfo->vkey_irq : 0;
 }
 
 #ifdef CONFIG_L4_SERIAL_CONSOLE
-
-/*
- * Interrupts are disabled on entering
- */
-static void
-l4ser_console_write(struct console *co, const char *s, unsigned int count)
-{
-	outnstring(s, count);
-}
 
 static int __init
 l4ser_console_setup(struct console *co, char *options)
@@ -294,5 +426,9 @@ MODULE_DESCRIPTION("L4 serial driver");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS_CHARDEV_MAJOR(SERIAL_L4SER_MAJOR);
 
-module_param(vkey_enable, uint, 0);
+module_param(vkey_enable, uint, 0400);
 MODULE_PARM_DESC(vkey_enable, "Enable virtual key input");
+#ifdef CONFIG_L4_CONS
+module_param(use_cons, uint, 0400);
+MODULE_PARM_DESC(use_cons, "Use console server");
+#endif

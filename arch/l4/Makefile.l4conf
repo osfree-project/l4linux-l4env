@@ -43,5 +43,6 @@ $(OUTPUT): $(srctree)/arch/l4/Makefile.l4conf $(OBJ_BASE)/Makeconf.bid.local $(O
 	@echo "  GEN     $@" ;                                                             \
 	echo "L4BID_CONF_AVAILABLE=yes"                          > $@ ;                   \
 	echo "L4BID_CPPFLAGS_SYSCALLS-$(L4_ABS_SYSCALLS)=$(BID_CPPFLAGS_SYSCALLS)" >> $@ ;\
-	echo "L4BID_DICEDIR=$(DICEDIR)"                         >> $@
+	echo "L4BID_DICE=$(DICE)"                                >> $@ ;\
+	echo "L4BID_DICE_INCDIR=$(DICE_INCDIR)"                  >> $@
 endif

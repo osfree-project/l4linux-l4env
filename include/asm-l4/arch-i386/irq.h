@@ -5,12 +5,14 @@
 #include <asm/thread_info.h>
 
 /* the defines are from irq_vectors out of the mach-default directory */
-#define NR_IRQS			18
+#define NR_IRQS			25
 #define NR_IRQS_HW		16
 #define NR_IRQ_VECTORS		NR_IRQS
 #define SYSCALL_VECTOR		0x80
 #define FIRST_DEVICE_VECTOR	0x31
 #define FIRST_SYSTEM_VECTOR	0xef
+
+#define L4X_IRQ_CONS            20
 
 static __inline__ int irq_canonicalize(int irq)
 {

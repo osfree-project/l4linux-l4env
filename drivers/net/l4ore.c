@@ -35,7 +35,7 @@ struct l4x_ore_priv {
 	unsigned long              pkt_size;
 
 	l4_threadid_t              irq_thread;
-	struct hw_interrupt_type   *previous_interrupt_type;
+	struct irq_chip            *previous_interrupt_type;
 };
 
 struct l4x_ore_netdev {
@@ -158,8 +158,8 @@ static void l4x_ore_irq_dummy_void(unsigned int irq)
 {
 }
 
-struct hw_interrupt_type l4x_ore_irq_type = {
-	.typename	= "L4Ore IRQ",
+struct irq_chip l4x_ore_irq_type = {
+	.name		= "L4Ore IRQ",
 	.startup	= l4x_ore_irq_startup,
 	.shutdown	= l4x_ore_irq_dummy_void,
 	.enable		= l4x_ore_irq_dummy_void,
@@ -203,8 +203,8 @@ static int l4x_ore_open(struct net_device *netdev)
 	}
 
 	if ((err = request_irq(netdev->irq, l4x_ore_interrupt,
-	                       SA_SAMPLE_RANDOM | SA_SHIRQ,
-						   netdev->name, netdev))) {
+	                       IRQF_SAMPLE_RANDOM | IRQF_SHARED,
+	                       netdev->name, netdev))) {
 		printk("%s: request_irq(%d, ...) failed: %d\n",
 		       netdev->name, netdev->irq, err);
 		goto err_out_kfree;

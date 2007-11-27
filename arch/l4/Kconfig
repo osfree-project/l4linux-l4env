@@ -148,15 +148,6 @@ config L4_FB_DRIVER_XF86IF
 	  This enables the compile of support for the X Window System driver
 	  for the console.
 
-config L4_OSHKOSH_DRV
-	bool "Network driver for oshkosh."
-	default n
-	depends on L4_ARCH_X86
-	select L4_NEED_DSI
-	select L4_NEED_INET_NTOA
-	help
-	  Network driver for the oshkosh network server.
-
 config L4_ORE_DRV
 	bool "Network driver for ORe"
 	default n
@@ -179,17 +170,14 @@ config L4_SERIAL_CONSOLE
 	  If you say Y here, you will be able to use the pseudo serial
 	  interface as a system console.
 
-endmenu # stub drivers
-
-config L4_NEED_DSI
-	bool #"Enable DSI support"
+config L4_CONS
+	bool "Cons system support"
 	default n
+	depends on L4_SERIAL
 	help
-	  Enables support to be able to use DSI.
+	  Support for cons system. If unsure say 'N'.
 
-config L4_NEED_INET_NTOA
-	bool
-	default n
+endmenu # stub drivers
 
 menu "Debugging options"
 

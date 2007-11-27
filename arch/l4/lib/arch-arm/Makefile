@@ -32,4 +32,6 @@ lib-y	+= ../../../arm/lib/backtrace.o
 lib-y	+= ../pte.o
 lib-y	+= ../memcpy_user.o
 lib-y	+= ../uaccess.o
-lib-y	+= ../proc.o
+
+obj-y	+= proc.o
+proc-y	+= ../proc.o

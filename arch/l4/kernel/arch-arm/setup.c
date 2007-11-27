@@ -826,9 +826,13 @@ void __init setup_arch(char **cmdline_p)
 
 	setup_l4env_memory(boot_command_line, &mem_start, &mem_size,
 	                   &dummy, &dummy);
-	/* Needs to start from 0 to include the image as well */
-	/* Also see in arch_adjust_zones() in arch/memory.h */
-	arm_add_memory(0,         mem_start);
+
+	if (((unsigned long)&_stext & ((1UL << 20) - 1))
+	    || (((unsigned long)&_end - (unsigned long)&_stext)
+	        & ((1UL << 20) - 1)))
+		BUG();
+	arm_add_memory((unsigned long)&_stext,
+	               (unsigned long)&_end - (unsigned long)&_stext);
 	arm_add_memory(mem_start, mem_size);
 
 	//memcpy(boot_command_line, from, COMMAND_LINE_SIZE);

@@ -312,11 +312,12 @@ void *l4env_phys_to_virt(unsigned long address)
 }
 EXPORT_SYMBOL(l4env_phys_to_virt);
 
-
-/* Overwrite weak UTCB getter from L4Env */
-l4_utcb_t *l4env_utcb_get(void)
+l4_utcb_t *l4sys_utcb_get(void)
 {
-	return l4x_utcb_get(l4_myself());
+	l4_utcb_t *u = l4x_utcb_get(l4_myself());
+	if (u)
+		return u;
+	return l4_utcb_get();
 }
 
 /* ---------------------------------------------------------------- */
@@ -843,6 +844,8 @@ void __init setup_l4env_memory(char *cmdl,
 	}
 
 	l4x_map_below_mainmem();
+
+	l4env_register_pointer_section((void *)((unsigned long)&_end - 1), 0, "end");
 }
 
 unsigned long l4x_get_isa_dma_memory_end(void)

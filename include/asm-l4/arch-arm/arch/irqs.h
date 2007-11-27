@@ -7,6 +7,8 @@
 #define NR_IRQS		100
 #define NR_IRQS_HW	96
 
+#define L4X_IRQ_CONS    99
+
 #ifdef CONFIG_L4_ARM_PLATFORM_ISG
 #include <asm/arch/irqs_isg.h>
 #endif

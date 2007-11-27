@@ -2,10 +2,7 @@
 
 -include Makeconf.l4conf
 
-DICE		= $(firstword $(wildcard $(L4BID_DICEDIR)/src/dice \
-	                                 $(shell which dice 2>/dev/null)) \
-					 cannot-find-dice-binary)
-
+DICE		= $(L4BID_DICE)
 DICE_FLAGS_i386	= -Biv2 -Bpia32
 DICE_FLAGS_arm  = -Bix0 -Bparm
 

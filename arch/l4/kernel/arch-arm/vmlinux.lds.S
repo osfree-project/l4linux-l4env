@@ -22,7 +22,7 @@ SECTIONS
 	. = XIP_VIRT_ADDR(CONFIG_XIP_PHYS_ADDR);
 #else
 	/*. = PAGE_OFFSET + TEXT_OFFSET; */
-	. = 0x200000;
+	. = 0x00200000; /* MB aligned */
 #endif
 	.text.head : {
 		_stext = .;
@@ -233,8 +233,9 @@ SECTIONS
 		*(COMMON)
 	}
 	. = ALIGN(4096);
-	_end = .;
   	__bss_stop = .; 
+	. = ALIGN(1048576);
+	_end = .;
 					/* Stabs debugging sections.	*/
 	.stab 0 : { *(.stab) }
 	.stabstr 0 : { *(.stabstr) }

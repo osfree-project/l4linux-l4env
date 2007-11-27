@@ -134,17 +134,13 @@ export L4DIR
 L4LX_E_L-$(CONFIG_L4_FB_DRIVER) += -ll4dope -lvscreen -lcon -lconstream-server
 L4LX_E_L-$(CONFIG_L4_BLK_DRV)   += -lgeneric_blk
 L4LX_E_L-$(CONFIG_L4_EXTERNAL_RTC) += -lrtc
-L4LX_E_L-$(CONFIG_L4_NEED_DSI)	+= -ldsi
-L4LX_E_L-$(CONFIG_L4_OSHKOSH_DRV) += -loshkoshnicdrv
 L4LX_E_L-$(CONFIG_L4_ORE_DRV)   += -lore
 L4LX_E_L-$(CONFIG_L4_IRQ_OMEGA0) += -lomega0
 L4LX_E_L-$(CONFIG_L4_PDSPBLK_DRV) += -lpers_dsp
 L4LX_E_L-$(CONFIG_L4_USE_L4VMM)	+= -ll4vmm$(if $(CONFIG_L4_USE_L4VMM_DBG),-dbg) \
                                    -ll4vmm-c -ll4vmm-cxx
+L4LX_E_L-$(CONFIG_L4_CONS)      += -lcons-client
 L4LX_E_L_O-$(CONFIG_L4_USE_L4VMM) += -ll4vmm-devices$(if $(CONFIG_L4_USE_L4VMM_DBG),-dbg).o \
-
-# Extra includes
-L4LX_E_I-$(CONFIG_L4_NEED_DSI)	+= -I$(srctree)/arch/l4/lib/support
 
 L4LIBS		= -L$(L4OBJ)/lib/$(L4_MK_ARCH)_$(L4_MK_CPU)/$(L4_MK_API) \
 		  -L$(L4OBJ)/lib/$(L4_MK_ARCH)_$(L4_MK_CPU) \
@@ -155,13 +151,12 @@ L4INC		= -I$(L4OBJ)/include/$(L4_MK_ARCH)/$(L4_MK_API) \
 		  -I$(L4OBJ)/include/$(L4_MK_ARCH) \
 		  -I$(L4OBJ)/include/$(L4_MK_API) \
 		  -I$(L4OBJ)/include \
-		  -I$(L4BID_DICEDIR)/include \
+		  -I$(L4BID_DICE_INCDIR) \
 		  $(L4LX_E_I-y)
 
 head-y := arch/l4/kernel/head.o arch/l4/kernel/init_task.o
 
 libs-y				+= arch/l4/lib/arch-$(BASEARCH)/	\
-				   arch/l4/lib/support/			\
 				   arch/l4/l4lxlib/generic/		\
 				   arch/l4/l4lxlib/$(BASEENV)/
 

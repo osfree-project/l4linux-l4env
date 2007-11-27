@@ -212,17 +212,14 @@ static int l4x_hybrid_begin(struct task_struct *p,
 static inline void l4x_dispatch_suspend(struct task_struct *p,
                                         struct thread_struct *t);
 
-static inline void utcb_print_regs(l4_utcb_t *utcb)
+static inline void print_regs(struct pt_regs *r)
 {
-#define R(nr) utcb->exc.r[nr]
+#define R(nr) r->uregs[nr]
 	printk("0: %08lx %08lx %08lx %08lx %08lx %08lx %08lx %08lx\n",
 	       R(0), R(1), R(2), R(3), R(4), R(5), R(6), R(7));
 	printk("8: %08lx %08lx %08lx %08lx %08lx [01;34m%08lx[0m "
 	       "%08lx [01;34m%08lx[0m\n",
-	       R(8), R(9), R(10), R(11), R(12), utcb->exc.sp,
-	       utcb->exc.ulr, utcb->exc.pc);
-	printk("cpsr: %08lx err: %08lx addr: %08lx\n",
-	       utcb->exc.cpsr, utcb->exc.err, utcb->exc.pfa);
+	       R(8), R(9), R(10), R(11), R(12), R(13), R(14), R(15));
 #undef R
 }
 
@@ -473,15 +470,21 @@ static inline int l4x_dispatch_exception(struct task_struct *p,
 	           && regs->ARM_pc < TASK_SIZE) {
 
 		unsigned long val;
+		enum { OABI_MASK = 0x0f000000 | __NR_OABI_SYSCALL_BASE };
 
 		get_user(val, (unsigned long *)regs->ARM_pc);
 
 		TBUF_LOG_INT80(fiasco_tbuf_log_3val("swi    ", TBUF_TID(t->user_thread_id), regs->ARM_pc, val));
 
-		if (likely((val & 0x0f900000) == 0x0f900000)) {
+		if (likely((val & OABI_MASK) == OABI_MASK)) {
 			/* This is a Linux syscall swi */
-			val &= ~0xff900000;
+			val &= ~(0xf0000000 | OABI_MASK);
+		} else if ((val & 0x0fffffff) == 0x0f000000) {
+			val = regs->uregs[7];
+		} else
+			val = ~0UL;
 
+		if (likely(val != ~0UL)) {
 			/* set after swi, before syscall so the forked childs
 			 * get the increase too */
 			regs->ARM_pc += 4;
@@ -561,9 +564,9 @@ static inline int l4x_dispatch_exception(struct task_struct *p,
 	}
 
 #ifdef CONFIG_L4_DEBUG_SEGFAULTS
-	//utcb_print_regs(utcb);
+	print_regs(&t->regs);
 
-	if (t->error_code == 0x00100000) {
+	if (t->error_code == 0x00100000 || t->error_code == 0x00200000) {
 		unsigned long val;
 
 		get_user(val, (unsigned long *)regs->ARM_pc);
@@ -583,7 +586,7 @@ static inline int l4x_dispatch_exception(struct task_struct *p,
 
 	printk("Error code: %s\n", l4x_arm_decode_error_code(t->error_code));
 	printk("(Unknown) EXCEPTION [" PRINTF_L4TASK_FORM "]\n", PRINTF_L4TASK_ARG(t->user_thread_id));
-	//utcb_print_regs(utcb);
+	print_regs(&t->regs);
 	printk("will die...\n");
 
 	enter_kdebug("check");

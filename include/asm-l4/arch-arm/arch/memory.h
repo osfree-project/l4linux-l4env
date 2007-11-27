@@ -13,19 +13,6 @@
 #define __virt_to_bus(x)	 __virt_to_phys(x)
 #define __bus_to_virt(x)	 __phys_to_virt(x)
 
-/* L4lx needs to have some code at the place where arch_adjust_zones is
- * called. This hook just suits well. Also see setup.c were we use 2 nodes */
-#define arch_adjust_zones(node,size,holes) do {			\
-	extern char _stext[];					\
-	if (node)						\
-		break;						\
-								\
-	reserve_bootmem_node(pgdat, 0,				\
-	                     ((unsigned long)&_stext >> PAGE_SHIFT) << PAGE_SHIFT);\
-	reserve_bootmem_node(pgdat, init_mm.end_data + 1,	\
-	                     mi->bank[1].start - init_mm.end_data);\
-} while (0)
-
 #ifdef CONFIG_DISCONTIGMEM
 /*
  * The nodes are matched with the physical SDRAM banks as follows:

@@ -15,6 +15,8 @@
 #include <asm/api/config.h>
 #include <asm/generic/irq.h>
 
+#include <l4/sys/cache.h>
+
 void l4x_arm_devices_init(void);
 
 void l4x_arm_isg_init(void);
@@ -164,4 +166,22 @@ MACHINE_END
 const struct machine_desc *lookup_machine_type(unsigned int x)
 {
 	return &__mach_desc_L4;
+}
+
+
+
+/* DMA functions */
+void v4wb_dma_inv_range(const void *start, const void *end)
+{
+	l4_sys_cache_inv_range((unsigned long)start, (unsigned long)end);
+}
+
+void v4wb_dma_clean_range(const void *start, const void *end)
+{
+	l4_sys_cache_clean_range((unsigned long)start, (unsigned long)end);
+}
+
+void v4wb_dma_flush_range(const void *start, const void *end)
+{
+	l4_sys_cache_flush_range((unsigned long)start, (unsigned long)end);
 }

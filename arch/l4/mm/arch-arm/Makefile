@@ -13,3 +13,4 @@ CFLAGS          += -Iarch/arm/mm
 extable-y	:= ../../../arm/mm/extable.o
 mmap-y		:= ../../../arm/mm/mmap.o
 iomap-y		:= ../../../arm/mm/iomap.o
+consistent-y	:= ../../../arm/mm/consistent.o
