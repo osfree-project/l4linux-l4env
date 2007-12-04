@@ -29,23 +29,24 @@ void l4lx_thread_init(void);
 /**
  * \brief Create a thread.
  * \ingroup thread
- * 
+ *
  * \param thread_func	Thread function.
+ * \param cpu           CPU to start thread on.
  * \param stack_pointer	The stack, if set to NULL a stack will be allocated.
- * 			This is the stack pointer from the top of the stack
- * 			which means that you can put other data on the top
- * 			of the stack yourself. If you supply your stack
- * 			yourself you have to make sure your stack is big
- * 			enough.
+ *			This is the stack pointer from the top of the stack
+ *			which means that you can put other data on the top
+ *			of the stack yourself. If you supply your stack
+ *			yourself you have to make sure your stack is big
+ *			enough.
  * \param stack_data	Pointer to some data which will be copied to the
  *			stack. It can be used to transfer data to your new
  *			thread.
  * \param stack_data_size Size of your data pointed to by the stack_data
- * 			pointer.
+ *			pointer.
  * \param prio		Priority of the thread. If set to -1 the default
- * 			priority will be choosen (i.e. no prio will be set).
+ *			priority will be choosen (i.e. no prio will be set).
  * \param name		String describing the thread. Only used for
- * 			debugging purposes.
+ *			debugging purposes.
  *
  * \return Thread ID of the new thread, L4_INVALID_ID if an error occured.
  *
@@ -61,12 +62,13 @@ void l4lx_thread_init(void);
  *         Stack growth        | | |   |     |--- thread ID (not always)
  *                             | | |   |--------- data for new thread
  *                             | | |------------- pointer of data section
- *                             | | 		  given to the new thread
+ *                             | |		  given to the new thread
  *                             | |--------------- fake return address
  *                             |----------------- ESP for new thread
  * </pre>
  */
 l4_threadid_t l4lx_thread_create(void (*thread_func)(void *data),
+                                 unsigned cpu,
 				 void *stack_pointer,
 				 void *stack_data, unsigned stack_data_size,
 				 int prio,

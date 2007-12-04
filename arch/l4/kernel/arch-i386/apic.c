@@ -695,6 +695,7 @@ void clear_local_APIC(void)
  */
 void disable_local_APIC(void)
 {
+#ifdef NOT_FOR_L4
 	unsigned long value;
 
 	clear_local_APIC();
@@ -718,6 +719,7 @@ void disable_local_APIC(void)
 		l &= ~MSR_IA32_APICBASE_ENABLE;
 		wrmsr(MSR_IA32_APICBASE, l, h);
 	}
+#endif
 }
 
 /*
@@ -728,6 +730,7 @@ void disable_local_APIC(void)
  */
 void lapic_shutdown(void)
 {
+#ifdef NOT_FOR_L4
 	unsigned long flags;
 
 	if (!cpu_has_apic)
@@ -740,6 +743,7 @@ void lapic_shutdown(void)
 		disable_local_APIC();
 
 	local_irq_restore(flags);
+#endif
 }
 
 /*
@@ -749,6 +753,7 @@ void lapic_shutdown(void)
  */
 int __init verify_local_APIC(void)
 {
+#ifdef NOT_FOR_L4
 	unsigned int reg0, reg1;
 
 	/*
@@ -794,6 +799,7 @@ int __init verify_local_APIC(void)
 	reg1 = apic_read(APIC_LVT1);
 	apic_printk(APIC_DEBUG, "Getting LVT1: %x\n", reg1);
 
+#endif
 	return 1;
 }
 

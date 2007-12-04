@@ -24,6 +24,7 @@ SECTIONS
 	/*. = PAGE_OFFSET + TEXT_OFFSET; */
 	. = 0x00200000; /* MB aligned */
 #endif
+	PROVIDE(_prog_img_start = .);
 	.text.head : {
 		_stext = .;
 		_sinittext = .;
@@ -235,6 +236,7 @@ SECTIONS
 	. = ALIGN(4096);
   	__bss_stop = .; 
 	. = ALIGN(1048576);
+	PROVIDE(_prog_img_end = .);
 	_end = .;
 					/* Stabs debugging sections.	*/
 	.stab 0 : { *(.stab) }

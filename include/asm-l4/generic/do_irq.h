@@ -32,4 +32,27 @@ static inline void l4x_do_IRQ(int irq, struct thread_info *ctx)
 	l4x_wakeup_idle_if_needed();
 }
 
+#ifdef CONFIG_SMP
+#include <asm/generic/smp.h>
+
+static inline void l4x_do_IPI(int vector, struct thread_info *ctx)
+{
+	unsigned long flags, old_cpu_state;
+	struct pt_regs *r;
+	int cpu = smp_processor_id();
+
+	local_irq_save(flags);
+	ctx->task = per_cpu(l4x_current_process, cpu);
+	ctx->preempt_count = task_thread_info(per_cpu(l4x_current_process, cpu))->preempt_count;
+	r = &per_cpu(l4x_current_process, cpu)->thread.regs;
+	old_cpu_state = l4x_get_cpu_mode(r);
+	l4x_set_cpu_mode(r, l4x_in_kernel() ? L4X_MODE_KERNEL : L4X_MODE_USER);
+	do_l4x_smp_process_IPI(vector, &per_cpu(l4x_current_process, cpu)->thread.regs);
+	l4x_set_cpu_mode(r, old_cpu_state);
+	local_irq_restore(flags);
+
+	l4x_wakeup_idle_if_needed();
+}
+#endif
+
 #endif /* ! __ASM_L4__GENERIC__DO_IRQ_H__ */

@@ -4,8 +4,7 @@
 #undef memcpy
 #undef memset
 
-void *memcpy(void *to, const void *from, size_t n);
-#if 0
+void *memcpy(void *to, const void *from, size_t n)
 {
 #ifdef CONFIG_X86_USE_3DNOW
 	return __memcpy3d(to, from, n);
@@ -13,16 +12,14 @@ void *memcpy(void *to, const void *from, size_t n);
 	return __memcpy(to, from, n);
 #endif
 }
-#endif
+
 void *memcpy(void *to, const void *from, size_t n);
 EXPORT_SYMBOL(memcpy);
 
-void *memset(void *s, int c, size_t count);
-#if 0
+void *memset(void *s, int c, size_t count)
 {
 	return __memset(s, c, count);
 }
-#endif
 EXPORT_SYMBOL(memset);
 
 void *memmove(void *dest, const void *src, size_t n)

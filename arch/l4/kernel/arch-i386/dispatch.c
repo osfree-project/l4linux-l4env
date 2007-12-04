@@ -226,7 +226,7 @@ void fastcall l4x_switch_to(struct task_struct *prev, struct task_struct *next)
 
 #ifdef CONFIG_SMP
 	next->thread.user_thread_id = next->thread.user_thread_ids[smp_processor_id()];
-	l4x_stack_struct_get(next->stack)->id = l4x_cpu_thread_get(smp_processor_id());
+	l4x_stack_struct_get(next->stack)->l4id = l4x_cpu_thread_get(smp_processor_id());
 #endif
 
 	if (next->thread.user_thread_id.id.task)
@@ -537,12 +537,14 @@ static inline int l4x_dispatch_exception(struct task_struct *p,
 
 	} else if (unlikely(t->trap_no == 0x1)) {
 		/* Singlestep */
+#if 0
 		LOG_printf("eip: %08lx esp: %08lx err: %08lx trp: %08lx\n",
 		           regs->eip, regs->esp,
 		           t->error_code, t->trap_no);
 		LOG_printf("eax: %08lx ebx: %08lx ecx: %08lx edx: %08lx\n",
 		           regs->eax, regs->ebx, regs->ecx,
 		           regs->edx);
+#endif
 		return 0;
 	} else if (t->trap_no == 0xd) {
 		if (l4x_hybrid_begin(p, t))

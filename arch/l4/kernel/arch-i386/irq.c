@@ -344,12 +344,11 @@ void fixup_irqs(cpumask_t map)
 
 #ifdef CONFIG_SMP
 /* XXX probably the wrong place */
-void l4x_smp_timer_interrupt(void)
+void l4x_smp_timer_interrupt(struct pt_regs *regs)
 {
-	struct pt_regs regs; // garbage in there...
 	struct pt_regs *oldregs;
 	unsigned long flags;
-	oldregs = set_irq_regs(&regs);
+	oldregs = set_irq_regs(regs);
 
 	local_irq_save(flags);
 	irq_enter();

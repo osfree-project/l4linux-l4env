@@ -3,6 +3,10 @@
 #error Do NOT compile this file directly.
 #endif
 
+#include <l4/sys/cache.h>
+
+DEFINE_PER_CPU(int, l4x_idle_running);
+
 static inline l4_umword_t l4x_parse_ptabs(struct task_struct *p,
                                           l4_umword_t address,
                                           l4_umword_t *pferror,
@@ -174,6 +178,10 @@ static inline int l4x_handle_page_fault(struct task_struct *p,
 		} else {
 			*d0 &= PAGE_MASK;
 			*d1  = fp.fpage;
+
+			l4_sys_cache_clean_range
+			    (fp.fp.page << L4_LOG2_PAGESIZE,
+			     (fp.fp.page << L4_LOG2_PAGESIZE) + PAGE_SIZE);
 		}
 #ifdef ARCH_x86
 	} else if (unlikely(l4_is_io_page_fault(pfa))) {
@@ -391,7 +399,7 @@ void l4x_wakeup_idler(int cpu)
 		return;
 
 	pager_id = preempter_id = L4_INVALID_ID;
-	l4_thread_ex_regs_flags(idler_thread[cpu], 0, 0,
+	l4_thread_ex_regs_flags(idler_thread[cpu], ~0UL, ~0UL,
 	                        &preempter_id, &pager_id,
 	                        &o_efl, &o_ip, &o_sp,
 	                        L4_THREAD_EX_REGS_RAISE_EXCEPTION);
@@ -415,17 +423,13 @@ void l4x_idle(void)
 	l4_utcb_t *utcb = l4x_utcb_get(l4_myself());
 	char s[9];
 
-#ifdef CONFIG_SMP
 	snprintf(s, sizeof(s), "idler%d", cpu);
-#else
-	snprintf(s, sizeof(s), "idler");
-#endif
 	s[sizeof(s) - 1] = 0;
 
 	LOG_printf("idler%d: utcb=%p " PRINTF_L4TASK_FORM "\n",
-			cpu, utcb, PRINTF_L4TASK_ARG(l4_myself()));
+	           cpu, utcb, PRINTF_L4TASK_ARG(l4_myself()));
 
-	idler_thread[cpu] = l4lx_thread_create(idler_func, NULL, NULL, 0,
+	idler_thread[cpu] = l4lx_thread_create(idler_func, 0, NULL, NULL, 0,
 	                                       CONFIG_L4_PRIO_IDLER, s);
 	if (l4_is_invalid_id(idler_thread[cpu])) {
 		LOG_printf("Could not create idler thread... exiting\n");
@@ -437,15 +441,13 @@ void l4x_idle(void)
 	tick_nohz_stop_sched_tick();
 
 	while (1) {
-
-		/* &init_thread_info == current_thread_info() */
-		per_cpu(l4x_current_proc_run, cpu) = &init_thread_info;
+		per_cpu(l4x_current_proc_run, cpu) = current_thread_info();
+		per_cpu(l4x_idle_running, cpu) = 1;
 		l4x_dispatch_delete_polling_flag();
-
-		l4x_smp_process_IPI();
 
 		if (need_resched()) {
 			per_cpu(l4x_current_proc_run, cpu) = NULL;
+			per_cpu(l4x_idle_running, cpu) = 0;
 			l4x_dispatch_set_polling_flag();
 			tick_nohz_restart_sched_tick();
 			preempt_enable_no_resched();
@@ -463,6 +465,7 @@ void l4x_idle(void)
 		                        L4_IPC_SEND_TIMEOUT_0, &dummydope, &tag);
 
 		per_cpu(l4x_current_proc_run, cpu) = NULL;
+		per_cpu(l4x_idle_running, cpu) = 0;
 		l4x_dispatch_set_polling_flag();
 
 		TBUF_LOG_IDLE(fiasco_tbuf_log_3val("l4x_idle >",
@@ -482,15 +485,15 @@ void l4x_idle(void)
 			 * kernel thread. Reschedule. */
 			l4x_hybrid_do_regular_work();
 
-			/* Check for IPI */
-			if (l4x_IPI_is_ipi_message(data0))
-				continue;
-
 			/* Paranoia */
 			if (!l4_msgtag_is_exception(tag)
 			    || !l4x_is_triggered_exception(l4_utcb_exc_typeval(l4x_utcb_get(l4_myself())))) {
-				LOG_printf("idler%d: src=" PRINTF_L4TASK_FORM " exc-val = 0x%lx (d0 = %lx, d1 = %lx, tag = %lx)\n",
-				           cpu, PRINTF_L4TASK_ARG(src_id), l4_utcb_exc_typeval(l4x_utcb_get(l4_myself())), data0, data1, l4_msgtag_label(tag));
+				LOG_printf("idler%d: src=" PRINTF_L4TASK_FORM
+				           " exc-val = 0x%lx (d0 = %lx, "
+				           "d1 = %lx, tag = %lx)\n",
+				           cpu, PRINTF_L4TASK_ARG(src_id),
+				           l4_utcb_exc_typeval(l4x_utcb_get(l4_myself())),
+				           data0, data1, l4_msgtag_label(tag));
 				enter_kdebug("Uhh, no exc?!");
 			}
 		} else
@@ -674,8 +677,7 @@ reply_IPC:
 
 		/*
 		 * Actually we could use l4_ipc_call here but for our
-		 * (asynchronous) hybrid apps and IPIs we need to do an open
-		 * wait.
+		 * (asynchronous) hybrid apps we need to do an open wait.
 		 */
 
 		TBUF_LOG_DSP_IPC_IN(fiasco_tbuf_log_3val
@@ -732,13 +734,8 @@ only_receive_IPC:
 
 		if (!l4_thread_equal(src_id, t->user_thread_id)) {
 
-			if (src_id.id.task == l4x_kernel_taskno) {
-
-				if (l4x_IPI_is_ipi_message(data0))
-					l4x_smp_process_IPI();
-
+			if (src_id.id.task == l4x_kernel_taskno)
 				goto only_receive_IPC;
-			}
 
 			l4x_hybrid_return(src_id, l4x_utcb_get(l4_myself()),
 			                  data0, data1, tag);

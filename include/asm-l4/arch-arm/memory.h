@@ -62,8 +62,8 @@
 #error Top of user space clashes with start of module space
 #endif
 #endif
-#define MODULE_END		(0)
-#define MODULE_START		(0)
+#define MODULE_END		(l4env_vmalloc_memory_start + 16*1048576)
+#define MODULE_START		(l4env_vmalloc_memory_start)
 
 /*
  * The XIP kernel gets mapped at the bottom of the module vm area.

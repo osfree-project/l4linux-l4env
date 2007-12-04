@@ -68,11 +68,9 @@ static void attach_to_IRQ(unsigned int irq)
 			      L4_IPC_RECV_TIMEOUT_0,
 			      &res);
 
-	if (code != L4_IPC_RETIMEOUT) {
+	if (code != L4_IPC_RETIMEOUT)
 		printk("%s: can't register to irq %u: error 0x%x\n",
 		       __func__, irq, (unsigned) code);
-	} else
-		printk("Attached to IRQ %d\n", irq);
 }
 
 /*
@@ -176,7 +174,7 @@ static void irq_thread(void *data)
 	unsigned int irq = 0;
 	struct thread_info *ctx = current_thread_info();
 
-	l4x_prepare_irq_thread(ctx);
+	l4x_prepare_irq_thread(ctx, 0);
 
 	d_printk("%s: Starting IRQ thread on CPU %d\n", __func__, cpu);
 
@@ -211,7 +209,7 @@ void l4lx_irq_init(void)
 
 	snprintf(thread_name, sizeof(thread_name), "IRQ CPU%d", cpu);
 	thread_name[sizeof(thread_name) - 1] = 0;
-	irq_ths[cpu] = l4lx_thread_create(irq_thread, NULL,
+	irq_ths[cpu] = l4lx_thread_create(irq_thread, 0, NULL,
 	                                  &cpu, sizeof(cpu),
 	                                  l4lx_irq_prio_get(1),
 	                                  thread_name);

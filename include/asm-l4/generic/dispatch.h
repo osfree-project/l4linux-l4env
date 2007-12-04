@@ -19,6 +19,7 @@ void l4x_print_vm_area_maps(struct task_struct *p);
 #endif
 
 DECLARE_PER_CPU(struct thread_info *, l4x_current_proc_run);
+DECLARE_PER_CPU(int, l4x_idle_running);
 
 extern unsigned l4x_fiasco_nr_of_syscalls;
 

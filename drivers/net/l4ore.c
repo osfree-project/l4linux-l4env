@@ -127,7 +127,7 @@ static void l4x_ore_irq_thread(void *data)
 	int ret;
 	struct thread_info *ctx = current_thread_info();
 
-	l4x_prepare_irq_thread(ctx);
+	l4x_prepare_irq_thread(ctx, 0);
 
 	while (1) {
 		unsigned int size = ETH_HLEN + netdev->mtu;
@@ -210,7 +210,7 @@ static int l4x_ore_open(struct net_device *netdev)
 		goto err_out_kfree;
 	}
 
-	priv->irq_thread = l4lx_thread_create(l4x_ore_irq_thread,
+	priv->irq_thread = l4lx_thread_create(l4x_ore_irq_thread, 0,
 	                                      NULL, &netdev, sizeof(netdev),
 	                                      CONFIG_L4_PRIO_L4ORE, "L4OreRcv");
 	if (l4_is_invalid_id(priv->irq_thread)) {

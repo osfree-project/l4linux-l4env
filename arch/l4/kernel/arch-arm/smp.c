@@ -283,6 +283,7 @@ asmlinkage void __cpuinit secondary_start_kernel(void)
 
 	l4x_stack_setup(current_thread_info());
 	raw_smp_processor_id() = l4x_cpu_cpu_get();
+	l4x_cpu_ipi_thread_start(smp_processor_id());
 
 	cpu = smp_processor_id();
 
@@ -365,6 +366,8 @@ void __init smp_prepare_boot_cpu(void)
 	unsigned int cpu = smp_processor_id();
 
 	per_cpu(cpu_data, cpu).idle = current;
+
+	l4x_cpu_ipi_thread_start(0);
 }
 
 static void send_ipi_message(cpumask_t callmap, enum ipi_msg_type msg)
@@ -538,7 +541,6 @@ static void ipi_call_function(unsigned int cpu)
 	void *info = data->info;
 	int wait = data->wait;
 
-	LOG_printf("%s %d\n", __func__, cpu);
 	cpu_clear(cpu, data->pending);
 
 	func(info);
@@ -570,6 +572,7 @@ static void ipi_cpu_stop(unsigned int cpu)
 
 void l4x_smp_broadcast_timer(void)
 {
+	smp_send_timer();
 }
 
 /*
@@ -638,14 +641,12 @@ asmlinkage void __exception do_IPI(struct pt_regs *regs)
 	set_irq_regs(old_regs);
 }
 
-static struct pt_regs __ipi_regs;
-
-void do_l4x_smp_process_IPI(void)
+void do_l4x_smp_process_IPI(int vector, struct pt_regs *regs)
 {
 	unsigned long flags;
 
 	local_irq_save(flags);
-	do_IPI(&__ipi_regs);
+	do_IPI(regs);
 	local_irq_restore(flags);
 }
 

@@ -137,7 +137,7 @@ static void
 l4ser_event_thread(void *d)
 {
 	(void)d;
-	l4x_prepare_irq_thread(current_thread_info());
+	l4x_prepare_irq_thread(current_thread_info(), 0);
 	cons_event_server_loop(NULL);
 }
 #endif

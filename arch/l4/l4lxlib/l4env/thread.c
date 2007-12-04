@@ -72,6 +72,7 @@ l4_threadid_t inline l4lx_thread_no_to_tid(int thread_no)
  *  This all looks like another pro for V4...
  */
 l4_threadid_t l4lx_thread_create(void (*thread_func)(void *data),
+                                 unsigned cpu,
 				 void *stack_pointer,
 				 void *stack_data, unsigned stack_data_size,
 				 int prio,

@@ -53,7 +53,7 @@ typedef struct _cli_lock {
 
 #ifdef CONFIG_SMP
 
-#define NR_TAMERS 2
+#define NR_TAMERS NR_CPUS
 
 static int cpu_to_nr[NR_CPUS];
 
@@ -345,8 +345,8 @@ void l4x_global_restore_flags(unsigned long flags)
 }
 EXPORT_SYMBOL(l4x_global_restore_flags);
 
-/** create our semaphore thread */
-void l4x_tamed_init(int nr)
+/** create one semaphore thread */
+static void l4x_tamed_init_one(int nr)
 {
 	char s[9]; // up to 999 CPUs
 
@@ -369,7 +369,7 @@ void l4x_tamed_init(int nr)
 	tamed_per_nr(next_entry, nr)             = 0;
 
 	tamed_per_nr(cli_sem_thread_id, nr) =
-	  l4lx_thread_create(cli_sem_thread,
+	  l4lx_thread_create(cli_sem_thread, nr + 1,
 	                     tamed_per_nr(stack_mem, nr) + sizeof(tamed_per_nr(stack_mem, 0)),
 	                     &nr, sizeof(nr), CONFIG_L4_PRIO_TAMER, s);
 
@@ -379,6 +379,15 @@ void l4x_tamed_init(int nr)
 
 	if (!nr)
 		LOG_printf("Using tamed mode.\n");
+}
+
+void l4x_tamed_init(void)
+{
+	int i;
+	for (i = 0; i < NR_TAMERS; i++)
+		if (l4_is_nil_id(tamed_per_nr(cli_sem_thread_id,
+		                              l4x_cpu_physmap_get(i))))
+			l4x_tamed_init_one(l4x_cpu_physmap_get(i));
 }
 
 int l4x_tamed_print_cli_stats(char *buffer)

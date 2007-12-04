@@ -30,20 +30,18 @@ static inline void l4x_wakeup_idle_if_needed(void)
 	 * kernel server is idling, wake it up. */
 
 	for_each_online_cpu(cpu) {
-		if (per_cpu(l4x_current_proc_run, cpu)
+		struct thread_info *t = per_cpu(l4x_current_proc_run, cpu);
+		/* Check if server is waiting and we have work to do */
+		if (t
 #ifdef ARCH_x86
-		    && (_TIF_ALLWORK_MASK
-		        & per_cpu(l4x_current_proc_run, cpu)->flags)
+		    && (_TIF_ALLWORK_MASK & t->flags)
 #elif defined(ARCH_arm)
-		    && (_TIF_WORK_MASK
-		        & per_cpu(l4x_current_proc_run, cpu)->flags)
+		    && (_TIF_WORK_MASK & t->flags)
 #else
 #error Unknown arch
 #endif
 		    ) {
-
-			if (per_cpu(l4x_current_proc_run, cpu)
-			    == &init_thread_info) {
+			if (per_cpu(l4x_idle_running, cpu)) {
 				/*
 				 * No user process is currently running,
 				 * i.e.  idle is only waiting for interrupts
@@ -57,8 +55,7 @@ static inline void l4x_wakeup_idle_if_needed(void)
 				 * triggers any possible interrupt work to
 				 * do.
 				 */
-				l4x_suspend_user(per_cpu(l4x_current_proc_run,
-				                         cpu)->task, cpu);
+				l4x_suspend_user(t->task, cpu);
 			}
 		}
 	}

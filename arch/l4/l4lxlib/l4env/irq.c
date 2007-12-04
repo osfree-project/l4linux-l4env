@@ -176,7 +176,7 @@ static inline void attach_to_irq(unsigned irq, l4_threadid_t *irq_th)
  */
 static void init_irq_thread(unsigned irq, l4_threadid_t *irq_th)
 {
-	l4x_prepare_irq_thread(current_thread_info());
+	l4x_prepare_irq_thread(current_thread_info(), 0);
 	attach_to_irq(irq, irq_th);
 }
 
@@ -407,6 +407,7 @@ static unsigned int do_l4lx_irq_dev_startup(unsigned int irq, int hw)
 
 		sprintf(thread_name, "IRQ%d", irq);
 		irq_id[irq] = l4lx_thread_create(hw ? irq_thread_hw : irq_thread_virt,
+		                                 0,
 						 NULL,
 						 &irq, sizeof(irq),
 						 l4lx_irq_prio_get(irq),

@@ -39,6 +39,7 @@ SECTIONS
   . = 0x400000;
   phys_startup_32 = startup_32 - LOAD_OFFSET;
 
+  PROVIDE(_prog_img_start = .);
   .text.head : AT(ADDR(.text.head) - LOAD_OFFSET) {
   	_text = .;			/* Text and read-only data */
 	*(.text.head)
@@ -276,6 +277,7 @@ SECTIONS
   . = ALIGN(4096);
   .rospace : AT(ADDR(.rospace) - LOAD_OFFSET) { *(.rospace) }
 
+  PROVIDE(_prog_img_end = .);
   _end = . ;
 
   /* Sections to be discarded */

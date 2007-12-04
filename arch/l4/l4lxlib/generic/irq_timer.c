@@ -64,7 +64,7 @@ void timer_irq_thread(void *data)
 	l4_kernel_clock_t pint;
 	struct thread_info *ctx = current_thread_info();
 
-	l4x_prepare_irq_thread(ctx);
+	l4x_prepare_irq_thread(ctx, 0);
 
 	printk("%s: Starting timer IRQ thread.\n", __func__);
 
@@ -129,6 +129,7 @@ unsigned int l4lx_irq_timer_startup(unsigned int irq)
 	sprintf(thread_name, "timer.i%d", irq);
 	irq_id[irq] = l4lx_thread_create
 			(timer_irq_thread,	/* thread function */
+	                 0,                     /* cpu */
 			 NULL,			/* stack */
 			 &cpu, sizeof(cpu),	/* data */
 			 l4lx_irq_prio_get(irq),/* prio */

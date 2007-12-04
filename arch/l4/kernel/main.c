@@ -46,6 +46,7 @@
 #include <asm/l4lxapi/thread.h>
 #include <asm/l4lxapi/misc.h>
 #include <asm/l4lxapi/task.h>
+#include <asm/l4lxapi/irq.h>
 
 #include <asm/generic/dispatch.h>
 #include <asm/generic/ferret.h>
@@ -108,7 +109,8 @@ unsigned char trampoline_data [1];
 unsigned char trampoline_end  [1];
 #endif
 
-#endif
+#endif /* x86 */
+
 #ifdef ARCH_arm
 unsigned long cr_alignment;
 unsigned long cr_no_alignment;
@@ -116,6 +118,7 @@ unsigned long cr_no_alignment;
 
 #ifdef CONFIG_SMP
 unsigned int  l4x_nr_cpus = 1;
+static unsigned int  l4x_cpu_physmap[NR_CPUS];
 #endif
 
 unsigned l4x_fiasco_nr_of_syscalls = 7;
@@ -159,7 +162,7 @@ struct l4env_phys_virt_mem {
 	l4_size_t size; /* size of chunk in Bytes */
 };
 
-#define L4ENV_PHYS_VIRT_ADDRS_MAX_ITEMS 10
+#define L4ENV_PHYS_VIRT_ADDRS_MAX_ITEMS 20
 
 /* Default memory size */
 unsigned long l4env_mainmem_size = CONFIG_L4_L4ENV_MEMSIZE << 20;
@@ -411,7 +414,16 @@ char *strdup(const char *s)
 	return p;
 }
 
-static void l4x_forward_pf(l4_umword_t addr, l4_umword_t pc)
+static inline int l4x_is_writable_area(unsigned long a)
+{
+	return    ((unsigned long)&_sdata <= a
+	           && a < (unsigned long)&_edata)
+	       || ((unsigned long)&__init_begin <= a
+	           && a < (unsigned long)&__init_end)
+	       || ((unsigned long)&__bss_start <= a
+	           && a < (unsigned long)&__bss_stop);
+}
+static void l4x_forward_pf(l4_umword_t addr, l4_umword_t pc, int extra_write)
 {
 	int error;
 	l4_umword_t dw0, dw1;
@@ -421,7 +433,8 @@ static void l4x_forward_pf(l4_umword_t addr, l4_umword_t pc)
 	do {
 		tag = l4_msgtag(L4_MSGTAG_PAGE_FAULT, 0, 0, 0);
 		error = l4_ipc_call_tag(l4x_start_thread_pager_id,
-		                        L4_IPC_SHORT_MSG, addr, pc, tag,
+		                        L4_IPC_SHORT_MSG,
+		                        addr | (extra_write ? 2 : 0), pc, tag,
 				        L4_IPC_MAPMSG(addr, L4_LOG2_PAGESIZE),
 				        &dw0, &dw1, L4_IPC_NEVER, &result, &tag);
 	} while (error == L4_IPC_SECANCELED || error == L4_IPC_SEABORTED);
@@ -550,7 +563,7 @@ static void l4x_map_below_mainmem(void)
 	/* Touch page so that we get the PF now */
 	for (i = L4_PAGESIZE; i < (unsigned long)l4x_main_memory_start;
 	     i += L4_PAGESIZE)
-		l4x_forward_pf(i, 0);
+		l4x_forward_pf(i, 0, l4x_is_writable_area(i));
 }
 
 /* map upage to UPAGE_USER_ADDRESS in linux server itself */
@@ -583,7 +596,7 @@ static void l4x_map_upage_myself(void)
 static void l4env_register_region(void *start, l4_size_t size,
                                   int allow_noncontig, const char *tag)
 {
-	const int num_addrs = 8;
+	const int num_addrs = 12;
 	l4dm_mem_addr_t phys_addrs[num_addrs];
 	l4_size_t phys_addrs_size;
 	l4_offs_t offset;
@@ -866,7 +879,21 @@ void l4x_setup_thread_stack(void)
 	l4x_stack_setup(ti);
 }
 
+#ifdef ARCH_x86
+void l4x_load_percpu_gdt_descriptor(struct desc_struct *gdt)
+{
+	fiasco_gdt_set(&gdt[GDT_ENTRY_PERCPU], 8, 0, l4_myself());
+	asm("mov %0, %%fs"
+	    : : "r" (l4x_fiasco_gdt_entry_offset * 8 + 3) : "memory");
+}
+#endif
+
 #ifdef CONFIG_SMP
+
+unsigned l4x_cpu_physmap_get(unsigned lcpu)
+{
+	return l4x_cpu_physmap[lcpu];
+}
 
 static l4_threadid_t l4x_cpu_threads[NR_CPUS];
 static struct task_struct *l4x_cpu_idler[NR_CPUS] = { &init_task, 0, };
@@ -899,7 +926,7 @@ static void l4x_cpu_thread_set(int cpu, l4_threadid_t tid)
 
 void l4x_smp_update_task(struct task_struct *p, int new_cpu)
 {
-	l4x_stack_struct_get(task_stack_page(p))->id
+	l4x_stack_struct_get(task_stack_page(p))->l4id
 	  = l4x_cpu_thread_get(new_cpu);
 
 	p->thread.user_thread_id = p->thread.user_thread_ids[new_cpu];
@@ -911,20 +938,60 @@ struct task_struct *l4x_cpu_idle_get(int cpu)
 	return l4x_cpu_idler[cpu];
 }
 
-#ifdef ARCH_x86
-void l4x_load_percpu_gdt_descriptor(struct desc_struct *gdt)
+static l4_threadid_t l4x_cpu_ipi_threads[NR_CPUS];
+
+l4_threadid_t l4x_cpu_ipi_thread_get(unsigned cpu)
 {
-	fiasco_gdt_set(&gdt[GDT_ENTRY_PERCPU], 8, 0, l4_myself());
-	asm("mov %0, %%fs"
-	    : : "r" (l4x_fiasco_gdt_entry_offset * 8 + 3) : "memory");
+	return l4x_cpu_ipi_threads[cpu];
 }
-#endif
+
+#include <asm/generic/sched.h>
+#include <asm/generic/do_irq.h>
+static __noreturn void l4x_cpu_ipi_thread(void *x)
+{
+	unsigned _cpu = *(unsigned *)x;
+	l4_threadid_t srcid;
+	l4_msgdope_t dope;
+	l4_umword_t vector, d;
+	int err;
+
+	l4x_prepare_irq_thread(current_thread_info(), _cpu);
+
+	while (1) {
+		err = l4_ipc_wait(&srcid, L4_IPC_SHORT_MSG, &vector, &d,
+	                          L4_IPC_NEVER, &dope);
+		if (unlikely(err))
+			LOG_printf("ipi%d: ipc error %x\n", _cpu, err);
+
+		if (smp_processor_id() != _cpu) // sanity assertion
+			enter_kdebug("smp_processor_id() != _cpu");
+
+		l4x_do_IPI(vector, current_thread_info());
+	}
+}
+
+void l4x_cpu_ipi_thread_start(unsigned cpu)
+{
+	char s[8];
+
+	snprintf(s, sizeof(s), "ipi%d", cpu);
+	s[sizeof(s)-1] = 0;
+
+	l4x_cpu_ipi_threads[cpu]
+		= l4lx_thread_create(l4x_cpu_ipi_thread,
+	                             l4x_cpu_physmap_get(cpu) + 1,
+	                             NULL, &cpu, sizeof(cpu),
+	                             l4lx_irq_prio_get(0), s);
+}
+
 
 static void __cpu_starter(void *x)
 {
 	l4_umword_t cpu;
 	int error;
 	l4_msgdope_t dope;
+
+	l4x_stack_setup(current_thread_info());
 
 	error = l4_ipc_receive(l4x_cpu_thread_get(0), L4_IPC_SHORT_MSG,
 	                       &cpu, &cpu, L4_IPC_NEVER, &dope);
@@ -935,7 +1002,10 @@ static void __cpu_starter(void *x)
 	l4_utcb_inherit_fpu(l4_utcb_get(), 1);
 
 #ifdef ARCH_x86
-	l4x_load_percpu_gdt_descriptor((struct desc_struct *)early_gdt_descr.address);
+	l4x_load_percpu_gdt_descriptor(get_cpu_gdt_table(cpu));
+#endif
+
+#ifdef ARCH_x86
 	asm volatile ("jmp initialize_secondary");
 #endif
 #ifdef ARCH_arm
@@ -952,20 +1022,19 @@ void l4x_cpu_spawn(int cpu, struct task_struct *idle)
 
 	BUG_ON(cpu >= NR_CPUS);
 
-	l4x_tamed_set_mapping(cpu, 0);
+	l4x_tamed_set_mapping(cpu, l4x_cpu_physmap_get(cpu));
 
 	snprintf(s, sizeof(s), "cpu%d", cpu);
 	s[sizeof(s)-1] = 0;
 
-	//LOG_printf("Launching %s at %p\n", s, __cpu_starter);
-	l4x_cpu_threads[cpu] = l4lx_thread_create
-		(__cpu_starter, NULL, NULL, 0, CONFIG_L4_PRIO_SERVER_PROC, s);
-
 	l4x_cpu_idler[cpu] = idle;
+	mb();
 
-	//LOG_printf("CPU%d is thread " l4util_idfmt " (%s(%d))\n",
-	 //         cpu, l4util_idstr(l4x_cpu_threads[cpu]),
-	//	   idle->comm, idle->pid);
+	LOG_printf("Launching %s on pcpu %d at %p\n",
+	           s, l4x_cpu_physmap_get(cpu), __cpu_starter);
+	l4x_cpu_threads[cpu]
+	   = l4lx_thread_create(__cpu_starter, l4x_cpu_physmap_get(cpu) + 1,
+	                        NULL, NULL, 0, CONFIG_L4_PRIO_SERVER_PROC, s);
 }
 
 void l4x_cpu_release(int cpu)
@@ -980,10 +1049,6 @@ void l4x_cpu_release(int cpu)
 		           cpu, error);
 }
 
-unsigned long l4x_IPI_pending_mask;
-
-static DEFINE_PER_CPU(unsigned long, l4x_ipi_vector_pending_mask);
-
 void l4x_send_IPI_mask_bitmask(unsigned long mask, int vector)
 {
 	int cpu, error;
@@ -994,12 +1059,8 @@ void l4x_send_IPI_mask_bitmask(unsigned long mask, int vector)
 		if (!(mask & (1 << cpu)))
 			continue;
 
-		l4x_IPI_pending_set(cpu);
-
-		set_bit(vector, &per_cpu(l4x_ipi_vector_pending_mask, cpu));
-
-		error = l4_ipc_send(l4x_cpu_thread_get(cpu), L4_IPC_SHORT_MSG,
-		                    L4X_IPI_MESSAGE, 0,
+		error = l4_ipc_send(l4x_cpu_ipi_thread_get(cpu),
+		                    L4_IPC_SHORT_MSG, vector, 0,
 		                    L4_IPC_BOTH_TIMEOUT_0, &dope);
 		if (error && error != 0x30)
 			LOG_printf("%s: IPC error %x\n", __func__, error);
@@ -1007,43 +1068,29 @@ void l4x_send_IPI_mask_bitmask(unsigned long mask, int vector)
 }
 
 #ifdef ARCH_x86
-void do_l4x_smp_process_IPI(void)
+void do_l4x_smp_process_IPI(int vector, struct pt_regs *regs)
 {
-	int cpu = smp_processor_id();
-	int done = 0;
-
-	if (test_and_clear_bit(RESCHEDULE_VECTOR,
-	                       &per_cpu(l4x_ipi_vector_pending_mask, cpu))) {
+	if (vector == RESCHEDULE_VECTOR) {
 		extern fastcall void smp_reschedule_interrupt(struct pt_regs *regs);
 		// actually this function is empty
-		smp_reschedule_interrupt(NULL);
-		done = 1;
+		smp_reschedule_interrupt(regs);
+		return;
 	}
 
-	if (test_and_clear_bit(CALL_FUNCTION_VECTOR,
-	                       &per_cpu(l4x_ipi_vector_pending_mask, cpu))) {
+	if (vector == CALL_FUNCTION_VECTOR) {
 		extern fastcall void smp_call_function_interrupt(struct pt_regs *);
-		smp_call_function_interrupt(NULL);
-		done = 1;
-	}
-
-	if (test_and_clear_bit(L4X_TIMER_VECTOR,
-	                       &per_cpu(l4x_ipi_vector_pending_mask, cpu))) {
-		extern void l4x_smp_timer_interrupt(void);
-		l4x_smp_timer_interrupt();
-		done = 1;
-	}
-
-	if (done)
-		return;
-
-	if (!per_cpu(l4x_ipi_vector_pending_mask, cpu)) {
-		LOG_printf("No IPI pending on cpu%d\n", cpu);
+		smp_call_function_interrupt(regs);
 		return;
 	}
-	LOG_printf("Received unknown IPI vector: %lx\n",
-	           per_cpu(l4x_ipi_vector_pending_mask, cpu));
-	enter_kdebug("unknown IPI vector");
+
+	if (vector == L4X_TIMER_VECTOR) {
+		extern void l4x_smp_timer_interrupt(struct pt_regs *regs);
+		l4x_smp_timer_interrupt(regs);
+		return;
+	}
+
+	LOG_printf("Spurious IPI on CPU%d: %x\n", smp_processor_id(), vector);
+	return;
 }
 #endif
 
@@ -1070,7 +1117,6 @@ static void l4x_repnop_thread(void *d)
 	                    L4_IPC_SHORT_MSG, &data, &data,
 	                    L4_IPC_SEND_TIMEOUT_0, &result);
 	while (1) {
-		outchar('@');
 		if (error)
 			LOG_printf("%s: IPC error = %x\n", __func__, error);
 
@@ -1098,7 +1144,7 @@ void l4x_rep_nop(void)
 
 static void l4x_repnop_init(void)
 {
-	l4x_repnop_id = l4lx_thread_create(l4x_repnop_thread,
+	l4x_repnop_id = l4lx_thread_create(l4x_repnop_thread, 0,
 	                                   l4x_repnop_stack
 	                                     + sizeof(l4x_repnop_stack),
 	                                   NULL, 0,
@@ -1443,6 +1489,35 @@ int __init_refok main(int argc, char **argv)
 			l4x_nr_cpus = NR_CPUS;
 		}
 	}
+	if ((p = strstr(boot_command_line, "l4x_cpus_map="))) {
+		p += 13;
+		if (!strncmp(p, "identity", 8)) {
+			// l4x_cpus_map=identity
+			for (i = 0; i < l4x_nr_cpus; i++)
+				l4x_cpu_physmap[i] = i;
+		} else {
+			// l4x_cpus_map=0:2,1:3,2:3,3:4
+			unsigned vcpu, pcpu;
+			char *q;
+			while (*p && *p != ' ') {
+				vcpu = simple_strtoul(p, &q, 0);
+				if (p == q || *q != ':')
+					break;
+				p = q + 1;
+				pcpu = simple_strtoul(p, &q, 0);
+				if (p == q)
+					break;
+				l4x_cpu_physmap[vcpu] = pcpu;
+				if (*q != ',')
+					break;
+				p = q + 1;
+			}
+		}
+	}
+	LOG_printf("CPU mapping (l:p): ");
+	for (i = 0; i < l4x_nr_cpus; i++)
+		LOG_printf("%u:%u%s", i, l4x_cpu_physmap[i],
+		           i == l4x_nr_cpus - 1 ? "\n" : ", ");
 #endif
 
 	l4x_l4vmm_init();
@@ -1490,7 +1565,7 @@ int __init_refok main(int argc, char **argv)
 	l4x_kernel_taskno = l4x_start_thread_id.id.task;
 
 #ifdef CONFIG_L4_TAMED
-	l4x_tamed_init(0);
+	l4x_tamed_init();
 #endif
 	l4x_repnop_init();
 
@@ -1532,7 +1607,7 @@ int __init_refok main(int argc, char **argv)
 	l4lx_thread_name_set(l4x_start_thread_id, "l4env-start");
 
 	/* fire up Linux server, will wait until start message */
-	main_id = l4lx_thread_create(l4env_linux_startup,
+	main_id = l4lx_thread_create(l4env_linux_startup, 0,
 	                             (char *)init_stack + sizeof(init_stack),
 	                             &l4x_start_thread_id,
 	                             sizeof(l4x_start_thread_id),
@@ -2033,7 +2108,7 @@ static int l4x_default(l4_threadid_t *src_id, l4_umword_t *dw0,
 			if (l4_utcb_exc_is_pf(u)) {
 				/* Forward PF to our pager */
 				l4x_forward_pf(l4_utcb_exc_pfa(u),
-					       l4_utcb_exc_pc(u));
+					       l4_utcb_exc_pc(u), 0);
 				*dw0 = *dw1 = 0;
 				return 0; // reply
 			}
@@ -2066,7 +2141,7 @@ static int l4x_default(l4_threadid_t *src_id, l4_umword_t *dw0,
 }
 
 enum {
-	L4X_SERVER_EXIT = 0xd0000000,
+	L4X_SERVER_EXIT = 1,
 };
 
 static void __noreturn l4x_server_loop(void)
@@ -2084,15 +2159,16 @@ static void __noreturn l4x_server_loop(void)
 			                          &w0, &w1,
 			                          L4_IPC_NEVER, &result, &tag);
 
-		if (l4_msgtag_label(tag) == 0 && w0 == L4X_SERVER_EXIT) {
-			l4x_linux_main_exit(); // will not return anyway
-			do_wait = 1;
-			continue; // do not reply
-		}
-
-		if (l4x_default(&src, &w0, &w1, &tag))  {
-			do_wait = 1;
-			continue; // do not reply
+		switch (l4_msgtag_label(tag)) {
+			case L4X_SERVER_EXIT:
+				l4x_linux_main_exit(); // will not return anyway
+				do_wait = 1;
+				break;
+			default:
+				if (l4x_default(&src, &w0, &w1, &tag)) {
+					do_wait = 1;
+					continue; // do not reply
+				}
 		}
 
 		do_wait = l4_ipc_reply_and_wait_tag(src, L4_IPC_SHORT_MSG,
@@ -2108,29 +2184,14 @@ static void __noreturn l4x_server_loop(void)
 void __noreturn l4x_exit_l4linux(void)
 {
 	l4_msgdope_t result;
+	l4_msgtag_t tag = l4_msgtag(L4X_SERVER_EXIT, 0, 0, 0);
 
 	__cxa_finalize(0);
 
-	l4_ipc_send(l4x_start_thread_id, L4_IPC_SHORT_MSG,
-	             L4X_SERVER_EXIT, 0, L4_IPC_NEVER, &result);
+	if (l4_ipc_send_tag(l4x_start_thread_id, L4_IPC_SHORT_MSG,
+	                    0, 0, tag, L4_IPC_NEVER, &result))
+		outstring("IPC ERROR l4x_exit_l4linux\n");
 	l4_sleep_forever();
-}
-
-int l4x_map_iomemory_from_sigma0(l4_addr_t phys, l4_addr_t virt, l4_size_t size)
-{
-	l4_threadid_t sigma0_id = L4_NIL_ID;
-	int ret;
-
-	sigma0_id.id.task    = 2;
-	sigma0_id.id.lthread = 0;
-
-	if ((ret = l4sigma0_map_iomem(sigma0_id, phys, virt, size, 0))) {
-		printk("Error mapping IO memory from Sigma0. "
-		       "Error: %d (%s)\n", ret, l4sigma0_map_errstr(ret));
-		return 1;
-	}
-
-	return 0;
 }
 
 /* ---------------------------------------------------------------- */
@@ -2449,22 +2510,23 @@ void l4x_printk_func(char *buf, int len)
 
 /* ----------------------------------------------------- */
 /* Prepare a thread for use as an IRQ thread. */
-void l4x_prepare_irq_thread(struct thread_info *ti)
+void l4x_prepare_irq_thread(struct thread_info *ti, unsigned _cpu)
 {
 	/* Stack setup */
 	*ti = (struct thread_info) INIT_THREAD_INFO(init_task);
 
 	l4x_stack_setup(ti);
 
+	ti->task          = l4x_idle_task(_cpu);
 	ti->preempt_count = HARDIRQ_OFFSET;
-	ti->addr_limit    = KERNEL_DS;
+	ti->cpu           = _cpu;
 
 	/* Set pager */
 	l4lx_thread_set_kernel_pager(l4_myself());
 	l4x_utcb_set(l4_myself(), l4_utcb_get());
 
 #ifdef ARCH_x86
-	switch_to_new_gdt();
+	l4x_load_percpu_gdt_descriptor(get_cpu_gdt_table(_cpu));
 #endif
 }
 

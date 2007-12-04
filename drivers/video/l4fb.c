@@ -373,7 +373,7 @@ static void l4fb_dope_input_callback(dope_event *e, void *arg)
 
 static void l4fb_dope_input_thread(void *data)
 {
-	l4x_prepare_irq_thread(current_thread_info());
+	l4x_prepare_irq_thread(current_thread_info(), 0);
 	dope_eventloop(dope_app_id);
 }
 
@@ -455,7 +455,7 @@ static int l4fb_dope_input_setup(void)
 	dope_bind(dope_app_id, "l4lxvscr", "press",   l4fb_dope_input_callback, (void *)0x877);
 	dope_bind(dope_app_id, "l4lxvscr", "release", l4fb_dope_input_callback, (void *)0x878);
 
-	l4fb_input_thread = l4lx_thread_create(l4fb_dope_input_thread,
+	l4fb_input_thread = l4lx_thread_create(l4fb_dope_input_thread, 0,
 	                                       NULL, NULL, 0,
 	                                       CONFIG_L4_PRIO_L4FB_INPUT,
 	                                       "L4DOpEinput");
@@ -510,13 +510,13 @@ void stream_io_push_component(CORBA_Object _dice_corba_obj,
 
 static void l4fb_con_input_thread(void *data)
 {
-	l4x_prepare_irq_thread(current_thread_info());
+	l4x_prepare_irq_thread(current_thread_info(), 0);
 	stream_io_server_loop(NULL);
 }
 
 static void l4fb_con_update_thread(void *data)
 {
-	l4x_prepare_irq_thread(current_thread_info());
+	l4x_prepare_irq_thread(current_thread_info(), 0);
 	while (1) {
 		if (l4fb_refresh_enabled)
 			l4fb_con_update_rect(0, 0, xres, yres);
@@ -526,7 +526,7 @@ static void l4fb_con_update_thread(void *data)
 
 static int l4fb_con_input_setup(l4_threadid_t *id)
 {
-	l4fb_input_thread = l4lx_thread_create(l4fb_con_input_thread,
+	l4fb_input_thread = l4lx_thread_create(l4fb_con_input_thread, 0,
 	                                       NULL, NULL, 0,
 	                                       CONFIG_L4_PRIO_L4FB_INPUT,
 	                                       "L4ConInput");
@@ -544,7 +544,7 @@ static void l4fb_create_refresher_thread(void (*refresher_thread)(void *),
 	if (!l4fb_refresh_sleep)
 		return;
 
-	l4fb_refresher_thread = l4lx_thread_create(refresher_thread,
+	l4fb_refresher_thread = l4lx_thread_create(refresher_thread, 0,
 	                                           NULL, NULL, 0,
 	                                           CONFIG_L4_PRIO_L4FB_REFRESH,
 	                                           name_tag);
@@ -694,7 +694,7 @@ static void l4fb_con_exit(void)
  */
 static void l4fb_dope_update_thread(void *data)
 {
-	l4x_prepare_irq_thread(current_thread_info());
+	l4x_prepare_irq_thread(current_thread_info(), 0);
 	while (1) {
 		if (l4fb_refresh_enabled)
 			dope_cmd(dope_app_id, "l4lxvscr.refresh()");

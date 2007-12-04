@@ -390,6 +390,8 @@ static void __cpuinit start_secondary(void *unused)
 #ifdef CONFIG_VMI
 	vmi_bringup();
 #endif
+	l4x_cpu_ipi_thread_start(smp_processor_id());
+
 	cpu_init();
 	preempt_disable();
 	smp_callin();
@@ -1168,6 +1170,8 @@ void __init native_smp_prepare_boot_cpu(void)
 	cpu_set(cpu, cpu_present_map);
 	cpu_set(cpu, cpu_possible_map);
 	__get_cpu_var(cpu_state) = CPU_ONLINE;
+
+	l4x_cpu_ipi_thread_start(0);
 }
 
 #ifdef CONFIG_HOTPLUG_CPU

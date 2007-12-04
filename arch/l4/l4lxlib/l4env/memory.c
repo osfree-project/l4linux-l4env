@@ -34,8 +34,8 @@ int l4lx_memory_map_virtual_page(unsigned long address, unsigned long page)
 	              PAGE_SIZE,                        /* size */
 	              (page & PAGE_MASK) - map_addr,    /* offset */
 	              L4DM_RW | L4RM_MAP))) {
-		printk("%s: Error from l4rm_attach_to_region: %s(%d)\n",
-		       __func__, l4env_errstr(res), res);
+		printk("%s: Error from l4rm_attach_to_region(%lx, %lx): %s(%d)\n",
+		       __func__, address, page, l4env_errstr(res), res);
 		enter_kdebug("l4rm_attach_to_region failed");
 		return -1;
 	}

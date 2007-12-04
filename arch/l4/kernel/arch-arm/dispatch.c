@@ -175,7 +175,7 @@ void fastcall l4x_switch_to(struct task_struct *prev, struct task_struct *next)
 
 #ifdef CONFIG_SMP
 	next->thread.user_thread_id = next->thread.user_thread_ids[smp_processor_id()];
-	l4x_stack_struct_get(next->stack)->id = l4x_cpu_thread_get(smp_processor_id());
+	l4x_stack_struct_get(next->stack)->l4id = l4x_cpu_thread_get(smp_processor_id());
 #endif
 }
 

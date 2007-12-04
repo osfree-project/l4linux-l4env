@@ -63,7 +63,11 @@ l4_threadid_t l4lx_task_number_allocate(void)
 {
 	l4_threadid_t task;
 
+#ifdef CONFIG_L4_USE_TS
 	if (l4ts_allocate_task(&task))
+#else
+	if (l4ts_allocate_task2(&task))
+#endif
 		return L4_NIL_ID;
 
 	return task;
@@ -140,6 +144,14 @@ int l4lx_task_number_free(l4_threadid_t task)
 
 	/* Delete task if all threads are gone */
 	if (idx == -1) {
+#ifndef CONFIG_L4_USE_TS
+		// return ownership
+		l4_threadid_t ret;
+		extern l4_threadid_t l4ts_server_id;
+		ret = l4_task_new(task, (unsigned)l4ts_server_id.raw, 0, 0, L4_NIL_ID);
+		if (l4_is_nil_id(ret))
+			return -1;
+#endif
 		if (l4ts_free_task(&task))
 			return -1;
 	}
@@ -205,11 +217,23 @@ int l4lx_task_create_pager(l4_threadid_t dest, l4_threadid_t pager)
 	if (idx == -1 || l4lx_task_thread_empty(idx)
 	    || dest.id.lthread == 0) {
 		/* Create new address space */
+#ifdef CONFIG_L4_USE_TS
 		return !l4ts_create_task(&dest, 0, 0,
 		                         L4_TASK_NEW_ALIEN
 		                          | L4_TASK_NEW_RAISE_EXCEPTION,
 		                         &pager, CONFIG_L4_PRIO_SERVER_PROC,
 		                         "L4Linux task", 0);
+#else
+		l4_threadid_t n;
+		n = l4_task_new(dest,
+		                L4_TASK_NEW_ALIEN | L4_TASK_NEW_RAISE_EXCEPTION,
+		                0, 0,
+		                pager);
+
+		if (n.raw != dest.raw)
+			return 0;
+		l4lx_task_prio_set(dest, CONFIG_L4_PRIO_SERVER_PROC);
+#endif
 	} else {
 		/* Start new thread within existing address space */
 		l4_umword_t o;
@@ -228,11 +252,6 @@ int l4lx_task_create_pager(l4_threadid_t dest, l4_threadid_t pager)
 	return 1;
 }
 
-int __disabled____not__used__l4lx_task_create(l4_threadid_t dest)
-{
-	return l4lx_task_create_pager(dest, linux_server_thread_id);
-}
-
 int l4lx_task_delete(l4_threadid_t task, unsigned option)
 {
 	int idx;
@@ -246,17 +265,29 @@ int l4lx_task_delete(l4_threadid_t task, unsigned option)
 		printk("thread: " PRINTF_L4TASK_FORM " idx=%d\n",
 		       PRINTF_L4TASK_ARG(task), idx);
 		enter_kdebug("Freeing nonexisting thread");
+		return 0;
 	}
 
 	if (idx == -1 || l4lx_task_thread_empty(idx)) {
+#ifdef CONFIG_L4_USE_TS
 		int kill_flags = L4TS_KILL_SYNC;
+#else
+		l4_threadid_t r;
+#endif
 
 		if (idx >= 0)
 			thread_state[idx].task = 0;
 		spin_unlock(&thread_state_lock);
+#ifdef CONFIG_L4_USE_TS
 		if (!option)
 			kill_flags |= L4TS_KILL_NOEV;
 		return !l4ts_kill_task(task, kill_flags);
+#else
+		r = l4_task_new(task, l4_myself().raw, 0, 0, L4_NIL_ID);
+		if (l4_is_nil_id(r))
+			return 0;
+		return 1;
+#endif
 	}
 
 	spin_unlock(&thread_state_lock);

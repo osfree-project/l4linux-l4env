@@ -167,7 +167,7 @@ static void irq_dev_thread(void *data)
 	unsigned int irq = *(unsigned int *)data;
 	struct thread_info *ctx = current_thread_info();
 
-	l4x_prepare_irq_thread(ctx);
+	l4x_prepare_irq_thread(ctx, 0);
 
 	/* Get the IRQ from Omega0 */
 	if (!acquire_irq(irq)) {
@@ -198,6 +198,7 @@ unsigned int l4lx_irq_dev_startup_hw(unsigned int irq)
 		/* Create IRQ thread */
 		sprintf(thread_name, "IRQ%d", irq);
 		irq_id[irq] = l4lx_thread_create(irq_dev_thread,
+		                                 0,
 						 NULL,
 						 &irq, sizeof(irq),
 						 l4lx_irq_prio_get(irq),
