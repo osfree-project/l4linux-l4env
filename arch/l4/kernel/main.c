@@ -879,6 +879,8 @@ void l4x_setup_thread_stack(void)
 	l4x_stack_setup(ti);
 }
 
+#ifdef CONFIG_SMP
+
 #ifdef ARCH_x86
 void l4x_load_percpu_gdt_descriptor(struct desc_struct *gdt)
 {
@@ -887,8 +889,6 @@ void l4x_load_percpu_gdt_descriptor(struct desc_struct *gdt)
 	    : : "r" (l4x_fiasco_gdt_entry_offset * 8 + 3) : "memory");
 }
 #endif
-
-#ifdef CONFIG_SMP
 
 unsigned l4x_cpu_physmap_get(unsigned lcpu)
 {
@@ -2525,8 +2525,10 @@ void l4x_prepare_irq_thread(struct thread_info *ti, unsigned _cpu)
 	l4lx_thread_set_kernel_pager(l4_myself());
 	l4x_utcb_set(l4_myself(), l4_utcb_get());
 
+#ifdef CONFIG_SMP
 #ifdef ARCH_x86
 	l4x_load_percpu_gdt_descriptor(get_cpu_gdt_table(_cpu));
+#endif
 #endif
 }
 
