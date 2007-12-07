@@ -303,8 +303,6 @@ int kernel_execve(const char *filename, char *const argv[], char *const envp[])
 	struct pt_regs *regs = &current->thread.regs;
 	int ret;
 
-	printk("execve for %s\n", filename);
-
 	BUG_ON(!l4_thread_equal(current->thread.user_thread_id, L4_NIL_ID));
 
 	if (l4lx_task_get_new_task(L4_NIL_ID, &current->thread.user_thread_id) < 0) {
@@ -312,9 +310,6 @@ int kernel_execve(const char *filename, char *const argv[], char *const envp[])
 		ret = -EBUSY;
 		goto out;
 	}
-	printk("Allocated " PRINTF_L4TASK_FORM "\n",
-	       PRINTF_L4TASK_ARG(current->thread.user_thread_id));
-
 
 	memset(regs, 0, sizeof(struct pt_regs));
 	ret = do_execve((char *)filename, (char __user * __user *)argv,
