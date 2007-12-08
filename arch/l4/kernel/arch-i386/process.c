@@ -564,8 +564,7 @@ out:
 /* kernel-internal execve() */
 int l4_kernelinternal_execve(char * file, char ** argv, char ** envp)
 {
-	int error;
-	//int cpu = smp_processor_id();
+	int ret;
 	struct thread_struct *t = &current->thread;
 
 	ASSERT(l4_thread_equal(t->user_thread_id, L4_NIL_ID));
@@ -585,11 +584,10 @@ int l4_kernelinternal_execve(char * file, char ** argv, char ** envp)
 
 	ASSERT(segment_eq(get_fs(), KERNEL_DS));
 	lock_kernel();
-	error = do_execve(file, argv, envp, &t->regs);
+	ret = do_execve(file, argv, envp, &t->regs);
 
-	if (error < 0) {
+	if (ret < 0) {
 		/* we failed -- become a kernel thread again */
-		//printk("Error in kernel-internal exec for " PRINTF_L4TASK_FORM ": %d\n", PRINTF_L4TASK_ARG(current->thread.user_thread_id), error);
 		l4lx_task_number_free(t->user_thread_id);
 		set_fs(KERNEL_DS);
 		t->user_thread_id = L4_NIL_ID;

@@ -336,7 +336,6 @@ void flush_thread(void)
 {
 	struct thread_info *thread = current_thread_info();
 	struct task_struct *tsk = current;
-	l4_threadid_t task = current->thread.user_thread_id;
 	int ret = 0, i;
 
 	if (!current->thread.started)
@@ -370,20 +369,6 @@ void flush_thread(void)
 	memset(&thread->fpstate, 0, sizeof(union fp_state));
 
 	thread_notify(THREAD_NOTIFY_FLUSH, thread);
-
-	if (ret == L4LX_TASK_DELETE_THREAD) {
-		/*
-		 * User task was not alone in its address space before,
-		 * we have to create a new address space now.
-		 */
-		l4x_hybrid_list_thread_remove(task);
-		if (l4lx_task_get_new_task(L4_NIL_ID,
-		                           &current->thread.user_thread_id) < 0) {
-			printk("%s: No task no left for user\n", __func__); 
-			do_exit(9);
-		}
-	} else
-		l4x_hybrid_list_task_remove(task);
 
 	set_fs(USER_DS);
 }

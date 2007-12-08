@@ -300,22 +300,17 @@ asm(
 
 int kernel_execve(const char *filename, char *const argv[], char *const envp[])
 {
-	struct pt_regs *regs = &current->thread.regs;
+	struct thread_struct *t = &current->thread;
+	struct pt_regs *regs = &t->regs;
 	int ret;
 
 	BUG_ON(!l4_thread_equal(current->thread.user_thread_id, L4_NIL_ID));
-
-	if (l4lx_task_get_new_task(L4_NIL_ID, &current->thread.user_thread_id) < 0) {
-		printk("execve: No task no left for user\n");
-		ret = -EBUSY;
-		goto out;
-	}
 
 	memset(regs, 0, sizeof(struct pt_regs));
 	ret = do_execve((char *)filename, (char __user * __user *)argv,
 			(char __user * __user *)envp, regs);
 	if (ret < 0) {
-		printk("Error in kernel-internal exec for " PRINTF_L4TASK_FORM ": %d\n", PRINTF_L4TASK_ARG(current->thread.user_thread_id), ret);
+		/* we failed -- become a kernel thread again */
 		l4lx_task_number_free(current->thread.user_thread_id);
 		set_fs(KERNEL_DS);
 		current->thread.user_thread_id = L4_NIL_ID;
