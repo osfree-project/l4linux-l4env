@@ -240,10 +240,10 @@ include/asm-l4/l4lxapi/impl:
 	$(Q)ln -s $(src)/arch/l4/l4lxlib/l4env $@
 
 include/asm-l4/mach-types.h: $(srctree)/arch/arm/tools/gen-mach-types $(srctree)/arch/arm/tools/mach-types
-	cp $(srctree)/arch/arm/tools/mach-types include/asm-l4/mach-types.list
-	echo "l4	MACH_L4	L4	9999" >> include/asm-l4/mach-types.list
-	$(AWK) -f $< include/asm-l4/mach-types.list > $@ || { rm -f $@; /bin/false; }
-	$(RM) include/asm-l4/mach-types.list
+	$(Q)cp $(srctree)/arch/arm/tools/mach-types include/asm-l4/mach-types.list
+	$(Q)echo "l4	MACH_L4	L4	9999" >> include/asm-l4/mach-types.list
+	$(Q)$(AWK) -f $< include/asm-l4/mach-types.list > $@ || { rm -f $@; /bin/false; }
+	$(Q)rm -f include/asm-l4/mach-types.list
 
 symlinks_arm  = include/asm-l4/mach-types.h
 

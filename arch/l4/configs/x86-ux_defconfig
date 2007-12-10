@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux kernel version: 2.6.23-l4
-# Fri Oct 12 18:27:45 2007
+# Sun Dec  9 16:48:18 2007
 #
 
 #
@@ -37,12 +37,10 @@ CONFIG_L4_EXTERNAL_RTC=y
 # CONFIG_L4_PDSPBLK_DRV is not set
 CONFIG_L4_FB_DRIVER=y
 CONFIG_L4_FB_DRIVER_XF86IF=y
-# CONFIG_L4_OSHKOSH_DRV is not set
 # CONFIG_L4_ORE_DRV is not set
 CONFIG_L4_SERIAL=y
 CONFIG_L4_SERIAL_CONSOLE=y
-# CONFIG_L4_NEED_DSI is not set
-# CONFIG_L4_NEED_INET_NTOA is not set
+# CONFIG_L4_CONS is not set
 
 #
 # Debugging options

@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux kernel version: 2.6.23-l4
-# Fri Oct 12 18:26:09 2007
+# Sun Dec  9 16:48:10 2007
 #
 
 #
@@ -38,8 +38,7 @@ CONFIG_L4_IRQ_MULTI=y
 # CONFIG_L4_ORE_DRV is not set
 CONFIG_L4_SERIAL=y
 CONFIG_L4_SERIAL_CONSOLE=y
-# CONFIG_L4_NEED_DSI is not set
-# CONFIG_L4_NEED_INET_NTOA is not set
+# CONFIG_L4_CONS is not set
 
 #
 # Debugging options
