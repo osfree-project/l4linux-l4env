@@ -229,7 +229,7 @@ static void l4x_configuration_sanity_check(const char *cmdline)
 	}
 #endif
 #if defined(ARCH_x86) && !defined(CONFIG_L4_FB_DRIVER) && !defined(CONFIG_VGA_CONSOLE)
-	LOG_printf("L4_FB_DRIVER nor VGA_CONSOLE enabled, choose one");
+	LOG_printf("L4_FB_DRIVER nor VGA_CONSOLE enabled, choose one.\n");
 	enter_kdebug("Read this");
 #endif
 }
