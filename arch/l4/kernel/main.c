@@ -146,7 +146,7 @@ static void *l4x_main_memory_start;
 static void *l4x_isa_dma_memory_start;
 l4_uint32_t l4env_vmalloc_areaid __nosavedata;
 unsigned long l4env_vmalloc_memory_start;
-l4env_infopage_t *l4env_infopage;
+static l4env_infopage_t *l4x_l4env_infopage;
 l4_kernel_info_t *l4lx_kinfo;
 unsigned int l4x_kernel_taskno __nosavedata;
 
@@ -1257,7 +1257,7 @@ static int fprov_load_initrd(const char *filename,
 	l4_size_t size;
 	DICE_DECLARE_ENV(env);
 
-	if (l4_thread_equal(l4env_infopage->fprov_id, L4_INVALID_ID)) {
+	if (l4_thread_equal(l4x_l4env_infopage->fprov_id, L4_INVALID_ID)) {
 		LOG_printf("File provider not set!\n");
 		enter_kdebug("ATT!");
 		return 1;
@@ -1265,9 +1265,9 @@ static int fprov_load_initrd(const char *filename,
 
 	/* load RAM disk to DS */
 	if ((error = l4fprov_file_open_call
-	              (&l4env_infopage->fprov_id,
+	              (&l4x_l4env_infopage->fprov_id,
 	               filename,
-	               &l4env_infopage->memserv_id,
+	               &l4x_l4env_infopage->memserv_id,
 	               L4DM_CONTIGUOUS,
 	               &l4env_initrd_ds,
 	               &size,
@@ -1468,13 +1468,13 @@ int __init_refok main(int argc, char **argv)
 	if (l4sigma0_kip_kernel_has_feature("pl0_hack"))
 		l4x_fiasco_nr_of_syscalls += 2;
 
-	if ((l4env_infopage = l4env_get_infopage()) == NULL) {
+	if ((l4x_l4env_infopage = l4env_get_infopage()) == NULL) {
 		LOG_printf("Couldn't get L4Env info page!\n");
 		enter_kdebug("Stop!");
 		return 1;
 	}
 
-	if (l4env_infopage->magic != L4ENV_INFOPAGE_MAGIC) {
+	if (l4x_l4env_infopage->magic != L4ENV_INFOPAGE_MAGIC) {
 		LOG_printf("L4Env infopage invalid!\n");
 		enter_kdebug("Stop!");
 		return 1;

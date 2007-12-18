@@ -64,9 +64,9 @@ l4_threadid_t l4lx_task_number_allocate(void)
 	l4_threadid_t task;
 
 #ifdef CONFIG_L4_USE_TS
-	if (l4ts_allocate_task(&task))
+	if (l4ts_allocate_task(0, &task))
 #else
-	if (l4ts_allocate_task2(&task))
+	if (l4ts_allocate_task2(0, &task))
 #endif
 		return L4_NIL_ID;
 
@@ -151,9 +151,12 @@ int l4lx_task_number_free(l4_threadid_t task)
 		ret = l4_task_new(task, (unsigned)l4ts_server_id.raw, 0, 0, L4_NIL_ID);
 		if (l4_is_nil_id(ret))
 			return -1;
-#endif
+		if (l4ts_free2_task(&task))
+			return -1;
+#else
 		if (l4ts_free_task(&task))
 			return -1;
+#endif
 	}
 
 	return 0;
