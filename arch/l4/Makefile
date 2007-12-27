@@ -137,7 +137,8 @@ L4LX_E_L-$(CONFIG_L4_EXTERNAL_RTC) += -lrtc
 L4LX_E_L-$(CONFIG_L4_ORE_DRV)   += -lore
 L4LX_E_L-$(CONFIG_L4_IRQ_OMEGA0) += -lomega0
 L4LX_E_L-$(CONFIG_L4_PDSPBLK_DRV) += -lpers_dsp
-L4LX_E_L-$(CONFIG_L4_USE_L4VMM)	+= -ll4vmm$(if $(CONFIG_L4_USE_L4VMM_DBG),-dbg) \
+L4LX_E_L-$(CONFIG_L4_USE_L4VMM)	+= -ll4vmm-api$(if $(CONFIG_L4_USE_L4VMM_DBG),-dbg) \
+                                   -ll4vmm-core$(if $(CONFIG_L4_USE_L4VMM_DBG),-dbg) \
                                    -ll4vmm-c -ll4vmm-cxx
 L4LX_E_L-$(CONFIG_L4_CONS)      += -lcons-client
 L4LX_E_L_O-$(CONFIG_L4_USE_L4VMM) += -ll4vmm-devices$(if $(CONFIG_L4_USE_L4VMM_DBG),-dbg).o \

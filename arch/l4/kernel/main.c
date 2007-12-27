@@ -89,6 +89,17 @@
    #warning WARNING: L4FB enabled but not CONFIG_INPUT_MOUSEDEV, you probably want to enable this option.
   #endif
  #endif
+
+
+ #if defined(CONFIG_VGA_CONSOLE) && defined(CONFIG_L4_USE_L4VMM)
+  #error L4VMM and VGA_CONSOLE together are not supported
+ #endif
+
+ // this may be a bit harsh but well...
+ #if defined(ARCH_x86) && !defined(CONFIG_L4_FB_DRIVER) && !defined(CONFIG_VGA_CONSOLE)
+  #error L4_FB_DRIVER nor VGA_CONSOLE enabled, choose one.
+ #endif
+
 #endif
 
 // --
@@ -212,10 +223,12 @@ static void l4x_configuration_sanity_check(const char *cmdline)
 		enter_kdebug("Stop!");
 	}
 
+#ifndef CONFIG_L4_USE_L4VMM
 	if (strstr(cmdline, "console=ttyS")) {
 		LOG_printf("Console output set to ttySx. Not recommended.\n");
 		enter_kdebug("console=ttyS in command line");
 	}
+#endif
 	if ((p = strstr(cmdline, "mem="))
 	    && (memparse(p + 4, &p) < (16 << 20))) {
 		LOG_printf("Minimal 16MB recommended.\n");
@@ -227,10 +240,6 @@ static void l4x_configuration_sanity_check(const char *cmdline)
 		LOG_printf("Console output set to ttyLvx but driver not compiled in.\n");
 		enter_kdebug("L4 serial driver not enabled");
 	}
-#endif
-#if defined(ARCH_x86) && !defined(CONFIG_L4_FB_DRIVER) && !defined(CONFIG_VGA_CONSOLE)
-	LOG_printf("L4_FB_DRIVER nor VGA_CONSOLE enabled, choose one.\n");
-	enter_kdebug("Read this");
 #endif
 }
 #else
@@ -1417,8 +1426,8 @@ static void __init l4x_l4vmm_init(void)
 		} else {
 			memcpy(s, p, l);
 			s[l] = 0;
-			l4vmm_config.str = s;
-			l4vmm_config.flags |= L4VMM_INIT_STR_FILE;
+			l4vmm_config.string = s;
+			l4vmm_config.flags |= L4VMM_INIT_STRING_FILE;
 		}
 	}
 
