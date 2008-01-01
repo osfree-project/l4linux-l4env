@@ -191,7 +191,7 @@ static inline int raw_irqs_disabled_flags(unsigned long flags)
 #if defined(CONFIG_L4_USERPRIV_ONLY) || defined(CONFIG_L4_TAMED)
 	return flags == L4_IRQ_DISABLED;
 #else
-	return !(flags & (1 << 9));
+	return !(flags & X86_EFLAGS_IF);
 #endif
 }
 
