@@ -212,9 +212,9 @@ static int l4x_hybrid_begin(struct task_struct *p,
 static inline void l4x_dispatch_suspend(struct task_struct *p,
                                         struct thread_struct *t);
 
-static inline void print_regs(struct pt_regs *r)
+static inline void l4x_print_regs(struct thread_struct *t)
 {
-#define R(nr) r->uregs[nr]
+#define R(nr) t->regs.uregs[nr]
 	printk("0: %08lx %08lx %08lx %08lx %08lx %08lx %08lx %08lx\n",
 	       R(0), R(1), R(2), R(3), R(4), R(5), R(6), R(7));
 	printk("8: %08lx %08lx %08lx %08lx %08lx [01;34m%08lx[0m "
@@ -239,9 +239,6 @@ static inline void call_system_call_args(unsigned long syscall,
 			syscall, current->pid, current->comm, (void *)regsp->ARM_pc,
 			PRINTF_L4TASK_ARG(current->thread.user_thread_id),
 			arg1, arg2, arg3);
-#endif
-
-#if 0
 	if (syscall == 11) {
 		char *filename = getname((char *)arg1);
 		printk("execve: pid: %d(%s), " PRINTF_L4TASK_FORM ": %s (%08lx)\n",
@@ -250,38 +247,28 @@ static inline void call_system_call_args(unsigned long syscall,
 		       IS_ERR(filename) ? "UNKNOWN" : filename, arg1);
 		putname(filename);
 	}
-#endif
-#if 0
 	if (syscall == 1) {
 		printk("exit: pid: %d(%s), " PRINTF_L4TASK_FORM "\n",
 		       current->pid, current->comm,
 		       PRINTF_L4TASK_ARG(current->thread.user_thread_id));
 	}
-#endif
-#if 0
 	if (syscall == 2) {
 		printk("fork: pid: %d(%s), " PRINTF_L4TASK_FORM "\n",
 		       current->pid, current->comm,
 		       PRINTF_L4TASK_ARG(current->thread.user_thread_id));
 	}
-#endif
-#if 0
 	if (syscall == 3) {
 		printk("read: pid: %d(%s), " PRINTF_L4TASK_FORM ": fd = %ld\n",
 		       current->pid, current->comm,
 		       PRINTF_L4TASK_ARG(current->thread.user_thread_id),
 		       arg1);
 	}
-#endif
-#if 0
 	if (syscall == 4) {
 		printk("write: pid: %d(%s), " PRINTF_L4TASK_FORM ": fd = %ld\n",
 		       current->pid, current->comm,
 		       PRINTF_L4TASK_ARG(current->thread.user_thread_id),
 		       arg1);
 	}
-#endif
-#if 0
 	if (syscall == 5) {
 		char *filename = getname((char *)arg1);
 		printk("open: pid: %d(%s), " PRINTF_L4TASK_FORM ": %s (%lx)\n",
@@ -290,22 +277,35 @@ static inline void call_system_call_args(unsigned long syscall,
 		       IS_ERR(filename) ? "UNKNOWN" : filename, arg1);
 		putname(filename);
 	}
-#endif
-#if 0
+	if (syscall == 39) {
+		char *filename = getname((char *)arg1);
+		printk("mkdir: pid: %d(%s), " PRINTF_L4TASK_FORM ": %s (%lx)\n",
+		       current->pid, current->comm,
+		       PRINTF_L4TASK_ARG(current->thread.user_thread_id),
+		       IS_ERR(filename) ? "UNKNOWN" : filename, arg1);
+		putname(filename);
+	}
+	if (syscall == 21) {
+		char *f1 = getname((char *)arg1);
+		char *f2 = getname((char *)arg2);
+		printk("mount: pid: %d(%s), " PRINTF_L4TASK_FORM ": %s -> %s\n",
+		       current->pid, current->comm,
+		       PRINTF_L4TASK_ARG(current->thread.user_thread_id),
+		       IS_ERR(f1) ? "UNKNOWN" : f1,
+		       IS_ERR(f2) ? "UNKNOWN" : f2);
+		putname(f1);
+		putname(f2);
+	}
 	if (syscall == 120) {
 		printk("clone: pid: %d(%s), " PRINTF_L4TASK_FORM "\n",
 		       current->pid, current->comm,
 		       PRINTF_L4TASK_ARG(current->thread.user_thread_id));
 	}
-#endif
-#if 0
 	if (syscall == 190) {
 		printk("vfork: pid: %d(%s), " PRINTF_L4TASK_FORM "\n",
 		       current->pid, current->comm,
 		       PRINTF_L4TASK_ARG(current->thread.user_thread_id));
 	}
-#endif
-#if 0
 	if (syscall == 192) {
 		printk("mmap2 size: pid: %d(%s), " PRINTF_L4TASK_FORM ": %lx\n",
 		       current->pid, current->comm,
@@ -340,16 +340,12 @@ static inline void call_system_call_args(unsigned long syscall,
 		       PRINTF_L4TASK_ARG(current->thread.user_thread_id),
 		       regsp->ARM_r0);
 	}
-#endif
-#if 0
 	if (syscall == 65) {
 		printk("getpgrp result: pid: %d(%s), " PRINTF_L4TASK_FORM ": %lx\n", 
 		       current->pid, current->comm,
 		       PRINTF_L4TASK_ARG(current->thread.user_thread_id),
 		       regsp->ARM_r0);
 	}
-#endif
-#if 0
 	printk("Syscall return: 0x%lx\n", regsp->ARM_r0);
 #endif
 }
@@ -487,10 +483,18 @@ static inline int l4x_dispatch_exception(struct task_struct *p,
 		if (likely(val != ~0UL)) {
 			/* set after swi, before syscall so the forked childs
 			 * get the increase too */
-			regs->ARM_pc += 4;
+			regs->ARM_pc += thumb_mode(&t->regs) ? 2 : 4;
+
+			// handle private ARM syscalls?
+			if (unlikely(0xf0000 < val && val <= 0xf0000 + 5)) {
+				// from traps.c
+				asmlinkage int arm_syscall(int no, struct pt_regs *regs);
+				arm_syscall(val | __NR_SYSCALL_BASE, regs);
+				return 0;
+			}
 
 #ifdef CONFIG_L4_DEBUG_SEGFAULTS
-			if (unlikely(val > 300))
+			if (unlikely(val > 400))
 				printk("Hmm, BIG syscall nr %ld\n", val);
 #endif
 
@@ -530,14 +534,15 @@ static inline int l4x_dispatch_exception(struct task_struct *p,
 
 	TBUF_LOG_EXCP(fiasco_tbuf_log_3val("except ", TBUF_TID(t->user_thread_id), 0, regs->ARM_pc));
 
-	//utcb_to_thread_struct(utcb, t);
-
 	{
 		int handled = 0;
 
 		while (1) {
 			unsigned long insn;
 			int ret;
+
+			if (thumb_mode(&t->regs))
+				LOG_printf("ATTN/FIXME: user does thumb code!!\n");
 
 			ret = get_user(insn, (unsigned long *)t->regs.ARM_pc);
 			t->regs.ARM_pc += 4;
@@ -564,7 +569,7 @@ static inline int l4x_dispatch_exception(struct task_struct *p,
 	}
 
 #ifdef CONFIG_L4_DEBUG_SEGFAULTS
-	print_regs(&t->regs);
+	l4x_print_regs(t);
 
 	if (t->error_code == 0x00100000 || t->error_code == 0x00200000) {
 		unsigned long val;
@@ -577,16 +582,14 @@ static inline int l4x_dispatch_exception(struct task_struct *p,
 	}
 #endif
 
-	if (l4x_deliver_signal(0, t->error_code)) {
-		//thread_struct_to_utcb(t, utcb, L4_UTCB_EXCEPTION_REGS_SIZE);
+	if (l4x_deliver_signal(0, t->error_code))
 		return 0; /* handled signal, reply */
-	}
 
 	/* This path should never be reached... */
 
 	printk("Error code: %s\n", l4x_arm_decode_error_code(t->error_code));
 	printk("(Unknown) EXCEPTION [" PRINTF_L4TASK_FORM "]\n", PRINTF_L4TASK_ARG(t->user_thread_id));
-	print_regs(&t->regs);
+	l4x_print_regs(t);
 	printk("will die...\n");
 
 	enter_kdebug("check");
@@ -595,6 +598,48 @@ static inline int l4x_dispatch_exception(struct task_struct *p,
 	l4x_sig_current_kill();
 
 	return 1; /* no reply */
+}
+
+static inline int l4x_handle_page_fault_with_exception(struct thread_struct *t)
+{
+#if 0
+	if (t->regs.ARM_pc >= TASK_SIZE)
+		printk("PC>3G: %08lx\n", t->regs.ARM_pc);
+	if (l4x_l4pfa(t) >= TASK_SIZE)
+		printk("PF>3G: %08lx\n", l4x_l4pfa(t));
+#endif
+	if (l4x_l4pfa(t) == 0xffff0ff0) {
+		unsigned long pc = t->regs.ARM_pc;
+		int targetreg = -1;
+
+		if (thumb_mode(&t->regs)) {
+			unsigned short op;
+			get_user(op, (unsigned short *)pc);
+			if ((op & 0xf800) == 0x6800) // ldr
+				targetreg = op & 7;
+			if (targetreg != -1)
+				t->regs.uregs[targetreg] = current_thread_info()->tp_value;
+			else
+				LOG_printf("Lx: Unknown thumb opcode %hx at %lx\n", op, pc);
+			t->regs.ARM_pc += 2;
+		} else {
+			unsigned long op;
+			get_user(op, (unsigned long *)pc);
+			// TBD
+			LOG_printf("Lx: Unknown opcode %lx at %lx\n", op, pc);
+			t->regs.ARM_pc += 4;
+		}
+		return 1; // handled
+	}
+
+	if (t->regs.ARM_pc == 0xffff0fc0 && l4x_l4pfa(t) == 0xffff0fc0) {
+		asmlinkage int arm_syscall(int no, struct pt_regs *regs);
+		t->regs.ARM_r0 = arm_syscall(0x9ffff0 | __NR_SYSCALL_BASE, &t->regs);
+		t->regs.ARM_pc = t->regs.ARM_lr;
+
+		return 1; // handled
+	}
+	return 0; // not for us
 }
 
 #define __INCLUDED_FROM_L4LINUX_DISPATCH

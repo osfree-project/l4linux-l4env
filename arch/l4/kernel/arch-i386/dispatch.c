@@ -165,6 +165,14 @@ static inline int l4x_ispf(struct thread_struct *t)
 	return t->trap_no == 14;
 }
 
+static inline void l4x_print_regs(struct thread_struct *t)
+{
+	printk("eip: %08lx esp: %08lx err: %08lx trp: %08lx\n",
+	       t->regs.eip, t->regs.esp, t->error_code, t->trap_no);
+	printk("eax: %08lx ebx: %08lx ecx: %08lx edx: %08lx\n",
+	       t->regs.eax, t->regs.ebx, t->regs.ecx, t->regs.edx);
+}
+
 asmlinkage void ret_from_fork(void) __asm__("ret_from_fork");
 asm(
 ".section .text			\n"
@@ -569,8 +577,7 @@ static inline int l4x_dispatch_exception(struct task_struct *p,
 	/* This path should never be reached... */
 
 	printk("(Unknown) EXCEPTION [" PRINTF_L4TASK_FORM "]\n", PRINTF_L4TASK_ARG(t->user_thread_id));
-	printk("eip: %08lx esp: %08lx err: %08lx trp: %08lx\n", regs->eip, regs->esp, t->error_code, t->trap_no);
-	printk("eax: %08lx ebx: %08lx ecx: %08lx edx: %08lx\n", regs->eax, regs->ebx, regs->ecx, regs->edx);
+	l4x_print_regs(t);
 	printk("will die...\n");
 
 	enter_kdebug("check");
@@ -579,6 +586,11 @@ static inline int l4x_dispatch_exception(struct task_struct *p,
 	l4x_sig_current_kill();
 
 	return 1; /* no reply */
+}
+
+static inline int l4x_handle_page_fault_with_exception(struct thread_struct *t)
+{
+	return 0; // not for us
 }
 
 #define __INCLUDED_FROM_L4LINUX_DISPATCH

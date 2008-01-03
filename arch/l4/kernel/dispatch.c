@@ -139,6 +139,7 @@ static inline int l4x_handle_page_fault(struct task_struct *p,
 				           PRINTF_L4TASK_ARG(p->thread.user_thread_id),
 				           pfa, ip, pferror);
 				l4x_print_vm_area_maps(p);
+				l4x_print_regs(&p->thread);
 				enter_kdebug("segfault");
 #endif
 				return 1;
@@ -510,6 +511,11 @@ static inline void l4x_dispatch_page_fault(struct task_struct *p,
 	TBUF_LOG_USER_PF(fiasco_tbuf_log_3val("U-PF   ",
 	                 TBUF_TID(p->thread.user_thread_id),
 	                 l4x_l4pfa(t), regs_pc(t)));
+
+	if (unlikely(l4x_handle_page_fault_with_exception(t))) {
+		*msg_desc = L4_IPC_SHORT_MSG;
+		return;
+	}
 
 	if (l4x_handle_page_fault(p, l4x_l4pfa(t),
 	                          regs_pc(t), d0, d1)) {

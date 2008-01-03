@@ -155,6 +155,13 @@ L4INC		= -I$(L4OBJ)/include/$(L4_MK_ARCH)/$(L4_MK_API) \
 		  -I$(L4BID_DICE_INCDIR) \
 		  $(L4LX_E_I-y)
 
+libs-static-n = -llogserver -ldm_mem -ldm_generic -lgeneric_ts \
+                  -ll4rm -ll4env -lthread -lsigma0 $(L4LX_E_L-y) \
+                  -lsemaphore -lnames -ll4env_err -lgeneric_fprov \
+                  -ll4util_root -lslab -levents -lc_be_l4env_start_stop \
+		  -lroot \
+                  $(shell $(CC) -print-file-name=libgcc.a)
+
 head-y := arch/l4/kernel/head.o arch/l4/kernel/init_task.o
 
 libs-y				+= arch/l4/lib/arch-$(BASEARCH)/	\
@@ -174,8 +181,9 @@ ifeq ($(BASEARCH),arm)
 core-$(CONFIG_FPE_NWFPE)	+= arch/arm/nwfpe/
 endif
 
-libs-y				+= $(L4LIBS) -lio-ll -ldm_phys -lgeneric_fprov \
-				   -ll4util -ll4sys $(L4LX_E_L-y)
+libs-y				+= $(L4LIBS) -lio-ll -ldm_phys \
+				   -ll4util -ll4sys $(L4LX_E_L-y) \
+				   $(libs-static-y)
 
 libs-$(CONFIG_L4_FERRET)	+= -lferret_client -lferret_producer \
 				   -lferret_init
@@ -185,10 +193,12 @@ boot := arch/l4/boot
 MACH_INC_i386	:= -Iinclude/asm-l4/$(BASEARCH)-arch/asm/mach-default
 MACH_INC_arm	:= -Iinclude/asm-l4/$(BASEARCH)-arch
 
-LDFLAGS_LDSO	= --dynamic-linker libld-l4.s.so \
-		   $(L4OBJ)/lib/$(L4_MK_ARCH)_$(L4_MK_CPU)/crt0.o
+LDFLAGS_vmlinux-dynamic = --dynamic-linker libld-l4.s.so \
+                          $(L4OBJ)/lib/$(L4_MK_ARCH)_$(L4_MK_CPU)/crt0.o \
+                          -lloader.s $(L4LX_E_L_O-y) -z now
+LDFLAGS_vmlinux-static  = $(L4OBJ)/lib/$(L4_MK_ARCH)_$(L4_MK_CPU)/crt0.o
 
-LDFLAGS_vmlinux	+= $(LDFLAGS_LDSO) -lloader.s $(L4LX_E_L_O-y) -z now
+LDFLAGS_vmlinux	+= $(LDFLAGS_vmlinux-dynamic)
 CPPFLAGS	+= -Iinclude/asm-l4/l4-arch -Iinclude/asm-l4/$(BASEARCH)-arch \
 		   $(MACH_INC_$(BASEARCH)) $(L4INC) $(CPPFLAGS_SYSENTER-y) \
 		   $(L4BID_CPPFLAGS_SYSCALLS-y)

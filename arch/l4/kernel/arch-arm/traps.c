@@ -485,7 +485,7 @@ asmlinkage int arm_syscall(int no, struct pt_regs *regs)
 	case NR(set_tls):
 		thread->tp_value = regs->ARM_r0;
 #if defined(CONFIG_HAS_TLS_REG)
-		asm ("mcr p15, 0, %0, c13, c0, 3" : : "r" (regs->ARM_r0) );
+		//l4/asm ("mcr p15, 0, %0, c13, c0, 3" : : "r" (regs->ARM_r0) );
 #elif !defined(CONFIG_TLS_REG_EMUL)
 		/*
 		 * User space must never try to access this directly.
@@ -497,7 +497,8 @@ asmlinkage int arm_syscall(int no, struct pt_regs *regs)
 #endif
 		return 0;
 
-#ifdef CONFIG_NEEDS_SYSCALL_FOR_CMPXCHG
+//#ifdef CONFIG_NEEDS_SYSCALL_FOR_CMPXCHG
+#ifndef WE_USE_THIS_WITH_L4
 	/*
 	 * Atomically store r1 in *r2 if *r2 is equal to r0 for user space.
 	 * Return zero in r0 if *MEM was changed or non-zero if no exchange
@@ -532,10 +533,12 @@ asmlinkage int arm_syscall(int no, struct pt_regs *regs)
 			pte_unmap_unlock(pte, ptl);
 			goto bad_access;
 		}
-		val = *(unsigned long *)addr;
+		//l4//val = *(unsigned long *)addr;
+		get_user(val, (unsigned long *)addr);
 		val -= regs->ARM_r0;
 		if (val == 0) {
-			*(unsigned long *)addr = regs->ARM_r1;
+			//l4//*(unsigned long *)addr = regs->ARM_r1;
+			put_user(val, (unsigned long *)addr);
 			regs->ARM_cpsr |= PSR_C_BIT;
 		}
 		pte_unmap_unlock(pte, ptl);
