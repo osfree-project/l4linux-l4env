@@ -207,16 +207,16 @@ static void l4x_configuration_sanity_check(const char *cmdline)
 	for (i = 0; i < sizeof(required_kernel_features)
 		          / sizeof(required_kernel_features[0]); i++) {
 		if (!l4sigma0_kip_kernel_has_feature(required_kernel_features[i])) {
-			LOG_printf("The running kernel does not have the\n"
+			LOG_printf("The running microkernel does not have the\n"
 			           "      %s\n"
 			           "feature enabled!\n",
 			           required_kernel_features[i]);
-			enter_kdebug("kernel feature missing!");
+			enter_kdebug("Microkernel feature missing!");
 		}
 	}
 
 	if (l4sigma0_kip_kernel_abi_version() < required_kernel_abi_version) {
-		LOG_printf("The kernel ABI version is too low: kernel has %ld, "
+		LOG_printf("The ABI version of the microkernel is too low: it has %ld, "
 		           "I need %ld\n",
 		           l4sigma0_kip_kernel_abi_version(),
 		           required_kernel_abi_version);
@@ -1461,7 +1461,7 @@ int __init_refok main(int argc, char **argv)
 		if (*++argv)
 			*p++ = ' ';
 	}
-	LOG_printf("Kernel command line (%d args): %s\n",
+	LOG_printf("Linux kernel command line (%d args): %s\n",
 	           argc - 1, boot_command_line);
 
 	/* See if we find a showpfexc=1 or showghost=1 in the command line */
@@ -1581,7 +1581,7 @@ int __init_refok main(int argc, char **argv)
 #ifdef ARCH_x86
 	if (l4sigma0_kip_kernel_has_feature("io_prot")) {
 #ifndef CONFIG_L4_TAMED
-		enter_kdebug("ioprot-kernel -> enable TAMED mode!");
+		enter_kdebug("ioprot-microkernel -> enable TAMED mode!");
 #endif
 		l4x_iodb_init();
 	}
