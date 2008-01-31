@@ -2691,6 +2691,7 @@ EXPORT_SYMBOL(__up_wakeup);
 EXPORT_SYMBOL(init_thread_union);
 EXPORT_SYMBOL(csum_partial);
 EXPORT_SYMBOL(csum_partial_copy);
+EXPORT_SYMBOL(empty_zero_page);
 
 EXPORT_SYMBOL(strstr);
 

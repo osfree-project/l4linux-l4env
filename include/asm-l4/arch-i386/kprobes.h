@@ -1,7 +1,7 @@
 #ifndef __ASM_L4__ARCH_I386__KPROBES_H__
 #define __ASM_L4__ARCH_I386__KPROBES_H__
 
-#include <asm-i386/kprobes.h>
+#include <asm-x86/kprobes.h>
 
 /* We use 'hlt' as the break point instruction */
 

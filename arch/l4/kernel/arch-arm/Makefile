@@ -18,7 +18,7 @@ module-y	:= ../../../arm/kernel/module.o
 time-y		:= ../../../arm/kernel/time.o
 io-y		:= ../../../arm/kernel/io.o
 
-CPPFLAGS	+= -I$(srctree)/arch/arm/kernel
+KBUILD_CPPFLAGS	+= -I$(srctree)/arch/arm/kernel
 
 # ----------------------------------------------------------------------
 # _upage_start must(!) be last so that ld gets its calculation right!

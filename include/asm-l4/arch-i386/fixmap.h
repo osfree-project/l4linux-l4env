@@ -1,7 +1,7 @@
 #ifndef __ASM_L4__ARCH_I386__FIXMAP_H__
 #define __ASM_L4__ARCH_I386__FIXMAP_H__
 
-#include <asm-i386/fixmap.h>
+#include <asm-x86/fixmap.h>
 
 #include <asm/generic/upage.h>
 

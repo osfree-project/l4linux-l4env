@@ -11,6 +11,7 @@
 #define SYSCALL_VECTOR		0x80
 #define FIRST_DEVICE_VECTOR	0x31
 #define FIRST_SYSTEM_VECTOR	0xef
+#define NR_VECTORS		256
 
 #define L4X_IRQ_CONS            20
 
@@ -45,5 +46,9 @@ extern void fixup_irqs(cpumask_t map);
 unsigned int do_IRQ(int irq, struct pt_regs *regs);
 void init_IRQ(void);
 void __init native_init_IRQ(void);
+
+/* Interrupt vector management */
+extern DECLARE_BITMAP(used_vectors, NR_VECTORS);
+
 
 #endif /* __ASM_L4__ARCH_I386__IRQ_H__ */

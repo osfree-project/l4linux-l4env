@@ -8,7 +8,7 @@ obj-y		:= init.o flush.o ioremap.o proc-l4.o \
 
 obj-y		+= context.o
 
-CFLAGS          += -Iarch/arm/mm
+KBUILD_CPPFLAGS += -I$(srctree)/arch/arm/mm
 
 extable-y	:= ../../../arm/mm/extable.o
 mmap-y		:= ../../../arm/mm/mmap.o

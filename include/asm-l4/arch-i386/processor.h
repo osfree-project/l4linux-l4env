@@ -1,7 +1,7 @@
 /*
  * include/asm-l4/arch-i386/processor.h
  *
- *
+ * Copyright (C) 1994 Linus Torvalds
  */
 
 #ifndef __ASM_L4__ARCH_I386__PROCESSOR_H__
@@ -85,6 +85,7 @@ struct cpuinfo_x86 {
 	unsigned char booted_cores;	/* number of cores as seen by OS */
 	__u8 phys_proc_id; 		/* Physical processor id. */
 	__u8 cpu_core_id;  		/* Core id */
+	__u8 cpu_index;			/* index into per_cpu list */
 #endif
 } __attribute__((__aligned__(SMP_CACHE_BYTES)));
 
@@ -109,14 +110,19 @@ extern struct tss_struct doublefault_tss;
 DECLARE_PER_CPU(struct tss_struct, init_tss);
 
 #ifdef CONFIG_SMP
-extern struct cpuinfo_x86 cpu_data[];
-#define current_cpu_data cpu_data[smp_processor_id()]
+DECLARE_PER_CPU(struct cpuinfo_x86, cpu_info);
+#define cpu_data(cpu)		per_cpu(cpu_info, cpu)
+#define current_cpu_data	cpu_data(smp_processor_id())
 #else
-#define cpu_data (&boot_cpu_data)
-#define current_cpu_data boot_cpu_data
+#define cpu_data(cpu)		boot_cpu_data
+#define current_cpu_data	boot_cpu_data
 #endif
 
-extern	int cpu_llc_id[NR_CPUS];
+/*
+ * the following now lives in the per cpu area:
+ * extern	int cpu_llc_id[NR_CPUS];
+ */
+DECLARE_PER_CPU(u8, cpu_llc_id);
 extern char ignore_fpu_irq;
 
 void __init cpu_detect(struct cpuinfo_x86 *c);
@@ -371,6 +377,22 @@ struct thread_struct {
 #define INIT_THREAD  {							\
 }
 
+/*
+ * Note that the .io_bitmap member must be extra-big. This is because
+ * the CPU will access an additional byte beyond the end of the IO
+ * permission bitmap. The extra byte must be all 1 bits, and must
+ * be within the limit.
+ */
+#define INIT_TSS  {							\
+	.x86_tss = {							\
+		.esp0		= sizeof(init_stack) + (long)&init_stack, \
+		.ss0		= __KERNEL_DS,				\
+		.ss1		= __KERNEL_CS,				\
+		.io_bitmap_base	= INVALID_IO_BITMAP_OFFSET,		\
+	 },								\
+	.io_bitmap	= { [ 0 ... IO_BITMAP_LONGS] = ~0 },		\
+}
+
 #if 0
 #define start_thread(regs, new_eip, new_esp) do {		\
 	__asm__("movl %0,%%gs": :"r" (0));			\
@@ -572,7 +594,9 @@ static inline void load_esp0(struct tss_struct *tss, struct thread_struct *threa
  * clear %ecx since some cpus (Cyrix MII) do not set or clear %ecx
  * resulting in stale register contents being returned.
  */
-static inline void cpuid(unsigned int op, unsigned int *eax, unsigned int *ebx, unsigned int *ecx, unsigned int *edx)
+static inline void cpuid(unsigned int op,
+			 unsigned int *eax, unsigned int *ebx,
+			 unsigned int *ecx, unsigned int *edx)
 {
 	*eax = op;
 	*ecx = 0;
@@ -580,8 +604,9 @@ static inline void cpuid(unsigned int op, unsigned int *eax, unsigned int *ebx, 
 }
 
 /* Some CPUID calls want 'count' to be placed in ecx */
-static inline void cpuid_count(int op, int count, int *eax, int *ebx, int *ecx,
-			       int *edx)
+static inline void cpuid_count(unsigned int op, int count,
+			       unsigned int *eax, unsigned int *ebx,
+			       unsigned int *ecx, unsigned int *edx)
 {
 	*eax = op;
 	*ecx = count;
@@ -651,6 +676,17 @@ static inline unsigned int cpuid_edx(unsigned int op)
 #define K7_NOP7        ".byte 0x8D,0x04,0x05,0,0,0,0\n"
 #define K7_NOP8        K7_NOP7 ASM_NOP1
 
+/* P6 nops */
+/* uses eax dependencies (Intel-recommended choice) */
+#define P6_NOP1	GENERIC_NOP1
+#define P6_NOP2	".byte 0x66,0x90\n"
+#define P6_NOP3	".byte 0x0f,0x1f,0x00\n"
+#define P6_NOP4	".byte 0x0f,0x1f,0x40,0\n"
+#define P6_NOP5	".byte 0x0f,0x1f,0x44,0x00,0\n"
+#define P6_NOP6	".byte 0x66,0x0f,0x1f,0x44,0x00,0\n"
+#define P6_NOP7	".byte 0x0f,0x1f,0x80,0,0,0,0\n"
+#define P6_NOP8	".byte 0x0f,0x1f,0x84,0x00,0,0,0,0\n"
+
 #ifdef CONFIG_MK8
 #define ASM_NOP1 K8_NOP1
 #define ASM_NOP2 K8_NOP2
@@ -669,6 +705,17 @@ static inline unsigned int cpuid_edx(unsigned int op)
 #define ASM_NOP6 K7_NOP6
 #define ASM_NOP7 K7_NOP7
 #define ASM_NOP8 K7_NOP8
+#elif defined(CONFIG_M686) || defined(CONFIG_MPENTIUMII) || \
+      defined(CONFIG_MPENTIUMIII) || defined(CONFIG_MPENTIUMM) || \
+      defined(CONFIG_MCORE2) || defined(CONFIG_PENTIUM4)
+#define ASM_NOP1 P6_NOP1
+#define ASM_NOP2 P6_NOP2
+#define ASM_NOP3 P6_NOP3
+#define ASM_NOP4 P6_NOP4
+#define ASM_NOP5 P6_NOP5
+#define ASM_NOP6 P6_NOP6
+#define ASM_NOP7 P6_NOP7
+#define ASM_NOP8 P6_NOP8
 #else
 #define ASM_NOP1 GENERIC_NOP1
 #define ASM_NOP2 GENERIC_NOP2

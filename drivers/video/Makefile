@@ -118,10 +118,13 @@ obj-$(CONFIG_L4_FB_DRIVER)        += l4fb.o cfbfillrect.o cfbcopyarea.o cfbimgbl
 obj-$(CONFIG_L4_FB_DRIVER_XF86IF) += l4fb_xf86if.o
 
 # Platform or fallback drivers go here
+obj-$(CONFIG_FB_UVESA)            += uvesafb.o
 obj-$(CONFIG_FB_VESA)             += vesafb.o
 obj-$(CONFIG_FB_IMAC)             += imacfb.o
+obj-$(CONFIG_FB_EFI)              += efifb.o
 obj-$(CONFIG_FB_VGA16)            += vga16fb.o
 obj-$(CONFIG_FB_OF)               += offb.o
+obj-$(CONFIG_FB_BF54X_LQ043)	  += bf54x-lq043fb.o
 
 # the test framebuffer is last
 obj-$(CONFIG_FB_VIRTUAL)          += vfb.o

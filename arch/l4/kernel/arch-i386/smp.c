@@ -71,7 +71,7 @@
  *
  *		B stepping CPUs may hang. There are hardware work arounds
  *	for this. We warn about it in case your board doesn't have the work
- *	arounds. Basically thats so I can tell anyone with a B stepping
+ *	arounds. Basically that's so I can tell anyone with a B stepping
  *	CPU and SMP problems "tough".
  *
  *	Specific items [From Pentium Processor Specification Update]
@@ -307,7 +307,7 @@ void leave_mm(unsigned long cpu)
  * 1a1) cpu_clear(cpu, old_mm->cpu_vm_mask);
  * 	Stop ipi delivery for the old mm. This is not synchronized with
  * 	the other cpus, but smp_invalidate_interrupt ignore flush ipis
- * 	for the wrong mm, and in the worst case we perform a superflous
+ * 	for the wrong mm, and in the worst case we perform a superfluous
  * 	tlb flush.
  * 1a2) set cpu_tlbstate to TLBSTATE_OK
  * 	Now the smp_invalidate_interrupt won't call leave_mm if cpu0
@@ -376,6 +376,7 @@ fastcall void smp_invalidate_interrupt(struct pt_regs *regs)
 	smp_mb__after_clear_bit();
 out:
 	put_cpu_no_resched();
+	__get_cpu_var(irq_stat).irq_tlb_count++;
 }
 
 void native_flush_tlb_others(const cpumask_t *cpumaskp, struct mm_struct *mm,
@@ -643,7 +644,7 @@ static void stop_this_cpu (void * dummy)
 	 */
 	cpu_clear(smp_processor_id(), cpu_online_map);
 	disable_local_APIC();
-	if (cpu_data[smp_processor_id()].hlt_works_ok)
+	if (cpu_data(smp_processor_id()).hlt_works_ok)
 		for(;;) ; //l4/halt();
 	for (;;);
 }
@@ -674,6 +675,7 @@ static void native_smp_send_stop(void)
 fastcall void smp_reschedule_interrupt(struct pt_regs *regs)
 {
 	//l4/ack_APIC_irq();
+	__get_cpu_var(irq_stat).irq_resched_count++;
 }
 
 fastcall void smp_call_function_interrupt(struct pt_regs *regs)
@@ -694,6 +696,7 @@ fastcall void smp_call_function_interrupt(struct pt_regs *regs)
 	 */
 	irq_enter();
 	(*func)(info);
+	__get_cpu_var(irq_stat).irq_call_count++;
 	irq_exit();
 
 	if (wait) {
@@ -707,7 +710,7 @@ static int convert_apicid_to_cpu(int apic_id)
 	int i;
 
 	for (i = 0; i < NR_CPUS; i++) {
-		if (x86_cpu_to_apicid[i] == apic_id)
+		if (per_cpu(x86_cpu_to_apicid, i) == apic_id)
 			return i;
 	}
 	return -1;
@@ -739,3 +742,4 @@ struct smp_ops smp_ops = {
 	.smp_send_reschedule = native_smp_send_reschedule,
 	.smp_call_function_mask = native_smp_call_function_mask,
 };
+EXPORT_SYMBOL_GPL(smp_ops);

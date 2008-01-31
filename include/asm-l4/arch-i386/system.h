@@ -10,6 +10,7 @@
 #include <asm/l4x/exception.h> /* for l4_utcb_get_l4lx() */
 
 #ifdef __KERNEL__
+#define AT_VECTOR_SIZE_ARCH 2 /* entries in ARCH_DLINFO */
 
 struct task_struct;	/* one of the stranger aspects of C forward declarations.. */
 extern struct task_struct * FASTCALL(__switch_to(struct task_struct *prev, struct task_struct *next));
@@ -169,7 +170,7 @@ static inline unsigned long native_read_cr4_safe(void)
 {
 	unsigned long val;
 	/* This could fault if %cr4 does not exist */
-	asm("1: movl %%cr4, %0		\n"
+	asm volatile("1: movl %%cr4, %0		\n"
 		"2:				\n"
 		".section __ex_table,\"a\"	\n"
 		".long 1b,2b			\n"
@@ -188,6 +189,10 @@ static inline void native_wbinvd(void)
 	asm volatile("wbinvd": : :"memory");
 }
 
+static inline void clflush(volatile void *__p)
+{
+	asm volatile("clflush %0" : "+m" (*(char __force *)__p));
+}
 
 #ifdef CONFIG_PARAVIRT
 #include <asm/paravirt.h>
@@ -244,6 +249,7 @@ static inline unsigned long get_limit(unsigned long segment)
 
 #define mb() alternative("lock; addl $0,0(%%esp)", "mfence", X86_FEATURE_XMM2)
 #define rmb() alternative("lock; addl $0,0(%%esp)", "lfence", X86_FEATURE_XMM2)
+#define wmb() alternative("lock; addl $0,0(%%esp)", "sfence", X86_FEATURE_XMM)
 
 /**
  * read_barrier_depends - Flush all pending reads that subsequents reads
@@ -299,18 +305,18 @@ static inline unsigned long get_limit(unsigned long segment)
 
 #define read_barrier_depends()	do { } while(0)
 
-#ifdef CONFIG_X86_OOSTORE
-/* Actually there are no OOO store capable CPUs for now that do SSE, 
-   but make it already an possibility. */
-#define wmb() alternative("lock; addl $0,0(%%esp)", "sfence", X86_FEATURE_XMM)
-#else
-#define wmb()	__asm__ __volatile__ ("": : :"memory")
-#endif
-
 #ifdef CONFIG_SMP
 #define smp_mb()	mb()
-#define smp_rmb()	rmb()
-#define smp_wmb()	wmb()
+#ifdef CONFIG_X86_PPRO_FENCE
+# define smp_rmb()	rmb()
+#else
+# define smp_rmb()	barrier()
+#endif
+#ifdef CONFIG_X86_OOSTORE
+# define smp_wmb() 	wmb()
+#else
+# define smp_wmb()	barrier()
+#endif
 #define smp_read_barrier_depends()	read_barrier_depends()
 #define set_mb(var, value) do { (void) xchg(&var, value); } while (0)
 #else
@@ -337,5 +343,6 @@ extern unsigned long arch_align_stack(unsigned long sp);
 extern void free_init_pages(char *what, unsigned long begin, unsigned long end);
 
 void default_idle(void);
+void __show_registers(struct pt_regs *, int all);
 
 #endif

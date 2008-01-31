@@ -5,7 +5,7 @@
 #include <linux/linkage.h>
 
 .section .rodata,"a"
-#include "syscall_table.S"
+#include "syscall_table_32.S"
 
 syscall_table_size=(.-sys_call_table)
 .globl nr_syscalls

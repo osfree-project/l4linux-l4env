@@ -3,12 +3,12 @@
  */
 
 #include <asm/types.h>
-#include <asm/bitops.h>
 #include <asm/api/config.h>
 
 #include <linux/sched.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
+#include <linux/bitops.h>
 
 #include <asm/l4lxapi/irq.h>
 #include <asm/l4lxapi/thread.h>

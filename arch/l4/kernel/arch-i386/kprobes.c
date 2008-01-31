@@ -1,6 +1,5 @@
 /*
  *  Kernel Probes (KProbes)
- *  arch/i386/kernel/kprobes.c
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -41,6 +40,13 @@ void jprobe_return_end(void);
 
 DEFINE_PER_CPU(struct kprobe *, current_kprobe) = NULL;
 DEFINE_PER_CPU(struct kprobe_ctlblk, kprobe_ctlblk);
+
+struct kretprobe_blackpoint kretprobe_blacklist[] = {
+	{"__switch_to", }, /* This function switches only current task, but
+			     doesn't switch kernel stack.*/
+	{NULL, NULL}	/* Terminator */
+};
+const int kretprobe_blacklist_size = ARRAY_SIZE(kretprobe_blacklist);
 
 /* insert a jmp code */
 static __always_inline void set_jmp_op(void *from, void *to)
@@ -558,6 +564,7 @@ static int __kprobes post_kprobe_handler(struct pt_regs *regs)
 
 	resume_execution(cur, regs, kcb);
 	regs->eflags |= kcb->kprobe_saved_eflags;
+	trace_hardirqs_fixup_flags(regs->eflags);
 
 	/*Restore back the original saved kprobes variables and continue. */
 	if (kcb->kprobe_status == KPROBE_REENTER) {
@@ -579,7 +586,7 @@ out:
 	return 1;
 }
 
-static int __kprobes kprobe_fault_handler(struct pt_regs *regs, int trapnr)
+int __kprobes kprobe_fault_handler(struct pt_regs *regs, int trapnr)
 {
 	struct kprobe *cur = kprobe_running();
 	struct kprobe_ctlblk *kcb = get_kprobe_ctlblk();
@@ -661,7 +668,6 @@ int __kprobes kprobe_exceptions_notify(struct notifier_block *self,
 			ret = NOTIFY_STOP;
 		break;
 	case DIE_GPF:
-	case DIE_PAGE_FAULT:
 		/* kprobe_running() needs smp_processor_id() */
 		preempt_disable();
 		if (kprobe_running() &&
@@ -695,6 +701,7 @@ int __kprobes setjmp_pre_handler(struct kprobe *p, struct pt_regs *regs)
 	memcpy(kcb->jprobes_stack, (kprobe_opcode_t *)addr,
 			MIN_STACK_SIZE(addr));
 	regs->eflags &= ~IF_MASK;
+	trace_hardirqs_off();
 	regs->eip = (unsigned long)(jp->entry);
 	return 1;
 }
@@ -720,9 +727,7 @@ int __kprobes longjmp_break_handler(struct kprobe *p, struct pt_regs *regs)
 
 	if ((addr > (u8 *) jprobe_return) && (addr < (u8 *) jprobe_return_end)) {
 		if (&regs->esp != kcb->jprobe_saved_esp) {
-			struct pt_regs *saved_regs =
-			    container_of(kcb->jprobe_saved_esp,
-					    struct pt_regs, esp);
+			struct pt_regs *saved_regs = &kcb->jprobe_saved_regs;
 			printk("current esp %p does not match saved esp %p\n",
 			       &regs->esp, kcb->jprobe_saved_esp);
 			printk("Saved registers for jprobe %p\n", jp);

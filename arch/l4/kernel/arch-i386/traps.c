@@ -1,6 +1,4 @@
 /*
- *  linux/arch/i386/traps.c
- *
  *  Copyright (C) 1991, 1992  Linus Torvalds
  *
  *  Pentium III FXSR, SSE support
@@ -64,6 +62,10 @@
 #include "mach_traps.h"
 
 int panic_on_unrecovered_nmi;
+
+DECLARE_BITMAP(used_vectors, NR_VECTORS);
+EXPORT_SYMBOL_GPL(used_vectors);
+
 #include <asm/api/ids.h>
 #include <asm/api/macros.h>
 
@@ -120,7 +122,7 @@ struct stack_frame {
 
 static inline unsigned long print_context_stack(struct thread_info *tinfo,
 				unsigned long *stack, unsigned long ebp,
-				struct stacktrace_ops *ops, void *data)
+				const struct stacktrace_ops *ops, void *data)
 {
 #ifdef	CONFIG_FRAME_POINTER
 	struct stack_frame *frame = (struct stack_frame *)ebp;
@@ -157,7 +159,7 @@ static inline unsigned long print_context_stack(struct thread_info *tinfo,
 
 void dump_trace(struct task_struct *task, struct pt_regs *regs,
 	        unsigned long *stack,
-		struct stacktrace_ops *ops, void *data)
+		const struct stacktrace_ops *ops, void *data)
 {
 	unsigned long ebp = 0;
 
@@ -229,7 +231,7 @@ static void print_trace_address(void *data, unsigned long addr)
 	touch_nmi_watchdog();
 }
 
-static struct stacktrace_ops print_trace_ops = {
+static const struct stacktrace_ops print_trace_ops = {
 	.warning = print_trace_warning,
 	.warning_symbol = print_trace_warning_symbol,
 	.stack = print_trace_stack,
@@ -288,6 +290,11 @@ void dump_stack(void)
 {
 	unsigned long stack;
 
+	printk("Pid: %d, comm: %.20s %s %s %.*s\n",
+		current->pid, current->comm, print_tainted(),
+		init_utsname()->release,
+		(int)strcspn(init_utsname()->version, " "),
+		init_utsname()->version);
 	show_trace(current, NULL, &stack);
 }
 
@@ -296,44 +303,24 @@ EXPORT_SYMBOL(dump_stack);
 void show_registers(struct pt_regs *regs)
 {
 	int i;
-	int in_kernel = 1;
-	unsigned long esp;
-	unsigned short ss, gs;
-
-	esp = (unsigned long) (1+regs);
-	ss = 0;
-	gs = 0;
 
 	print_modules();
-	printk(KERN_EMERG "CPU:    %d\n"
-		KERN_EMERG "EIP:    %04x:[<%08lx>]    %s VLI\n"
-		KERN_EMERG "EFLAGS: %08lx   (%s %.*s)\n",
-		smp_processor_id(), 0xffff & regs->xcs, regs->eip,
-		print_tainted(), regs->eflags, init_utsname()->release,
-		(int)strcspn(init_utsname()->version, " "),
-		init_utsname()->version);
-	print_symbol(KERN_EMERG "EIP is at %s\n", regs->eip);
-	printk(KERN_EMERG "eax: %08lx   ebx: %08lx   ecx: %08lx   edx: %08lx\n",
-		regs->eax, regs->ebx, regs->ecx, regs->edx);
-	printk(KERN_EMERG "esi: %08lx   edi: %08lx   ebp: %08lx   esp: %08lx\n",
-		regs->esi, regs->edi, regs->ebp, esp);
-	printk(KERN_EMERG "ds: %04x   es: %04x   fs: %04x  gs: %04x  ss: %04x\n",
-	       regs->xds & 0xffff, regs->xes & 0xffff, regs->xfs & 0xffff, gs, ss);
+	__show_registers(regs, 0);
 	printk(KERN_EMERG "Process %.*s (pid: %d, ti=%p task=%p task.ti=%p)",
-		TASK_COMM_LEN, current->comm, current->pid,
+		TASK_COMM_LEN, current->comm, task_pid_nr(current),
 		current_thread_info(), current, task_thread_info(current));
 	/*
 	 * When in-kernel, we also print out the stack and code at the
 	 * time of the fault..
 	 */
-	if (in_kernel) {
+	if (!user_mode_vm(regs)) {
 		u8 *eip;
 		unsigned int code_prologue = code_bytes * 43 / 64;
 		unsigned int code_len = code_bytes;
 		unsigned char c;
 
 		printk("\n" KERN_EMERG "Stack: ");
-		show_stack_log_lvl(NULL, regs, (unsigned long *)esp, KERN_EMERG);
+		show_stack_log_lvl(NULL, regs, &regs->esp, KERN_EMERG);
 
 		printk(KERN_EMERG "Code: ");
 
@@ -382,11 +369,11 @@ int is_valid_bugaddr(unsigned long eip)
 void die(const char * str, struct pt_regs * regs, long err)
 {
 	static struct {
-		spinlock_t lock;
+		raw_spinlock_t lock;
 		u32 lock_owner;
 		int lock_owner_depth;
 	} die = {
-		.lock =			__SPIN_LOCK_UNLOCKED(die.lock),
+		.lock =			__RAW_SPIN_LOCK_UNLOCKED,
 		.lock_owner =		-1,
 		.lock_owner_depth =	0
 	};
@@ -397,40 +384,33 @@ void die(const char * str, struct pt_regs * regs, long err)
 
 	if (die.lock_owner != raw_smp_processor_id()) {
 		console_verbose();
-		spin_lock_irqsave(&die.lock, flags);
+		raw_local_irq_save(flags);
+		__raw_spin_lock(&die.lock);
 		die.lock_owner = smp_processor_id();
 		die.lock_owner_depth = 0;
 		bust_spinlocks(1);
-	}
-	else
-		local_save_flags(flags);
+	} else
+		raw_local_irq_save(flags);
 
 	if (++die.lock_owner_depth < 3) {
-		int nl = 0;
 		unsigned long esp;
 		unsigned short ss;
 
 		report_bug(regs->eip, regs);
 
-		printk(KERN_EMERG "%s: %04lx [#%d]\n", str, err & 0xffff, ++die_counter);
+		printk(KERN_EMERG "%s: %04lx [#%d] ", str, err & 0xffff,
+		       ++die_counter);
 #ifdef CONFIG_PREEMPT
-		printk(KERN_EMERG "PREEMPT ");
-		nl = 1;
+		printk("PREEMPT ");
 #endif
 #ifdef CONFIG_SMP
-		if (!nl)
-			printk(KERN_EMERG);
 		printk("SMP ");
-		nl = 1;
 #endif
 #ifdef CONFIG_DEBUG_PAGEALLOC
-		if (!nl)
-			printk(KERN_EMERG);
 		printk("DEBUG_PAGEALLOC");
-		nl = 1;
 #endif
-		if (nl)
-			printk("\n");
+		printk("\n");
+
 		if (notify_die(DIE_OOPS, str, regs, err,
 					current->thread.trap_no, SIGSEGV) !=
 				NOTIFY_STOP) {
@@ -454,7 +434,8 @@ void die(const char * str, struct pt_regs * regs, long err)
 	bust_spinlocks(0);
 	die.lock_owner = -1;
 	add_taint(TAINT_DIE);
-	spin_unlock_irqrestore(&die.lock, flags);
+	__raw_spin_unlock(&die.lock);
+	raw_local_irq_restore(flags);
 
 	if (!regs)
 		return;
@@ -472,12 +453,6 @@ void die(const char * str, struct pt_regs * regs, long err)
 	do_exit(SIGSEGV);
 }
 
-#ifdef CONFIG_X86_F00F_BUG
-void __init trap_init_f00f_bug(void)
-{
-	/* for CPU code */
-}
-#endif
 
 static inline void die_if_kernel(const char * str, struct pt_regs * regs, long err)
 {

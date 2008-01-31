@@ -200,7 +200,7 @@ survive:
 	return fault;
 
 out_of_memory:
-	if (!is_init(tsk))
+	if (!is_global_init(tsk))
 		goto out;
 
 	/*
@@ -269,7 +269,7 @@ do_page_fault(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 		 * the page fault gracefully.
 		 */
 		printk("VM: killing process %s\n", tsk->comm);
-		do_exit(SIGKILL);
+		do_group_exit(SIGKILL);
 		return -1;
 	}
 	if (fault & VM_FAULT_SIGBUS) {

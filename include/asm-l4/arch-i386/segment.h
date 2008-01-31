@@ -3,7 +3,7 @@
 
 /* Just modify one value */
 
-#include <asm-i386/segment.h>
+#include <asm-x86/segment.h>
 
 #include <l4/sys/segment.h>
 

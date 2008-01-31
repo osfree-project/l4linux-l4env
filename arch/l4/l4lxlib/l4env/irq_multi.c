@@ -2,8 +2,7 @@
  * Multi IRQ implementation. We only use one single IRQ thread.
  */
 
-#include <asm/bitops.h>
-
+#include <linux/bitops.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
 

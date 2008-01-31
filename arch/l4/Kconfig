@@ -228,7 +228,7 @@ config L4_DEBUG_IRQ_WHEELS_FULL_REDRAW
 
 config L4_DEBUG_IRQ_WHEELS_PIC
 	bool "Also display PIC status in wheels"
-	depends L4_DEBUG_IRQ_WHEELS && L4_ARCH_X86
+	depends on L4_DEBUG_IRQ_WHEELS && L4_ARCH_X86
 	default n
 	help
 	  Also read and display the PIC status for IRQs.
@@ -421,4 +421,3 @@ endmenu # l4linux options
 # some delimiter (for .config)
 comment ""
 source "arch/l4/Kconfig.arch"
-

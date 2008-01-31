@@ -2,7 +2,7 @@
 #define __ASM_L4__ARCH_I386__ELF_H__
 
 /* L4Linux has a Linux native ABI... */
-#include <asm-i386/elf.h>
+#include <asm-x86/elf.h>
 
 /* ...but dosen't have segment registers */
 #undef ELF_CORE_COPY_REGS

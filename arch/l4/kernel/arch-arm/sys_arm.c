@@ -26,9 +26,9 @@
 #include <linux/fs.h>
 #include <linux/file.h>
 #include <linux/utsname.h>
+#include <linux/ipc.h>
 
 #include <asm/uaccess.h>
-#include <asm/ipc.h>
 
 #include <l4/sys/kdebug.h>
 

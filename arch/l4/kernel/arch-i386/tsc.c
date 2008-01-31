@@ -1,9 +1,3 @@
-/*
- * This code largely moved from arch/i386/kernel/timer/timer_tsc.c
- * which was originally moved from arch/i386/kernel/time.c.
- * See comments there for proper credits.
- */
-
 #include <linux/sched.h>
 #include <linux/clocksource.h>
 #include <linux/workqueue.h>
@@ -69,7 +63,7 @@ int check_tsc_unstable(void)
 }
 EXPORT_SYMBOL_GPL(check_tsc_unstable);
 
-/* Accellerators for sched_clock()
+/* Accelerators for sched_clock()
  * convert from cycles(64bits) => nanoseconds (64bits)
  *  basic equation:
  *		ns = cycles / (freq / ns_per_sec)
@@ -84,7 +78,7 @@ EXPORT_SYMBOL_GPL(check_tsc_unstable);
  *	And since SC is a constant power of two, we can convert the div
  *  into a shift.
  *
- *  We can use khz divisor instead of mhz to keep a better percision, since
+ *  We can use khz divisor instead of mhz to keep a better precision, since
  *  cyc2ns_scale is limited to 10^6 * 2^10, which fits in 32 bits.
  *  (mathieu.desnoyers@polymtl.ca)
  *
@@ -141,7 +135,7 @@ unsigned long native_calculate_cpu_khz(void)
 {
 	unsigned long long start, end;
 	unsigned long count;
-	u64 delta64;
+	u64 delta64 = (u64)ULLONG_MAX;
 	int i;
 	unsigned long flags;
 
@@ -151,30 +145,35 @@ unsigned long native_calculate_cpu_khz(void)
 
 	local_irq_save(flags);
 
-	/* run 3 times to ensure the cache is warm */
+	/* run 3 times to ensure the cache is warm and to get an accurate reading */
 	for (i = 0; i < 3; i++) {
 		mach_prepare_counter();
 		rdtscll(start);
 		mach_countup(&count);
 		rdtscll(end);
+
+		/*
+		 * Error: ECTCNEVERSET
+		 * The CTC wasn't reliable: we got a hit on the very first read,
+		 * or the CPU was so fast/slow that the quotient wouldn't fit in
+		 * 32 bits..
+		 */
+		if (count <= 1)
+			continue;
+
+		/* cpu freq too slow: */
+		if ((end - start) <= CALIBRATE_TIME_MSEC)
+			continue;
+
+		/*
+		 * We want the minimum time of all runs in case one of them
+		 * is inaccurate due to SMI or other delay
+		 */
+		delta64 = min(delta64, (end - start));
 	}
-	/*
-	 * Error: ECTCNEVERSET
-	 * The CTC wasn't reliable: we got a hit on the very first read,
-	 * or the CPU was so fast/slow that the quotient wouldn't fit in
-	 * 32 bits..
-	 */
-	if (count <= 1)
-		goto err;
 
-	delta64 = end - start;
-
-	/* cpu freq too fast: */
+	/* cpu freq too fast (or every run was bad): */
 	if (delta64 > (1ULL<<32))
-		goto err;
-
-	/* cpu freq too slow: */
-	if (delta64 <= CALIBRATE_TIME_MSEC)
 		goto err;
 
 	delta64 += CALIBRATE_TIME_MSEC/2; /* round for do_div */
@@ -195,8 +194,8 @@ int recalibrate_cpu_khz(void)
 	if (cpu_has_tsc) {
 		cpu_khz = calculate_cpu_khz();
 		tsc_khz = cpu_khz;
-		cpu_data[0].loops_per_jiffy =
-			cpufreq_scale(cpu_data[0].loops_per_jiffy,
+		cpu_data(0).loops_per_jiffy =
+			cpufreq_scale(cpu_data(0).loops_per_jiffy,
 					cpu_khz_old, cpu_khz);
 		return 0;
 	} else
@@ -229,7 +228,7 @@ time_cpufreq_notifier(struct notifier_block *nb, unsigned long val, void *data)
 			return 0;
 		}
 		ref_freq = freq->old;
-		loops_per_jiffy_ref = cpu_data[freq->cpu].loops_per_jiffy;
+		loops_per_jiffy_ref = cpu_data(freq->cpu).loops_per_jiffy;
 		cpu_khz_ref = cpu_khz;
 	}
 
@@ -237,7 +236,7 @@ time_cpufreq_notifier(struct notifier_block *nb, unsigned long val, void *data)
 	    (val == CPUFREQ_POSTCHANGE && freq->old > freq->new) ||
 	    (val == CPUFREQ_RESUMECHANGE)) {
 		if (!(freq->flags & CPUFREQ_CONST_LOOPS))
-			cpu_data[freq->cpu].loops_per_jiffy =
+			cpu_data(freq->cpu).loops_per_jiffy =
 				cpufreq_scale(loops_per_jiffy_ref,
 						ref_freq, freq->new);
 
@@ -313,7 +312,7 @@ void mark_tsc_unstable(char *reason)
 }
 EXPORT_SYMBOL_GPL(mark_tsc_unstable);
 
-static int __init dmi_mark_tsc_unstable(struct dmi_system_id *d)
+static int __init dmi_mark_tsc_unstable(const struct dmi_system_id *d)
 {
 	printk(KERN_NOTICE "%s detected: marking TSC unstable.\n",
 		       d->ident);
@@ -363,10 +362,10 @@ __cpuinit int unsynchronized_tsc(void)
 
 static void __init check_geode_tsc_reliable(void)
 {
-	unsigned long val;
+	unsigned long res_low, res_high;
 
-	rdmsrl(MSR_GEODE_BUSCONT_CONF0, val);
-	if ((val & RTSC_SUSP))
+	rdmsr_safe(MSR_GEODE_BUSCONT_CONF0, &res_low, &res_high);
+	if (res_low & RTSC_SUSP)
 		clocksource_tsc.flags &= ~CLOCK_SOURCE_MUST_VERIFY;
 }
 #else

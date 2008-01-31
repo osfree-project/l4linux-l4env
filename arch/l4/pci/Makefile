@@ -1,9 +1,9 @@
 
-include $(srctree)/arch/i386/pci/Makefile
+include $(srctree)/arch/x86/pci/Makefile
 
-CFLAGS += -I$(srctree)/arch/i386/pci
+KBUILD_CPPFLAGS += -I$(srctree)/arch/x86/pci
 
-b		:= ../../i386/pci
+b		:= ../../x86/pci
 
 common-y	:= $(b)/common.o
 direct-y	:= $(b)/direct.o

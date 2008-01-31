@@ -89,13 +89,20 @@ static pmd_t * __init one_md_table_init(pgd_t *pgd)
 static pte_t * __init one_page_table_init(pmd_t *pmd)
 {
 	if (!(pmd_val(*pmd) & _PAGE_PRESENT)) {
-		pte_t *page_table = (pte_t *) alloc_bootmem_low_pages(PAGE_SIZE);
+		pte_t *page_table = NULL;
+
+#ifdef CONFIG_DEBUG_PAGEALLOC
+		page_table = (pte_t *) alloc_bootmem_pages(PAGE_SIZE);
+#endif
+		if (!page_table)
+			page_table =
+				(pte_t *)alloc_bootmem_low_pages(PAGE_SIZE);
 
 		paravirt_alloc_pt(&init_mm, __pa(page_table) >> PAGE_SHIFT);
 		set_pmd(pmd, __pmd(__pa(page_table) | _PAGE_TABLE));
 		BUG_ON(page_table != pte_offset_kernel(pmd, 0));
 	}
-	
+
 	return pte_offset_kernel(pmd, 0);
 }
 
@@ -322,8 +329,13 @@ extern void set_highmem_pages_init(int);
 static void __init set_highmem_pages_init(int bad_ppro)
 {
 	int pfn;
-	for (pfn = highstart_pfn; pfn < highend_pfn; pfn++)
-		add_one_highpage_init(pfn_to_page(pfn), pfn, bad_ppro);
+	for (pfn = highstart_pfn; pfn < highend_pfn; pfn++) {
+		/*
+		 * Holes under sparsemem might not have no mem_map[]:
+		 */
+		if (pfn_valid(pfn))
+			add_one_highpage_init(pfn_to_page(pfn), pfn, bad_ppro);
+	}
 	totalram_pages += totalhigh_pages;
 }
 #endif /* CONFIG_FLATMEM */
@@ -755,35 +767,18 @@ int arch_add_memory(int nid, u64 start, u64 size)
 	return __add_pages(zone, start_pfn, nr_pages);
 }
 
-int remove_memory(u64 start, u64 size)
-{
-	return -EINVAL;
-}
-EXPORT_SYMBOL_GPL(remove_memory);
 #endif
 
 struct kmem_cache *pmd_cache;
 
 void __init pgtable_cache_init(void)
 {
-	size_t pgd_size = PTRS_PER_PGD*sizeof(pgd_t);
-
-	if (PTRS_PER_PMD > 1) {
+	if (PTRS_PER_PMD > 1)
 		pmd_cache = kmem_cache_create("pmd",
-					PTRS_PER_PMD*sizeof(pmd_t),
-					PTRS_PER_PMD*sizeof(pmd_t),
-					SLAB_PANIC,
-					pmd_ctor);
-		if (!SHARED_KERNEL_PMD) {
-			/* If we're in PAE mode and have a non-shared
-			   kernel pmd, then the pgd size must be a
-			   page size.  This is because the pgd_list
-			   links through the page structure, so there
-			   can only be one pgd per page for this to
-			   work. */
-			pgd_size = PAGE_SIZE;
-		}
-	}
+					      PTRS_PER_PMD*sizeof(pmd_t),
+					      PTRS_PER_PMD*sizeof(pmd_t),
+					      SLAB_PANIC,
+					      pmd_ctor);
 }
 
 /*

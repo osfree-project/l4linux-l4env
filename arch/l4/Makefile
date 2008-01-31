@@ -4,6 +4,12 @@
 # Makefile for the L4 architecture.
 #
 
+# BITS is used as extension for files which are available in a 32 bit
+# and a 64 bit version to simplify shared Makefiles.
+# e.g.: obj-y += foo_$(BITS).o
+BITS := 32
+export BITS
+
 # Set this to really switch to ARM when coming from another arch
 ifeq ($(L4ARCH),arm)
 CONFIG_L4_ARCH_ARM := y
@@ -13,6 +19,7 @@ ifneq ($(CONFIG_L4_ARCH_ARM),)
 # arm selection
 L4API		:= v2
 BASEARCH	:= arm
+LINSRCARCH      := arm
 
 CHECKFLAGS	:= -D__arm__
 
@@ -25,6 +32,7 @@ else
 # x86 selection
 L4API		:= v2
 BASEARCH	:= i386
+LINSRCARCH      := x86
 
 CHECKFLAGS	:= -D__i386__
 
@@ -39,7 +47,10 @@ export BASEARCH L4_MK_ARCH
 KBUILD_DEFCONFIG := x86-native_defconfig
 
 # crude hack
-TRASH := $(shell test -f $(srctree)/arch/l4/Kconfig.isg || touch $(srctree)/arch/l4/Kconfig.isg; cd $(srctree)/arch/l4 && ln -fs ../i386/Kconfig Kconfig.i386 && ln -sf Kconfig.$(BASEARCH) Kconfig.arch)
+TRASH := $(shell test -f $(srctree)/arch/l4/Kconfig.isg || \
+           touch $(srctree)/arch/l4/Kconfig.isg; \
+	   cd $(srctree)/arch/l4 \
+	     && ln -fs Kconfig.$(LINSRCARCH) Kconfig.arch)
 
 HAS_BIARCH	:= $(call cc-option-yn, -m32)
 ifeq ($(HAS_BIARCH),y)
@@ -64,14 +75,14 @@ L4_MK_CPU	:= $(patsubst "%",%,$(CONFIG_L4_MK_CPU_$(L4_MK_ARCH_CAP)))
 # overwrite UTS_MACHINE to get proper architecture in user land
 UTS_MACHINE	:= $(BASEARCH)
 
-CFLAGS += -gstabs+ -pipe -msoft-float -DARCH_$(L4_MK_ARCH)
+KBUILD_CFLAGS   += -gstabs+ -pipe -msoft-float -DARCH_$(L4_MK_ARCH)
 
 ifeq ($(BASEARCH),i386)
 # prevent gcc from keeping the stack 16 byte aligned
-CFLAGS += $(call cc-option,-mpreferred-stack-boundary=2,)
+KBUILD_CFLAGS += $(call cc-option,-mpreferred-stack-boundary=2,)
 
 # CPU-specific tuning. Anything which can be shared with UML should go here.
-include $(srctree)/arch/i386/Makefile.cpu
+include $(srctree)/arch/x86/Makefile_32.cpu
 
 # temporary until string.h is fixed
 cflags-y += -ffreestanding
@@ -82,15 +93,15 @@ cflags-y += -maccumulate-outgoing-args
 
 # Disable unit-at-a-time mode on pre-gcc-4.0 compilers, it makes gcc use
 # a lot more stack due to the lack of sharing of stacklots:
-CFLAGS				+= $(shell if [ $(call cc-version) -lt 0400 ] ; then echo $(call cc-option,-fno-unit-at-a-time); fi ;)
+KBUILD_CFLAGS				+= $(shell if [ $(call cc-version) -lt 0400 ] ; then echo $(call cc-option,-fno-unit-at-a-time); fi ;)
 
 # do binutils support CFI?
 cflags-y += $(call as-instr,.cfi_startproc\n.cfi_rel_offset esp${comma}0\n.cfi_endproc,-DCONFIG_AS_CFI=1,)
-AFLAGS += $(call as-instr,.cfi_startproc\n.cfi_rel_offset esp${comma}0\n.cfi_endproc,-DCONFIG_AS_CFI=1,)
+KBUILD_AFLAGS += $(call as-instr,.cfi_startproc\n.cfi_rel_offset esp${comma}0\n.cfi_endproc,-DCONFIG_AS_CFI=1,)
 
 # is .cfi_signal_frame supported too?
 cflags-y += $(call as-instr,.cfi_startproc\n.cfi_signal_frame\n.cfi_endproc,-DCONFIG_AS_CFI_SIGNAL_FRAME=1,)
-AFLAGS += $(call as-instr,.cfi_startproc\n.cfi_signal_frame\n.cfi_endproc,-DCONFIG_AS_CFI_SIGNAL_FRAME=1,)
+KBUILD_AFLAGS += $(call as-instr,.cfi_startproc\n.cfi_signal_frame\n.cfi_endproc,-DCONFIG_AS_CFI_SIGNAL_FRAME=1,)
 endif
 
 ifeq ($(BASEARCH),arm)
@@ -112,12 +123,12 @@ arch-$(CONFIG_CPU_32v3)		:=-D__LINUX_ARM_ARCH__=3 -march=armv3
 
 tune-$(CONFIG_CPU_V6)		:=$(call cc-option,-mtune=arm1136j-s,-mtune=strongarm)
 
-CFLAGS += $(call cc-option,-mapcs-32,-mabi=apcs-gnu) $(call cc-option,-mno-thumb-interwork,)
-CFLAGS += $(arch-y) $(tune-y)
+KBUILD_CFLAGS += $(call cc-option,-mapcs-32,-mabi=apcs-gnu) $(call cc-option,-mno-thumb-interwork,)
+KBUILD_CFLAGS += $(arch-y) $(tune-y)
 
 endif
 
-CFLAGS += $(cflags-y)
+KBUILD_CFLAGS += $(cflags-y)
 
 
 # -----------------------------------------------
@@ -190,7 +201,7 @@ libs-$(CONFIG_L4_FERRET)	+= -lferret_client -lferret_producer \
 
 boot := arch/l4/boot
 
-MACH_INC_i386	:= -Iinclude/asm-l4/$(BASEARCH)-arch/asm/mach-default
+MACH_INC_i386	:= -Iinclude/asm-l4/$(LINSRCARCH)-arch/asm/mach-default
 MACH_INC_arm	:= -Iinclude/asm-l4/$(BASEARCH)-arch
 
 LDFLAGS_vmlinux-dynamic = --dynamic-linker libld-l4.s.so \
@@ -199,15 +210,15 @@ LDFLAGS_vmlinux-dynamic = --dynamic-linker libld-l4.s.so \
 LDFLAGS_vmlinux-static  = $(L4OBJ)/lib/$(L4_MK_ARCH)_$(L4_MK_CPU)/crt0.o
 
 LDFLAGS_vmlinux	+= $(LDFLAGS_vmlinux-dynamic)
-CPPFLAGS	+= -Iinclude/asm-l4/l4-arch -Iinclude/asm-l4/$(BASEARCH)-arch \
+KBUILD_CPPFLAGS	+= -Iinclude/asm-l4/l4-arch -Iinclude/asm-l4/$(LINSRCARCH)-arch \
 		   $(MACH_INC_$(BASEARCH)) $(L4INC) $(CPPFLAGS_SYSENTER-y) \
 		   $(L4BID_CPPFLAGS_SYSCALLS-y)
 
 # for DICE
-CPPFLAGS	+= -DL4API_$(L4_MK_API)
+KBUILD_CPPFLAGS	+= -DL4API_$(L4_MK_API)
 
 # IDL also generates header files
-CPPFLAGS	+= -I$(obj)/arch/l4/idl
+KBUILD_CPPFLAGS	+= -I$(obj)/arch/l4/idl
 
 all: vmlinuzimage
 
@@ -220,10 +231,10 @@ mtags:
 	(cd $(srctree) && $(MAKE) tags > /dev/null 2>&1; \
 	sort tags > .tags.sorting && mv .tags.sorting tags )
 
-include/asm-l4/$(BASEARCH)-arch/asm:
+include/asm-l4/$(LINSRCARCH)-arch/asm:
 	@echo '  Creating asm-l4/$(BASEARCH)-arch/asm symlink'
 	$(Q)mkdir -p $(@D)
-	$(Q)ln -s $(src)/include/asm-$(BASEARCH) $@
+	$(Q)ln -s $(src)/include/asm-$(LINSRCARCH) $@
 
 include/asm-l4/l4-arch/asm:
 	@echo '  Creating asm-l4/l4-arch/asm symlink'
@@ -262,7 +273,7 @@ symlinks      = include/asm-l4/api \
                 include/asm-l4/l4lxapi/impl \
 		include/asm-l4/l4x \
 		include/asm-l4/l4-arch/asm \
-		include/asm-l4/$(BASEARCH)-arch/asm \
+		include/asm-l4/$(LINSRCARCH)-arch/asm \
                 $(symlinks_$(BASEARCH))
 
 #MRPROPER_FILES	+= $(symlinks)
@@ -296,7 +307,7 @@ chkl4conf:
 # regparm: gcc may call memset from our libs, so obey calling convention
 #          this should probably be fixed
 
-DIS_OPTS := HIGHMEM4G HIGHMEM64G SMP PREEMPT PCI_GOANY PCI_GOBIOS HPET_TIMER \
+DIS_OPTS := HIGHMEM4G HIGHMEM64G PREEMPT PCI_GOANY PCI_GOBIOS HPET_TIMER \
             X86_MCE X86_MCE MTRR PARAVIRT KEXEC MCA SOFTWARE_SUSPEND APM \
 	    CPU_FREQ HUGETLBFS HUGETLB_PAGE
 
