@@ -2728,3 +2728,4 @@ EXPORT_SYMBOL(l4semaphore_thread_l4_id);
 EXPORT_SYMBOL(l4thread_myself);
 
 EXPORT_SYMBOL(l4x_prepare_irq_thread);
+EXPORT_SYMBOL(l4lx_thread_id_get);

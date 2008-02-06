@@ -404,6 +404,11 @@ config L4_CONFIG_CHECKS
 	help
 	  Leave this enabled.
 	  
+config L4_SAMPLE_MODULE
+	tristate "Compile sample module"
+	default n
+	help
+	  Enable as module if you want to compile the sample module.
 
 config L4_ARM_PLATFORM_ISG
 	bool "Enable ISG"
