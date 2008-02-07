@@ -2,6 +2,7 @@
 #include <linux/module.h>
 
 #include <l4/util/macros.h>
+#include <l4/sys/syscalls.h>
 #include <l4/log/log_printf.h>
 
 #include <asm/l4lxapi/thread.h>
@@ -11,8 +12,9 @@ static int __init l4x_module_init(void)
 	printk("Hi from the sample module\n");
 	LOG_printf("sample module: Also a warm welcome to the console\n");
 
-	printk("The current thread is " l4util_idfmt ".\n",
-	       l4util_idstr(l4lx_thread_id_get()));
+	printk("The current thread is " l4util_idfmt " and " l4util_idfmt ".\n",
+	       l4util_idstr(l4lx_thread_id_get()),
+	       l4util_idstr(l4_myself()));
 
 
 	return 0;
