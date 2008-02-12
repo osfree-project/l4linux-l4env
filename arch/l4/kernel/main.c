@@ -2731,6 +2731,7 @@ EXPORT_SYMBOL(l4x_prepare_irq_thread);
 EXPORT_SYMBOL(l4lx_thread_id_get);
 
 /* System calls */
+#ifdef ARCH_x86
 extern char __l4sys_fpage_unmap_direct[];
 extern char __l4sys_id_nearest_direct[];
 extern char __l4sys_ipc_direct[];
@@ -2746,3 +2747,4 @@ EXPORT_SYMBOL(__l4sys_lthread_ex_regs_direct);
 EXPORT_SYMBOL(__l4sys_task_new_direct);
 EXPORT_SYMBOL(__l4sys_thread_schedule_direct);
 EXPORT_SYMBOL(__l4sys_thread_switch_direct);
+#endif
