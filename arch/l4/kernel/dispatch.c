@@ -361,8 +361,10 @@ out_fail:
 	           h, l4_utcb_exc_typeval(utcb), utcb->exc.err,
 	           l4x_l4syscall_get_nr(utcb->exc.err, l4_utcb_exc_pc(utcb)),
 	           l4_utcb_exc_pc(utcb), tag.raw);
-	LOG_printf("%s: Currently running: " PRINTF_L4TASK_FORM "\n",
-	           __func__, PRINTF_L4TASK_ARG(current->thread.user_thread_id));
+	LOG_printf("%s: Currently running user thread: " PRINTF_L4TASK_FORM
+	           "  service: " PRINTF_L4TASK_FORM "\n",
+	           __func__, PRINTF_L4TASK_ARG(current->thread.user_thread_id),
+	           PRINTF_L4TASK_ARG(l4_myself()));
 	enter_kdebug("hybrid_return failed");
 }
 
@@ -586,6 +588,10 @@ static inline void l4x_spawn_cpu_thread(int cpu_change,
 		printk("l4x_thread_create: No task no left for user\n");
 		return;
 	}
+
+	// funny version-id workaround
+	if (cpu_change || !l4_is_nil_id(t->cloner))
+		t->user_thread_id.id.version_low = me.id.version_low;
 
 	t->user_thread_ids[cpu] = t->user_thread_id;
 	if (!cpu_change)
