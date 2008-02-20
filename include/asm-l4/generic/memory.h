@@ -29,8 +29,6 @@ extern char __bss_stop[];
 
 fastcall int l4x_do_page_fault(unsigned long address, unsigned long error_code);
 
-int l4x_map_iomemory_from_sigma0(l4_addr_t phys, l4_addr_t virt, l4_size_t size);
-
 static inline pte_t *lookup_pte(pgd_t *page_dir, unsigned long address)
 {
 	/*

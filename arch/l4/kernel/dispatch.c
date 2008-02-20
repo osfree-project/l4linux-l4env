@@ -589,10 +589,6 @@ static inline void l4x_spawn_cpu_thread(int cpu_change,
 		return;
 	}
 
-	// funny version-id workaround
-	if (cpu_change || !l4_is_nil_id(t->cloner))
-		t->user_thread_id.id.version_low = me.id.version_low;
-
 	t->user_thread_ids[cpu] = t->user_thread_id;
 	if (!cpu_change)
 		t->start_cpu = cpu;
