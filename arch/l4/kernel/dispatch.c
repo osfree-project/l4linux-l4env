@@ -622,6 +622,8 @@ static inline void l4x_spawn_cpu_thread(int cpu_change,
 
 		t->started = 1;
 
+		l4x_arch_task_start_setup(p);
+
 		if (l4_is_nil_id(t->cloner)) // this is a fork
 			l4x_arch_do_syscall_trace(p, t);
 
@@ -633,7 +635,6 @@ static inline void l4x_spawn_cpu_thread(int cpu_change,
 		t->initial_state_set = 1;
 		t->is_hybrid = 0; /* cloned thread need to reset this */
 
-		l4x_arch_task_start_setup(p);
 	}
 
 	l4x_arch_task_setup(t);

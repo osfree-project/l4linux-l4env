@@ -137,6 +137,11 @@ static inline void l4x_dispatch_set_polling_flag(void)
 
 static inline void l4x_arch_task_start_setup(struct task_struct *p)
 {
+	// remember GS in FS so that programs can find their UTCB
+	// libl4sys-l4x.a uses %fs to get the UTCB address
+	// do not set GS because glibc does not seem to like if gs is not 0
+	p->thread.regs.xfs = l4x_utcb_get(l4_myself())->exc.gs;
+
 	/* Setup LDTs */
 	if (p->mm && p->mm->context.size)
 		fiasco_ldt_set(p->mm->context.ldt,
