@@ -287,7 +287,7 @@ unsigned long l4env_virt_to_phys(volatile void * address)
 	 *                  DMA problems */
 	LOG_printf("%s: Could not translate virt. address %p\n",
 	           __func__, address);
-	enter_kdebug("Check this!");
+	WARN_ON(1);
 
 	return __pa(address);
 }
@@ -318,7 +318,7 @@ void *l4env_phys_to_virt(unsigned long address)
 	 *                  DMA problems */
 	LOG_printf("%s: Could not translate phys. address 0x%lx\n",
 	           __func__, address);
-	enter_kdebug("Check this!");
+	WARN_ON(1);
 
 	return __va(address);
 }
