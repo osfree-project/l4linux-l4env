@@ -368,8 +368,8 @@ out_fail:
 	enter_kdebug("hybrid_return failed");
 }
 
-static inline void l4x_dispatch_suspend(struct task_struct *p,
-                                        struct thread_struct *t)
+static void l4x_dispatch_suspend(struct task_struct *p,
+                                 struct thread_struct *t)
 {
 	/* We're a suspended user process and want to
 	 * sleep (aka schedule) now */

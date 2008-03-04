@@ -209,8 +209,8 @@ static int l4x_hybrid_begin(struct task_struct *p,
                             struct thread_struct *t);
 
 
-static inline void l4x_dispatch_suspend(struct task_struct *p,
-                                        struct thread_struct *t);
+static void l4x_dispatch_suspend(struct task_struct *p,
+                                 struct thread_struct *t);
 
 static inline void l4x_print_regs(struct thread_struct *t)
 {
