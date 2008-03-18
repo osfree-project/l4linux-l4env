@@ -711,7 +711,7 @@ static unsigned long l4fb_dope_init(struct fb_var_screeninfo *var,
 
 	if (dope_init()) {
 		LOG_printf("DOpE not available!\n");
-		return 0;
+		return -ENODEV;
 	}
 
 	dope_app_id = dope_init_app(dope_window_title);

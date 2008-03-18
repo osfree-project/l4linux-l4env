@@ -137,10 +137,18 @@ static inline void l4x_dispatch_set_polling_flag(void)
 
 static inline void l4x_arch_task_start_setup(struct task_struct *p)
 {
-	// remember GS in FS so that programs can find their UTCB
-	// libl4sys-l4x.a uses %fs to get the UTCB address
-	// do not set GS because glibc does not seem to like if gs is not 0
-	p->thread.regs.xfs = l4x_utcb_get(l4_myself())->exc.gs;
+	// - remember GS in FS so that programs can find their UTCB
+	//   libl4sys-l4x.a uses %fs to get the UTCB address
+	// - do not set GS because glibc does not seem to like if gs is not 0
+	// - only do this if this is the first usage of the L4 thread in
+	//   this task, otherwise gs will have the glibc-gs
+	// - ensure this by checking if the segment is one of the user ones or
+	//   another one (then it's the utcb one)
+	unsigned int gs = l4x_utcb_get(l4_myself())->exc.gs;
+	unsigned int v = (gs & 0xffff) >> 3;
+	if (   v < l4x_fiasco_gdt_entry_offset
+	    || v > l4x_fiasco_gdt_entry_offset + 3)
+		p->thread.regs.xfs = gs;
 
 	/* Setup LDTs */
 	if (p->mm && p->mm->context.size)
