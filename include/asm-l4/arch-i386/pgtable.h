@@ -254,25 +254,32 @@ static inline pte_t pte_mkhuge(pte_t pte)	{ (pte).pte_low |= _PAGE_PSE; return p
  * L4Linux uses this hook to synchronize the Linux page tables with
  * the real hardware page tables kept by the L4 kernel.
  */
-extern unsigned long fastcall l4x_set_pte(pte_t pteptr, pte_t pteval);
-extern void          fastcall l4x_pte_clear(pte_t ptep);
-static inline void set_pte(pte_t *pteptr, pte_t pteval)
+extern unsigned long fastcall l4x_set_pte(struct mm_struct *mm, unsigned long addr, pte_t pteptr, pte_t pteval);
+extern void          fastcall l4x_pte_clear(struct mm_struct *mm, unsigned long addr, pte_t ptep);
+
+static inline void __l4x_set_pte(struct mm_struct *mm, unsigned long addr,
+                                 pte_t *pteptr, pte_t pteval)
 {
 	if ((pte_val(*pteptr) & (_PAGE_PRESENT | _PAGE_MAPPED)) == (_PAGE_PRESENT | _PAGE_MAPPED))
-		pteval.pte_low = l4x_set_pte(*pteptr, pteval);
+		pteval.pte_low = l4x_set_pte(mm, addr, *pteptr, pteval);
 	*pteptr = pteval;
+}
+
+static inline void set_pte(pte_t *pteptr, pte_t pteval)
+{
+	__l4x_set_pte(NULL, 0, pteptr, pteval);
 }
 
 static inline void set_pte_at(struct mm_struct *mm, unsigned long addr,
                               pte_t *ptep , pte_t pte)
 {
-	set_pte(ptep, pte);
+	__l4x_set_pte(mm, addr, ptep, pte);
 }
 
 static inline void pte_clear(struct mm_struct *mm, unsigned long addr, pte_t *ptep)
 {
 	if ((pte_val(*ptep) & (_PAGE_PRESENT | _PAGE_MAPPED)) == (_PAGE_PRESENT | _PAGE_MAPPED))
-		l4x_pte_clear(*ptep);
+		l4x_pte_clear(mm, addr, *ptep);
 	ptep->pte_low = 0;
 }
 

@@ -163,11 +163,15 @@ static inline int l4x_handle_page_fault(struct task_struct *p,
 				       p->comm, p->pid);
 				return 1;
 			}
+		} else {
+			l4x_debug_stats_pagefault_but_in_PTs_hit();
+			if (pfa & PF_EWRITE)
+				l4x_debug_stats_pagefault_write_hit();
 		}
 
 		/* if the physical address is above RAM, then the user wants
 		 * device memory.  Go grab it. */
-		if (phy > (l4_umword_t)high_memory) {
+		if (unlikely(phy > (l4_umword_t)high_memory)) {
 			unsigned long devmem = l4x_handle_dev_mem(phy);
 			if (!devmem)
 				return 1; /* No region found */
@@ -589,9 +593,15 @@ static inline void l4x_spawn_cpu_thread(int cpu_change,
 		return;
 	}
 
+
 	t->user_thread_ids[cpu] = t->user_thread_id;
-	if (!cpu_change)
+	if (!cpu_change) {
+		if (l4_is_nil_id(t->cloner))
+			// a new task
+			p->mm->context.l4x_task_id = t->user_thread_id.id.task;
+
 		t->start_cpu = cpu;
+	}
 
 	if (!l4lx_task_create_pager(t->user_thread_id, me)) {
 		printk("%s: Failed to create user task\n", __func__);

@@ -341,6 +341,8 @@ void flush_thread(void)
 	if (!current->thread.started)
 		return;
 
+	current->mm->context.l4x_unmap_mode = L4X_UNMAP_MODE_IMMEDIATELY;
+
 	for (i = 0; i < NR_CPUS; i++) {
 		l4_threadid_t id = tsk->thread.user_thread_ids[i];
 

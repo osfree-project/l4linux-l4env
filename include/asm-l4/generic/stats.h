@@ -9,6 +9,8 @@ struct l4x_debug_stats {
 	long l4x_debug_stats_suspend;
 	long l4x_debug_stats_pagefault;
 	long l4x_debug_stats_exceptions;
+	long l4x_debug_stats_pagefault_but_in_PTs;
+	long l4x_debug_stats_pagefault_write;
 };
 
 extern struct l4x_debug_stats l4x_debug_stats_data;
@@ -40,6 +42,8 @@ extern struct l4x_debug_stats l4x_debug_stats_data;
 CONSTRUCT_ONE(l4x_debug_stats_suspend);
 CONSTRUCT_ONE(l4x_debug_stats_pagefault);
 CONSTRUCT_ONE(l4x_debug_stats_exceptions);
+CONSTRUCT_ONE(l4x_debug_stats_pagefault_but_in_PTs);
+CONSTRUCT_ONE(l4x_debug_stats_pagefault_write);
 
 #undef CONSTRUCT_ONE
 

@@ -23,17 +23,18 @@ void cpu_v6_dcache_clean_area(void *addr, int sz) {}
 void cpu_sa1100_switch_mm(unsigned long pgd_phys, struct mm_struct *mm) {}
 void cpu_v6_switch_mm(unsigned long pgd_phys, struct mm_struct *mm) {}
 
-extern unsigned long fastcall l4x_set_pte(pte_t pteptr, pte_t pteval);
-extern void          fastcall l4x_pte_clear(pte_t ptep);
+extern unsigned long fastcall l4x_set_pte(struct mm_struct *mm, unsigned long addr, pte_t pteptr, pte_t pteval);
+extern void          fastcall l4x_pte_clear(struct mm_struct *mm, unsigned long addr, pte_t ptep);
 
-static inline void l4x_cpu_set_pte_ext(pte_t *pteptr, pte_t pteval, unsigned int ext)
+static inline void l4x_cpu_set_pte_ext(pte_t *pteptr, pte_t pteval,
+                                       unsigned int ext)
 {
 	//LOG_printf("%s: for %08x pteptr = %p\n", __func__, (unsigned int)pte_val(pteval), pteptr);
 	if ((pte_val(*pteptr) & (L_PTE_PRESENT | L_PTE_MAPPED)) == (L_PTE_PRESENT | L_PTE_MAPPED)) {
 		if (pteval == __pte(0))
-			l4x_pte_clear(*pteptr);
+			l4x_pte_clear(NULL, 0, *pteptr);
 		else
-			pte_val(pteval) = l4x_set_pte(*pteptr, pteval);
+			pte_val(pteval) = l4x_set_pte(NULL, 0, *pteptr, pteval);
 	}
 	*pteptr = pteval;
 }

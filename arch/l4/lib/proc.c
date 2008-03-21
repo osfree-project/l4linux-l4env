@@ -130,10 +130,14 @@ static int stats_seq_show(struct seq_file *m, void *v)
 {
 	seq_printf(m, "user suspends:   %ld\n"
 	              "user pagefaults: %ld\n"
-	              "user exceptions: %ld\n",
+	              "user exceptions: %ld\n"
+	              "page fault but in PT: %ld\n"
+	              "write page faults: %ld\n",
 	          l4x_debug_stats_suspend_get(),
 	          l4x_debug_stats_pagefault_get(),
-	          l4x_debug_stats_exceptions_get());
+	          l4x_debug_stats_exceptions_get(),
+	          l4x_debug_stats_pagefault_but_in_PTs_get(),
+	          l4x_debug_stats_pagefault_write_get());
 
 	return 0;
 }

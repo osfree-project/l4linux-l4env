@@ -22,8 +22,14 @@
 /* #define DEBUG */
 /* #define PARANOIA */
 
-void l4x_flush_page(unsigned long address, int size, unsigned long options)
+static void l4x_flush_page(struct mm_struct *mm,
+                           unsigned long address,
+                           unsigned long vaddr,
+                           int size, unsigned long options)
 {
+	if (mm && mm->context.l4x_unmap_mode == L4X_UNMAP_MODE_SKIP)
+		return;
+
 	/* some checks:
 	 * options & ALL_SPACES:	address >= high_memory
 	 * otherwise:			address < high_memory
@@ -65,6 +71,8 @@ void l4x_flush_page(unsigned long address, int size, unsigned long options)
 #endif
 
 	/* do the real flush */
+	if (mm)
+		options |= l4_fpage_unmap_taskid(mm->context.l4x_task_id);
 	l4_fpage_unmap(l4_fpage(address & PAGE_MASK, size, 0, 0), options);
 }
 
@@ -82,7 +90,9 @@ do {								\
 } while (0)
 
 
-unsigned long fastcall l4x_set_pte(pte_t old, pte_t pteval)
+unsigned long fastcall l4x_set_pte(struct mm_struct *mm,
+                                   unsigned long addr,
+                                   pte_t old, pte_t pteval)
 {
 	/*
 	 * Check if any invalidation is necessary
@@ -126,14 +136,15 @@ unsigned long fastcall l4x_set_pte(pte_t old, pte_t pteval)
 	}
 
 	/* Ok, now actually flush or remap the page */
-	l4x_flush_page(pte_val(old), PAGE_SHIFT, L4_FP_OTHER_SPACES | flush);
+	l4x_flush_page(mm, pte_val(old), addr, PAGE_SHIFT,
+	               L4_FP_OTHER_SPACES | flush);
 	return pte_val(pteval);
 }
 
-void fastcall l4x_pte_clear(pte_t pteval)
+void fastcall l4x_pte_clear(struct mm_struct *mm, unsigned long addr, pte_t pteval)
 {
 	/* Invalidate page */
-	l4x_flush_page(pte_val(pteval), PAGE_SHIFT,
+	l4x_flush_page(mm, pte_val(pteval), addr, PAGE_SHIFT,
 	               L4_FP_OTHER_SPACES | L4_FP_FLUSH_PAGE);
 }
 

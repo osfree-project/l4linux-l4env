@@ -28,6 +28,8 @@ lib-y	+= ../../../arm/lib/csumpartialcopy.o
 lib-y	+= ../../../arm/lib/io-readsl.o
 lib-y	+= ../../../arm/lib/io-writesl.o
 lib-y	+= ../../../arm/lib/backtrace.o
+lib-y	+= ../../../arm/lib/io-readsw-armv4.o
+lib-y	+= ../../../arm/lib/io-writesw-armv4.o
 
 lib-y	+= ../pte.o
 lib-y	+= ../memcpy_user.o
