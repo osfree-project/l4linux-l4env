@@ -22,10 +22,6 @@ static int  l4x_ore_numdevs = 1;
 static char *l4x_ore_instances[MAX_OREINST] = { "ORe:eth0", 0, 0, 0, 0, 0 };
 static LIST_HEAD(l4x_ore_netdevices);
 
-#define MAC_FMT    "%02X:%02X:%02X:%02X:%02X:%02X"
-#define MAC_ARG(x) x->dev_addr[0], x->dev_addr[1], x->dev_addr[2], \
-                   x->dev_addr[3], x->dev_addr[4], x->dev_addr[5]
-
 struct l4x_ore_priv {
 	struct net_device_stats    net_stats;
 
@@ -286,6 +282,7 @@ static int __init l4x_ore_init_device(char *oreinst, char *devname)
 	struct net_device *dev = NULL;
 	struct l4x_ore_netdev *nd = NULL;
 	int err = -ENODEV;
+	DECLARE_MAC_BUF(macstring);
 
 	if (!(dev = alloc_etherdev(sizeof(struct l4x_ore_priv))))
 		return -ENOMEM;
@@ -336,8 +333,9 @@ static int __init l4x_ore_init_device(char *oreinst, char *devname)
 	nd->dev = dev;
 	list_add(&nd->list, &l4x_ore_netdevices);
 
-	printk(KERN_INFO "%s: L4Ore card found with " MAC_FMT ", IRQ %d\n",
-	                 dev->name, MAC_ARG(dev), dev->irq);
+	printk(KERN_INFO "%s: L4Ore card found with %s, IRQ %d\n",
+	                 dev->name, print_mac(macstring, dev->dev_addr),
+	                 dev->irq);
 
 	return 0;
 
