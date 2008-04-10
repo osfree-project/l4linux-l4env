@@ -264,6 +264,12 @@ __l4x_ioremap(unsigned long phys_addr, size_t size, unsigned long flags)
 	if (!size || last_addr < phys_addr)
 		return NULL;
 
+	if (l4x_l4io_info_page()->magic != L4IO_INFO_MAGIC) {
+		printk("%s: l4io disabled, not requesting region at %08lx [0x%x Bytes]\n",
+		       __func__, phys_addr, size);
+		return NULL;
+	}
+
 	/*
 	 * If userland applications like X generate page faults on
 	 * I/O memory region we do not know how big the region really is.

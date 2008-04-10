@@ -1239,8 +1239,11 @@ void l4x_l4io_init(void)
 	LOG_printf("Connecting to l4io server.\n");
 
 	/* initialize IO lib */
-	if (l4io_init(&io_info_page, L4IO_DRV_INVALID))
-		enter_kdebug("Error calling l4io_init!");
+	if (l4io_init(&io_info_page, L4IO_DRV_INVALID)) {
+		LOG_printf("Failed to connect to l4io\n");
+		memset(&_l4x_io_info_page, 0, sizeof(l4io_info_t));
+		return;
+	}
 
 	memcpy(&_l4x_io_info_page, io_info_page, sizeof(l4io_info_t));
 }
