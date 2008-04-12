@@ -91,6 +91,7 @@ sc_check_func_t sc_check_funcs[] = {
 int l4x_syscall_guard(struct task_struct *p, int sysnr)
 {
 	if (sysnr >= 0
+	    && sysnr < l4x_fiasco_nr_of_syscalls
 	    && sc_check_funcs[sysnr]
 	    && sc_check_funcs[sysnr](p))
 		return 1; /* This syscall is allowed */
