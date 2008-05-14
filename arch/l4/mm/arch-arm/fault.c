@@ -12,6 +12,7 @@
 #include <linux/signal.h>
 #include <linux/mm.h>
 #include <linux/init.h>
+#include <linux/kprobes.h>
 
 #include <asm/system.h>
 #include <asm/pgtable.h>
@@ -21,6 +22,28 @@
 #include "fault.h"
 
 #include <asm/generic/memory.h>
+
+#ifdef CONFIG_KPROBES
+static inline int notify_page_fault(struct pt_regs *regs, unsigned int fsr)
+{
+	int ret = 0;
+
+	if (!user_mode(regs)) {
+		/* kprobe_running() needs smp_processor_id() */
+		preempt_disable();
+		if (kprobe_running() && kprobe_fault_handler(regs, fsr))
+			ret = 1;
+		preempt_enable();
+	}
+
+	return ret;
+}
+#else
+static inline int notify_page_fault(struct pt_regs *regs, unsigned int fsr)
+{
+	return 0;
+}
+#endif
 
 /*
  * This is useful to dump out the page tables associated with
@@ -122,7 +145,6 @@ __do_user_fault(struct task_struct *tsk, unsigned long addr,
 	}
 #endif
 
-	//printk("%s: for %s(%d) at %08lx\n", __func__, tsk->comm, tsk->pid, addr);
 	tsk->thread.address = addr;
 	tsk->thread.error_code = fsr;
 	tsk->thread.trap_no = 14;
@@ -218,12 +240,15 @@ out:
 	return fault;
 }
 
-static int
+static int __kprobes
 do_page_fault(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 {
 	struct task_struct *tsk;
 	struct mm_struct *mm;
 	int fault, sig, code;
+
+	if (notify_page_fault(regs, fsr))
+		return 0;
 
 	tsk = current;
 	mm  = tsk->mm;
@@ -320,7 +345,7 @@ int l4x_do_page_fault(unsigned long address, unsigned long error_code)
  * interrupt or a critical region, and should only copy the information
  * from the master page table, nothing more.
  */
-static int
+static int __kprobes
 do_translation_fault(unsigned long addr, unsigned int fsr,
 		     struct pt_regs *regs)
 {

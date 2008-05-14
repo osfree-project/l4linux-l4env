@@ -98,7 +98,6 @@ static void __init init_irq_l4(void)
 
 static irqreturn_t l4_timer_interrupt_handler(int irq, void *dev_id)
 {
-	write_seqlock(&xtime_lock);
 	timer_tick();
 
 	//l4_kprintf("%s: %d\n", __func__, smp_processor_id());
@@ -107,7 +106,6 @@ static irqreturn_t l4_timer_interrupt_handler(int irq, void *dev_id)
 	update_process_times(user_mode(get_irq_regs()));
 #endif
 
-	write_sequnlock(&xtime_lock);
 	return IRQ_HANDLED;
 }
 
@@ -117,7 +115,7 @@ static struct irqaction timer_irq = {
 	.handler	= l4_timer_interrupt_handler,
 };
 
-unsigned int fastcall do_IRQ(int irq, struct pt_regs *regs)
+unsigned int do_IRQ(int irq, struct pt_regs *regs)
 {
 	extern asmlinkage void asm_do_IRQ(unsigned int irq, struct pt_regs *regs);
 	asm_do_IRQ(irq, regs);
@@ -185,3 +183,20 @@ void v4wb_dma_flush_range(const void *start, const void *end)
 {
 	l4_sys_cache_flush_range((unsigned long)start, (unsigned long)end);
 }
+
+
+#ifdef CONFIG_SMP
+
+#include <linux/profile.h>
+
+void __cpuinit local_timer_setup(unsigned int cpu)
+{
+}
+
+void local_timer_interrupt(void)
+{
+	profile_tick(CPU_PROFILING);
+	update_process_times(user_mode(get_irq_regs()));
+}
+
+#endif

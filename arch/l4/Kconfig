@@ -6,13 +6,11 @@ menu "L4Linux configuration"
 
 # We're running on top of L4, always true
 config L4
-	bool
-	default y
+	def_bool y
 
 # We're L4Linux, always true
 config L4_LINUX
-	bool
-	default y
+	def_bool y
 
 config L4_OBJ_TREE
 	string "L4 tree build directory"
@@ -21,8 +19,13 @@ config L4_OBJ_TREE
 	  This path needs to point to an L4 build directory tree.
 
 config L4_L4ENV
+	def_bool y
+
+config L4_STATIC_BUILD
 	bool
-	default y
+
+config L4_LDR
+	bool
 
 choice
 	prompt "Target architecture"
@@ -30,6 +33,8 @@ choice
 
 	config L4_ARCH_X86
 		bool "i386/x86 architecture"
+		select L4_LDR
+
 	config L4_ARCH_ARM
 		bool "ARM architecture"
 		select L4_IRQ_MULTI
@@ -176,6 +181,13 @@ config L4_CONS
 	depends on L4_SERIAL
 	help
 	  Support for cons system. If unsure say 'N'.
+
+config L4_TCG_STPM
+	bool "(virtual) TPM support"
+	default n
+	depends on TCG_TPM
+	help
+	  Support for (virtual) TPMs provided by the L4 service STPM of TUD:OS.
 
 endmenu # stub drivers
 

@@ -44,7 +44,7 @@ static DEFINE_SPINLOCK(thread_state_lock);
 void l4lx_task_init(void)
 {
 	if (!l4ts_connected())
-		panic("Not connected to task server!");
+		panic("Could not connect to task server!");
 }
 
 /*
@@ -121,7 +121,7 @@ static l4_threadid_t l4lx_task_number_thread_get(l4_threadid_t parent)
 	t = find_first_zero_bit(thread_state[idx].thread_array,
 	                        THREAD_ARRAY_BITS);
 	if (t >= THREAD_ARRAY_BITS)
-		enter_kdebug("t >= THREAD_ARRAY_BITS"); /* Can't happen */
+		goto out;
 
 	set_bit(t, thread_state[idx].thread_array);
 
@@ -147,8 +147,7 @@ int l4lx_task_number_free(l4_threadid_t task)
 #ifndef CONFIG_L4_USE_TS
 		// return ownership
 		l4_threadid_t ret;
-		extern l4_threadid_t l4ts_server_id;
-		ret = l4_task_new(task, (unsigned)l4ts_server_id.raw, 0, 0, L4_NIL_ID);
+		ret = l4_task_new(task, (unsigned)l4ts_server().raw, 0, 0, L4_NIL_ID);
 		if (l4_is_nil_id(ret))
 			return -1;
 		if (l4ts_free2_task(&task))

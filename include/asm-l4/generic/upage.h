@@ -7,8 +7,7 @@
 
 int l4x_peek_upage(unsigned long addr, unsigned long __user *datap, int *ret);
 
-extern void _upage_start;
-extern void _upage_end;
-
+extern unsigned long upage_addr;
+extern const char vdso32_default_start, vdso32_default_end;
 
 #endif /* ! __ASM_L4__GENERIC__UPAGE_H__ */

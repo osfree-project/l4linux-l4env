@@ -1,27 +1,34 @@
-/*
- * include/asm-l4/arch-i386/processor.h
- *
- * Copyright (C) 1994 Linus Torvalds
- */
+#ifndef __ASM_X86_PROCESSOR_H
+#define __ASM_X86_PROCESSOR_H
 
-#ifndef __ASM_L4__ARCH_I386__PROCESSOR_H__
-#define __ASM_L4__ARCH_I386__PROCESSOR_H__
+#include <asm/processor-flags.h>
+
+/* migration helpers, for KVM - will be removed in 2.6.25: */
+#include <asm/vm86.h>
+#define Xgt_desc_struct	desc_ptr
+
+/* Forward declaration, a strange C thing */
+struct task_struct;
+struct mm_struct;
 
 #include <asm/vm86.h>
 #include <asm/math_emu.h>
 #include <asm/segment.h>
-#include <asm/page.h>
 #include <asm/types.h>
 #include <asm/sigcontext.h>
+#include <asm/current.h>
 #include <asm/cpufeature.h>
-#include <asm/msr.h>
 #include <asm/system.h>
+#include <asm/page.h>
+#include <asm/percpu.h>
+#include <asm/msr.h>
+#include <asm/desc_defs.h>
+#include <asm/nops.h>
+#include <linux/personality.h>
+#include <linux/cpumask.h>
 #include <linux/cache.h>
 #include <linux/threads.h>
-#include <asm/percpu.h>
-#include <linux/cpumask.h>
 #include <linux/init.h>
-#include <asm/processor-flags.h>
 
 #include <l4/sys/types.h>
 #include <l4/sys/syscalls.h>
@@ -29,23 +36,24 @@
 
 struct l4x_iodb;
 
-/* flag for disabling the tsc */
-extern int tsc_disable;
-
-struct desc_struct {
-	unsigned long a,b;
-};
-
-#define desc_empty(desc) \
-		(!((desc)->a | (desc)->b))
-
-#define desc_equal(desc1, desc2) \
-		(((desc1)->a == (desc2)->a) && ((desc1)->b == (desc2)->b))
 /*
  * Default implementation of macro that returns current
  * instruction pointer ("program counter").
  */
-#define current_text_addr() ({ void *pc; __asm__("movl $1f,%0\n1:":"=g" (pc)); pc; })
+static inline void *current_text_addr(void)
+{
+	void *pc;
+	asm volatile("mov $1f,%0\n1:":"=r" (pc));
+	return pc;
+}
+
+#ifdef CONFIG_X86_VSMP
+#define ARCH_MIN_TASKALIGN	(1 << INTERNODE_CACHE_SHIFT)
+#define ARCH_MIN_MMSTRUCT_ALIGN	(1 << INTERNODE_CACHE_SHIFT)
+#else
+#define ARCH_MIN_TASKALIGN	16
+#define ARCH_MIN_MMSTRUCT_ALIGN	0
+#endif
 
 /*
  *  CPU type and hardware bug flags. Kept separately for each CPU.
@@ -58,34 +66,44 @@ struct cpuinfo_x86 {
 	__u8	x86_vendor;	/* CPU vendor */
 	__u8	x86_model;
 	__u8	x86_mask;
+#ifdef CONFIG_X86_32
 	char	wp_works_ok;	/* It doesn't on 386's */
 	char	hlt_works_ok;	/* Problems on some 486Dx4's and old 386's */
 	char	hard_math;
 	char	rfu;
-       	int	cpuid_level;	/* Maximum supported CPUID level, -1=no CPUID */
-	unsigned long	x86_capability[NCAPINTS];
+	char	fdiv_bug;
+	char	f00f_bug;
+	char	coma_bug;
+	char	pad0;
+#else
+	/* number of 4K pages in DTLB/ITLB combined(in pages)*/
+	int     x86_tlbsize;
+	__u8    x86_virt_bits, x86_phys_bits;
+	/* cpuid returned core id bits */
+	__u8    x86_coreid_bits;
+	/* Max extended CPUID function supported */
+	__u32   extended_cpuid_level;
+#endif
+	int	cpuid_level;	/* Maximum supported CPUID level, -1=no CPUID */
+	__u32	x86_capability[NCAPINTS];
 	char	x86_vendor_id[16];
 	char	x86_model_id[64];
 	int 	x86_cache_size;  /* in KB - valid for CPUS which support this
 				    call  */
 	int 	x86_cache_alignment;	/* In bytes */
-	char	fdiv_bug;
-	char	f00f_bug;
-	char	coma_bug;
-	char	pad0;
 	int	x86_power;
 	unsigned long loops_per_jiffy;
 #ifdef CONFIG_SMP
 	cpumask_t llc_shared_map;	/* cpus sharing the last level cache */
 #endif
-	unsigned char x86_max_cores;	/* cpuid returned max cores value */
-	unsigned char apicid;
-	unsigned short x86_clflush_size;
+	u16 x86_max_cores;		/* cpuid returned max cores value */
+	u16 apicid;
+	u16 x86_clflush_size;
 #ifdef CONFIG_SMP
-	unsigned char booted_cores;	/* number of cores as seen by OS */
-	__u8 phys_proc_id; 		/* Physical processor id. */
-	__u8 cpu_core_id;  		/* Core id */
-	__u8 cpu_index;			/* index into per_cpu list */
+	u16 booted_cores;		/* number of cores as seen by OS */
+	u16 phys_proc_id; 		/* Physical processor id. */
+	u16 cpu_core_id;  		/* Core id */
+	u16 cpu_index;			/* index into per_cpu list */
 #endif
 } __attribute__((__aligned__(SMP_CACHE_BYTES)));
 
@@ -103,11 +121,10 @@ struct cpuinfo_x86 {
 /*
  * capabilities of CPUs
  */
-
 extern struct cpuinfo_x86 boot_cpu_data;
 extern struct cpuinfo_x86 new_cpu_data;
 extern struct tss_struct doublefault_tss;
-DECLARE_PER_CPU(struct tss_struct, init_tss);
+extern __u32 cleared_cpu_caps[NCAPINTS];
 
 #ifdef CONFIG_SMP
 DECLARE_PER_CPU(struct cpuinfo_x86, cpu_info);
@@ -118,15 +135,9 @@ DECLARE_PER_CPU(struct cpuinfo_x86, cpu_info);
 #define current_cpu_data	boot_cpu_data
 #endif
 
-/*
- * the following now lives in the per cpu area:
- * extern	int cpu_llc_id[NR_CPUS];
- */
-DECLARE_PER_CPU(u8, cpu_llc_id);
-extern char ignore_fpu_irq;
+void cpu_detect(struct cpuinfo_x86 *c);
 
-void __init cpu_detect(struct cpuinfo_x86 *c);
-
+extern void identify_cpu(struct cpuinfo_x86 *);
 extern void identify_boot_cpu(void);
 extern void identify_secondary_cpu(struct cpuinfo_x86 *);
 extern void print_cpu_info(struct cpuinfo_x86 *);
@@ -134,7 +145,7 @@ extern void init_scattered_cpuid_features(struct cpuinfo_x86 *c);
 extern unsigned int init_intel_cacheinfo(struct cpuinfo_x86 *c);
 extern unsigned short num_cache_leaves;
 
-#ifdef CONFIG_X86_HT
+#if defined(CONFIG_X86_HT) || defined(CONFIG_X86_64)
 extern void detect_ht(struct cpuinfo_x86 *c);
 #else
 static inline void detect_ht(struct cpuinfo_x86 *c) {}
@@ -152,162 +163,26 @@ static inline void native_cpuid(unsigned int *eax, unsigned int *ebx,
 		: "0" (*eax), "2" (*ecx));
 }
 
-#define load_cr3(pgdir) write_cr3(__pa(pgdir))
-
-/*
- * Save the cr4 feature set we're using (ie
- * Pentium 4MB enable and PPro Global page
- * enable), so that any CPU's that boot up
- * after us can get the correct flags.
- */
-extern unsigned long mmu_cr4_features;
-
-static inline void set_in_cr4 (unsigned long mask)
+static inline void load_cr3(pgd_t *pgdir)
 {
-	unsigned cr4;
-	mmu_cr4_features |= mask;
-	cr4 = read_cr4();
-	cr4 |= mask;
-	write_cr4(cr4);
+	write_cr3(__pa(pgdir));
 }
 
-static inline void clear_in_cr4 (unsigned long mask)
-{
-	unsigned cr4;
-	mmu_cr4_features &= ~mask;
-	cr4 = read_cr4();
-	cr4 &= ~mask;
-	write_cr4(cr4);
-}
-
-/* Stop speculative execution */
-static inline void sync_core(void)
-{
-	int tmp;
-	asm volatile("cpuid" : "=a" (tmp) : "0" (1) : "ebx","ecx","edx","memory");
-}
-
-static inline void __monitor(const void *eax, unsigned long ecx,
-		unsigned long edx)
-{
-	BUG();
-}
-
-static inline void __mwait(unsigned long eax, unsigned long ecx)
-{
-	BUG();
-}
-
-extern void mwait_idle_with_hints(unsigned long eax, unsigned long ecx);
-
-/* from system description table in BIOS.  Mostly for MCA use, but
-others may find it useful. */
-extern unsigned int machine_id;
-extern unsigned int machine_submodel_id;
-extern unsigned int BIOS_revision;
-extern unsigned int mca_pentium_flag;
-
-/* Boot loader type from the setup header */
-extern int bootloader_type;
-
-/*
- * User space process size:
- */
-#define TASK_SIZE	(0xBFC00000UL)
-
-/* This decides where the kernel will search for a free chunk of vm
- * space during mmap's.
- */
-#define TASK_UNMAPPED_BASE	(PAGE_ALIGN(TASK_SIZE / 3))
-
-#define HAVE_ARCH_PICK_MMAP_LAYOUT
-
-extern void hard_disable_TSC(void);
-extern void disable_TSC(void);
-extern void hard_enable_TSC(void);
-
-/*
- * Size of io_bitmap.
- */
-#define IO_BITMAP_BITS  65536
-#define IO_BITMAP_BYTES (IO_BITMAP_BITS/8)
-#define IO_BITMAP_LONGS (IO_BITMAP_BYTES/sizeof(long))
-#define IO_BITMAP_OFFSET offsetof(struct tss_struct,io_bitmap)
-#define INVALID_IO_BITMAP_OFFSET 0x8000
-#define INVALID_IO_BITMAP_OFFSET_LAZY 0x9000
-
-struct i387_fsave_struct {
-	long	cwd;
-	long	swd;
-	long	twd;
-	long	fip;
-	long	fcs;
-	long	foo;
-	long	fos;
-	long	st_space[20];	/* 8*10 bytes for each FP-reg = 80 bytes */
-	long	status;		/* software status information */
-};
-
-struct i387_fxsave_struct {
-	unsigned short	cwd;
-	unsigned short	swd;
-	unsigned short	twd;
-	unsigned short	fop;
-	long	fip;
-	long	fcs;
-	long	foo;
-	long	fos;
-	long	mxcsr;
-	long	mxcsr_mask;
-	long	st_space[32];	/* 8*16 bytes for each FP-reg = 128 bytes */
-	long	xmm_space[32];	/* 8*16 bytes for each XMM-reg = 128 bytes */
-	long	padding[56];
-} __attribute__ ((aligned (16)));
-
-struct i387_soft_struct {
-	long	cwd;
-	long	swd;
-	long	twd;
-	long	fip;
-	long	fcs;
-	long	foo;
-	long	fos;
-	long	st_space[20];	/* 8*10 bytes for each FP-reg = 80 bytes */
-	unsigned char	ftop, changed, lookahead, no_update, rm, alimit;
-	struct info	*info;
-	unsigned long	entry_eip;
-};
-
-union i387_union {
-	struct i387_fsave_struct	fsave;
-	struct i387_fxsave_struct	fxsave;
-	struct i387_soft_struct soft;
-};
-
-typedef struct {
-	unsigned long seg;
-} mm_segment_t;
-
-//struct thread_struct;
-
+#ifdef CONFIG_X86_32
 /* This is the TSS defined by the hardware. */
-/* just to make asm-offsets work unmodified */
-struct i386_hw_tss {
-	unsigned short	back_link,__blh;
-	unsigned long	esp0;
-	unsigned short	ss0,__ss0h;
-	unsigned long	esp1;
-	unsigned short	ss1,__ss1h;	/* ss1 is used to cache MSR_IA32_SYSENTER_CS */
-	unsigned long	esp2;
-	unsigned short	ss2,__ss2h;
+struct x86_hw_tss {
+	unsigned short	back_link, __blh;
+	unsigned long	sp0;
+	unsigned short	ss0, __ss0h;
+	unsigned long	sp1;
+	unsigned short	ss1, __ss1h;	/* ss1 caches MSR_IA32_SYSENTER_CS */
+	unsigned long	sp2;
+	unsigned short	ss2, __ss2h;
 	unsigned long	__cr3;
-	unsigned long	eip;
-	unsigned long	eflags;
-	unsigned long	eax,ecx,edx,ebx;
-	unsigned long	esp;
-	unsigned long	ebp;
-	unsigned long	esi;
-	unsigned long	edi;
+	unsigned long	ip;
+	unsigned long	flags;
+	unsigned long	ax, cx, dx, bx;
+	unsigned long	sp, bp, si, di;
 	unsigned short	es, __esh;
 	unsigned short	cs, __csh;
 	unsigned short	ss, __ssh;
@@ -317,9 +192,33 @@ struct i386_hw_tss {
 	unsigned short	ldt, __ldth;
 	unsigned short	trace, io_bitmap_base;
 } __attribute__((packed));
+#else
+struct x86_hw_tss {
+	u32 reserved1;
+	u64 sp0;
+	u64 sp1;
+	u64 sp2;
+	u64 reserved2;
+	u64 ist[7];
+	u32 reserved3;
+	u32 reserved4;
+	u16 reserved5;
+	u16 io_bitmap_base;
+} __attribute__((packed)) ____cacheline_aligned;
+#endif
+
+/*
+ * Size of io_bitmap.
+ */
+#define IO_BITMAP_BITS  65536
+#define IO_BITMAP_BYTES (IO_BITMAP_BITS/8)
+#define IO_BITMAP_LONGS (IO_BITMAP_BYTES/sizeof(long))
+#define IO_BITMAP_OFFSET offsetof(struct tss_struct, io_bitmap)
+#define INVALID_IO_BITMAP_OFFSET 0x8000
+#define INVALID_IO_BITMAP_OFFSET_LAZY 0x9000
 
 struct tss_struct {
-	struct i386_hw_tss x86_tss;
+	struct x86_hw_tss x86_tss;
 
 	/*
 	 * The extra 1 is there because the CPU will access an
@@ -343,13 +242,87 @@ struct tss_struct {
 	unsigned long stack[64];
 } __attribute__((packed));
 
-#define ARCH_MIN_TASKALIGN	16
+DECLARE_PER_CPU(struct tss_struct, init_tss);
+
+/* Save the original ist values for checking stack pointers during debugging */
+struct orig_ist {
+	unsigned long ist[7];
+};
+
+#define	MXCSR_DEFAULT		0x1f80
+
+struct i387_fsave_struct {
+	u32	cwd;
+	u32	swd;
+	u32	twd;
+	u32	fip;
+	u32	fcs;
+	u32	foo;
+	u32	fos;
+	u32	st_space[20];	/* 8*10 bytes for each FP-reg = 80 bytes */
+	u32	status;		/* software status information */
+};
+
+struct i387_fxsave_struct {
+	u16	cwd;
+	u16	swd;
+	u16	twd;
+	u16	fop;
+	union {
+		struct {
+			u64	rip;
+			u64	rdp;
+		};
+		struct {
+			u32	fip;
+			u32	fcs;
+			u32	foo;
+			u32	fos;
+		};
+	};
+	u32	mxcsr;
+	u32	mxcsr_mask;
+	u32	st_space[32];	/* 8*16 bytes for each FP-reg = 128 bytes */
+	u32	xmm_space[64];	/* 16*16 bytes for each XMM-reg = 256 bytes */
+	u32	padding[24];
+} __attribute__((aligned(16)));
+
+struct i387_soft_struct {
+	u32	cwd;
+	u32	swd;
+	u32	twd;
+	u32	fip;
+	u32	fcs;
+	u32	foo;
+	u32	fos;
+	u32	st_space[20];	/* 8*10 bytes for each FP-reg = 80 bytes */
+	u8	ftop, changed, lookahead, no_update, rm, alimit;
+	struct info	*info;
+	u32	entry_eip;
+};
+
+union i387_union {
+	struct i387_fsave_struct	fsave;
+	struct i387_fxsave_struct	fxsave;
+	struct i387_soft_struct 	soft;
+};
+
+#ifdef CONFIG_X86_32
+DECLARE_PER_CPU(u8, cpu_llc_id);
+#else
+DECLARE_PER_CPU(struct orig_ist, orig_ist);
+#endif
+
+extern void print_cpu_info(struct cpuinfo_x86 *);
+extern void init_scattered_cpuid_features(struct cpuinfo_x86 *c);
+extern unsigned int init_intel_cacheinfo(struct cpuinfo_x86 *c);
+extern unsigned short num_cache_leaves;
 
 struct thread_struct {
 /* cached TLS descriptors. */
 	struct desc_struct tls_array[GDT_ENTRY_TLS_ENTRIES];
-	unsigned long esp;			/* Kernel stack pointer */
-	unsigned long eip;
+	unsigned long sp;			/* Kernel stack pointer */
+	unsigned long ip;
 	l4_threadid_t user_thread_id;		/* L4 Thread ID of the process */
 	l4_threadid_t user_thread_ids[NR_CPUS];
 	l4_threadid_t cloner;			/* ID of the one who did clone(CLONE_VM) */
@@ -370,81 +343,162 @@ struct thread_struct {
 	unsigned long error_code;
 	unsigned long trap_no;			/* sigsegv stuff */
 
+/* Hardware debugging registers */
+	unsigned long	debugreg0;
+	unsigned long	debugreg1;
+	unsigned long	debugreg2;
+	unsigned long	debugreg3;
+	unsigned long	debugreg6;
+	unsigned long	debugreg7;
+
+/* MSR_IA32_DEBUGCTLMSR value to switch in if TIF_DEBUGCTLMSR is set.  */
+	unsigned long   debugctlmsr;
+	/* Debug Store - if not 0 points to a DS Save Area configuration;
+	 *               goes into MSR_IA32_DS_AREA */
+	unsigned long   ds_area_msr;
+
 	/* IO permissions */
 	struct l4x_iodb *iodb;
 };
 
-#define INIT_THREAD  {							\
+static inline unsigned long native_get_debugreg(int regno)
+{
+	unsigned long val = 0; 	/* Damn you, gcc! */
+
+	switch (regno) {
+	case 0:
+		asm("mov %%db0, %0" :"=r" (val)); break;
+	case 1:
+		asm("mov %%db1, %0" :"=r" (val)); break;
+	case 2:
+		asm("mov %%db2, %0" :"=r" (val)); break;
+	case 3:
+		asm("mov %%db3, %0" :"=r" (val)); break;
+	case 6:
+		asm("mov %%db6, %0" :"=r" (val)); break;
+	case 7:
+		asm("mov %%db7, %0" :"=r" (val)); break;
+	default:
+		BUG();
+	}
+	return val;
+}
+
+static inline void native_set_debugreg(int regno, unsigned long value)
+{
+	switch (regno) {
+	case 0:
+		asm("mov %0,%%db0"	: /* no output */ :"r" (value));
+		break;
+	case 1:
+		asm("mov %0,%%db1"	: /* no output */ :"r" (value));
+		break;
+	case 2:
+		asm("mov %0,%%db2"	: /* no output */ :"r" (value));
+		break;
+	case 3:
+		asm("mov %0,%%db3"	: /* no output */ :"r" (value));
+		break;
+	case 6:
+		asm("mov %0,%%db6"	: /* no output */ :"r" (value));
+		break;
+	case 7:
+		asm("mov %0,%%db7"	: /* no output */ :"r" (value));
+		break;
+	default:
+		BUG();
+	}
 }
 
 /*
- * Note that the .io_bitmap member must be extra-big. This is because
- * the CPU will access an additional byte beyond the end of the IO
- * permission bitmap. The extra byte must be all 1 bits, and must
- * be within the limit.
+ * Set IOPL bits in EFLAGS from given mask
  */
-#define INIT_TSS  {							\
-	.x86_tss = {							\
-		.esp0		= sizeof(init_stack) + (long)&init_stack, \
-		.ss0		= __KERNEL_DS,				\
-		.ss1		= __KERNEL_CS,				\
-		.io_bitmap_base	= INVALID_IO_BITMAP_OFFSET,		\
-	 },								\
-	.io_bitmap	= { [ 0 ... IO_BITMAP_LONGS] = ~0 },		\
-}
-
-#if 0
-#define start_thread(regs, new_eip, new_esp) do {		\
-	__asm__("movl %0,%%gs": :"r" (0));			\
-	regs->xfs = 0;						\
-	set_fs(USER_DS);					\
-	regs->xds = __USER_DS;					\
-	regs->xes = __USER_DS;					\
-	regs->xss = __USER_DS;					\
-	regs->xcs = __USER_CS;					\
-	regs->eip = new_eip;					\
-	regs->esp = new_esp;					\
-} while (0)
+static inline void native_set_iopl_mask(unsigned mask)
+{
+#ifdef CONFIG_X86_32
+	unsigned int reg;
+	__asm__ __volatile__ ("pushfl;"
+			      "popl %0;"
+			      "andl %1, %0;"
+			      "orl %2, %0;"
+			      "pushl %0;"
+			      "popfl"
+				: "=&r" (reg)
+				: "i" (~X86_EFLAGS_IOPL), "r" (mask));
 #endif
-extern void start_thread(struct pt_regs *regs, unsigned long eip, unsigned long esp);
+}
 
-/* Forward declaration, a strange C thing */
-struct task_struct;
-struct mm_struct;
+static inline void native_load_sp0(struct tss_struct *tss,
+				   struct thread_struct *thread)
+{
+#ifdef NOT_FOR_L4
+	tss->x86_tss.sp0 = thread->sp0;
+#ifdef CONFIG_X86_32
+	/* Only happens when SEP is enabled, no need to test "SEP"arately */
+	if (unlikely(tss->x86_tss.ss1 != thread->sysenter_cs)) {
+		tss->x86_tss.ss1 = thread->sysenter_cs;
+		wrmsr(MSR_IA32_SYSENTER_CS, thread->sysenter_cs, 0);
+	}
+#endif
+#endif
+}
 
-/* Free all resources held by a thread. */
-extern void release_thread(struct task_struct *);
+static inline void native_swapgs(void)
+{
+#ifdef CONFIG_X86_64
+	asm volatile("swapgs" ::: "memory");
+#endif
+}
 
-/* Prepare to copy thread state - unlazy all lazy status */
-extern void prepare_to_copy(struct task_struct *tsk);
+#ifdef CONFIG_PARAVIRT
+#include <asm/paravirt.h>
+#else
+#define __cpuid native_cpuid
+#define paravirt_enabled() 0
 
 /*
- * create a kernel thread without removing it from tasklists
+ * These special macros can be used to get or set a debugging register
  */
-extern int kernel_thread(int (*fn)(void *), void * arg, unsigned long flags);
+#define get_debugreg(var, register)				\
+	(var) = native_get_debugreg(register)
+#define set_debugreg(value, register)				\
+	native_set_debugreg(register, value)
 
-extern unsigned long thread_saved_pc(struct task_struct *tsk);
-void show_trace(struct task_struct *task, struct pt_regs *regs, unsigned long *stack);
+static inline void load_sp0(struct tss_struct *tss,
+			    struct thread_struct *thread)
+{
+	native_load_sp0(tss, thread);
+}
 
-unsigned long get_wchan(struct task_struct *p);
+#define set_iopl_mask native_set_iopl_mask
+#define SWAPGS	swapgs
+#endif /* CONFIG_PARAVIRT */
 
-#define THREAD_SIZE_LONGS      (THREAD_SIZE/sizeof(unsigned long))
-#define KSTK_TOP(info)                                                 \
-({                                                                     \
-       unsigned long *__ptr = (unsigned long *)(info);                 \
-       (unsigned long)(&__ptr[THREAD_SIZE_LONGS]);                     \
-})
+/*
+ * Save the cr4 feature set we're using (ie
+ * Pentium 4MB enable and PPro Global page
+ * enable), so that any CPU's that boot up
+ * after us can get the correct flags.
+ */
+extern unsigned long mmu_cr4_features;
 
-#define task_pt_regs(task)                                             \
-({                                                                     \
-       struct pt_regs *__regs__;                                       \
-       __regs__ = &(task)->thread.regs;                                \
-       __regs__ - 0;                                                   \
-})
+static inline void set_in_cr4(unsigned long mask)
+{
+	unsigned cr4;
+	mmu_cr4_features |= mask;
+	cr4 = read_cr4();
+	cr4 |= mask;
+	write_cr4(cr4);
+}
 
-#define KSTK_EIP(task) (task_pt_regs(task)->eip)
-#define KSTK_ESP(task) (task_pt_regs(task)->esp)
-
+static inline void clear_in_cr4(unsigned long mask)
+{
+	unsigned cr4;
+	mmu_cr4_features &= ~mask;
+	cr4 = read_cr4();
+	cr4 &= ~mask;
+	write_cr4(cr4);
+}
 
 struct microcode_header {
 	unsigned int hdrver;
@@ -481,113 +535,23 @@ struct extended_sigtable {
 	struct extended_signature sigs[0];
 };
 
-/* REP NOP (PAUSE) is a good thing to insert into busy-wait loops. */
-static inline void rep_nop(void)
-{
-	__asm__ __volatile__("rep;nop": : :"memory");
-}
+typedef struct {
+	unsigned long seg;
+} mm_segment_t;
 
-#define cpu_relax()	rep_nop()
-
-static inline void native_load_esp0(struct tss_struct *tss, struct thread_struct *thread)
-{
-#if 0
-	tss->x86_tss.esp0 = thread->esp0;
-	/* This can only happen when SEP is enabled, no need to test "SEP"arately */
-	if (unlikely(tss->x86_tss.ss1 != thread->sysenter_cs)) {
-		tss->x86_tss.ss1 = thread->sysenter_cs;
-		wrmsr(MSR_IA32_SYSENTER_CS, thread->sysenter_cs, 0);
-	}
-#endif
-}
-
-
-static inline unsigned long native_get_debugreg(int regno)
-{
-	unsigned long val = 0; 	/* Damn you, gcc! */
-
-	switch (regno) {
-	case 0:
-		asm("movl %%db0, %0" :"=r" (val)); break;
-	case 1:
-		asm("movl %%db1, %0" :"=r" (val)); break;
-	case 2:
-		asm("movl %%db2, %0" :"=r" (val)); break;
-	case 3:
-		asm("movl %%db3, %0" :"=r" (val)); break;
-	case 6:
-		asm("movl %%db6, %0" :"=r" (val)); break;
-	case 7:
-		asm("movl %%db7, %0" :"=r" (val)); break;
-	default:
-		BUG();
-	}
-	return val;
-}
-
-static inline void native_set_debugreg(int regno, unsigned long value)
-{
-	switch (regno) {
-	case 0:
-		asm("movl %0,%%db0"	: /* no output */ :"r" (value));
-		break;
-	case 1:
-		asm("movl %0,%%db1"	: /* no output */ :"r" (value));
-		break;
-	case 2:
-		asm("movl %0,%%db2"	: /* no output */ :"r" (value));
-		break;
-	case 3:
-		asm("movl %0,%%db3"	: /* no output */ :"r" (value));
-		break;
-	case 6:
-		asm("movl %0,%%db6"	: /* no output */ :"r" (value));
-		break;
-	case 7:
-		asm("movl %0,%%db7"	: /* no output */ :"r" (value));
-		break;
-	default:
-		BUG();
-	}
-}
 
 /*
- * Set IOPL bits in EFLAGS from given mask
+ * create a kernel thread without removing it from tasklists
  */
-static inline void native_set_iopl_mask(unsigned mask)
-{
-	unsigned int reg;
-	__asm__ __volatile__ ("pushfl;"
-			      "popl %0;"
-			      "andl %1, %0;"
-			      "orl %2, %0;"
-			      "pushl %0;"
-			      "popfl"
-				: "=&r" (reg)
-				: "i" (~X86_EFLAGS_IOPL), "r" (mask));
-}
+extern int kernel_thread(int (*fn)(void *), void *arg, unsigned long flags);
 
-#ifdef CONFIG_PARAVIRT
-#include <asm/paravirt.h>
-#else
-#define paravirt_enabled() 0
-#define __cpuid native_cpuid
+/* Free all resources held by a thread. */
+extern void release_thread(struct task_struct *);
 
-static inline void load_esp0(struct tss_struct *tss, struct thread_struct *thread)
-{
-	native_load_esp0(tss, thread);
-}
+/* Prepare to copy thread state - unlazy all lazy status */
+extern void prepare_to_copy(struct task_struct *tsk);
 
-/*
- * These special macros can be used to get or set a debugging register
- */
-#define get_debugreg(var, register)				\
-	(var) = native_get_debugreg(register)
-#define set_debugreg(value, register)				\
-	native_set_debugreg(register, value)
-
-#define set_iopl_mask native_set_iopl_mask
-#endif /* CONFIG_PARAVIRT */
+unsigned long get_wchan(struct task_struct *p);
 
 /*
  * Generic CPUID function
@@ -645,135 +609,248 @@ static inline unsigned int cpuid_edx(unsigned int op)
 	return edx;
 }
 
-/* generic versions from gas */
-#define GENERIC_NOP1	".byte 0x90\n"
-#define GENERIC_NOP2    	".byte 0x89,0xf6\n"
-#define GENERIC_NOP3        ".byte 0x8d,0x76,0x00\n"
-#define GENERIC_NOP4        ".byte 0x8d,0x74,0x26,0x00\n"
-#define GENERIC_NOP5        GENERIC_NOP1 GENERIC_NOP4
-#define GENERIC_NOP6	".byte 0x8d,0xb6,0x00,0x00,0x00,0x00\n"
-#define GENERIC_NOP7	".byte 0x8d,0xb4,0x26,0x00,0x00,0x00,0x00\n"
-#define GENERIC_NOP8	GENERIC_NOP1 GENERIC_NOP7
-
-/* Opteron nops */
-#define K8_NOP1 GENERIC_NOP1
-#define K8_NOP2	".byte 0x66,0x90\n" 
-#define K8_NOP3	".byte 0x66,0x66,0x90\n" 
-#define K8_NOP4	".byte 0x66,0x66,0x66,0x90\n" 
-#define K8_NOP5	K8_NOP3 K8_NOP2 
-#define K8_NOP6	K8_NOP3 K8_NOP3
-#define K8_NOP7	K8_NOP4 K8_NOP3
-#define K8_NOP8	K8_NOP4 K8_NOP4
-
-/* K7 nops */
-/* uses eax dependencies (arbitary choice) */
-#define K7_NOP1  GENERIC_NOP1
-#define K7_NOP2	".byte 0x8b,0xc0\n" 
-#define K7_NOP3	".byte 0x8d,0x04,0x20\n"
-#define K7_NOP4	".byte 0x8d,0x44,0x20,0x00\n"
-#define K7_NOP5	K7_NOP4 ASM_NOP1
-#define K7_NOP6	".byte 0x8d,0x80,0,0,0,0\n"
-#define K7_NOP7        ".byte 0x8D,0x04,0x05,0,0,0,0\n"
-#define K7_NOP8        K7_NOP7 ASM_NOP1
-
-/* P6 nops */
-/* uses eax dependencies (Intel-recommended choice) */
-#define P6_NOP1	GENERIC_NOP1
-#define P6_NOP2	".byte 0x66,0x90\n"
-#define P6_NOP3	".byte 0x0f,0x1f,0x00\n"
-#define P6_NOP4	".byte 0x0f,0x1f,0x40,0\n"
-#define P6_NOP5	".byte 0x0f,0x1f,0x44,0x00,0\n"
-#define P6_NOP6	".byte 0x66,0x0f,0x1f,0x44,0x00,0\n"
-#define P6_NOP7	".byte 0x0f,0x1f,0x80,0,0,0,0\n"
-#define P6_NOP8	".byte 0x0f,0x1f,0x84,0x00,0,0,0,0\n"
-
-#ifdef CONFIG_MK8
-#define ASM_NOP1 K8_NOP1
-#define ASM_NOP2 K8_NOP2
-#define ASM_NOP3 K8_NOP3
-#define ASM_NOP4 K8_NOP4
-#define ASM_NOP5 K8_NOP5
-#define ASM_NOP6 K8_NOP6
-#define ASM_NOP7 K8_NOP7
-#define ASM_NOP8 K8_NOP8
-#elif defined(CONFIG_MK7)
-#define ASM_NOP1 K7_NOP1
-#define ASM_NOP2 K7_NOP2
-#define ASM_NOP3 K7_NOP3
-#define ASM_NOP4 K7_NOP4
-#define ASM_NOP5 K7_NOP5
-#define ASM_NOP6 K7_NOP6
-#define ASM_NOP7 K7_NOP7
-#define ASM_NOP8 K7_NOP8
-#elif defined(CONFIG_M686) || defined(CONFIG_MPENTIUMII) || \
-      defined(CONFIG_MPENTIUMIII) || defined(CONFIG_MPENTIUMM) || \
-      defined(CONFIG_MCORE2) || defined(CONFIG_PENTIUM4)
-#define ASM_NOP1 P6_NOP1
-#define ASM_NOP2 P6_NOP2
-#define ASM_NOP3 P6_NOP3
-#define ASM_NOP4 P6_NOP4
-#define ASM_NOP5 P6_NOP5
-#define ASM_NOP6 P6_NOP6
-#define ASM_NOP7 P6_NOP7
-#define ASM_NOP8 P6_NOP8
-#else
-#define ASM_NOP1 GENERIC_NOP1
-#define ASM_NOP2 GENERIC_NOP2
-#define ASM_NOP3 GENERIC_NOP3
-#define ASM_NOP4 GENERIC_NOP4
-#define ASM_NOP5 GENERIC_NOP5
-#define ASM_NOP6 GENERIC_NOP6
-#define ASM_NOP7 GENERIC_NOP7
-#define ASM_NOP8 GENERIC_NOP8
-#endif
-
-#define ASM_NOP_MAX 8
-
-/* Prefetch instructions for Pentium III and AMD Athlon */
-/* It's not worth to care about 3dnow! prefetches for the K6
-   because they are microcoded there and very slow.
-   However we don't do prefetches for pre XP Athlons currently
-   That should be fixed. */
-#define ARCH_HAS_PREFETCH
-static inline void prefetch(const void *x)
+/* REP NOP (PAUSE) is a good thing to insert into busy-wait loops. */
+static inline void rep_nop(void)
 {
-	alternative_input(ASM_NOP4,
-			  "prefetchnta (%1)",
-			  X86_FEATURE_XMM,
-			  "r" (x));
+	__asm__ __volatile__("rep;nop": : :"memory");
 }
 
-#define ARCH_HAS_PREFETCH
-#define ARCH_HAS_PREFETCHW
-#define ARCH_HAS_SPINLOCK_PREFETCH
-
-/* 3dnow! prefetch to get an exclusive cache line. Useful for 
-   spinlocks to avoid one state transition in the cache coherency protocol. */
-static inline void prefetchw(const void *x)
+/* Stop speculative execution */
+static inline void sync_core(void)
 {
-	alternative_input(ASM_NOP4,
-			  "prefetchw (%1)",
-			  X86_FEATURE_3DNOW,
-			  "r" (x));
+	int tmp;
+	asm volatile("cpuid" : "=a" (tmp) : "0" (1)
+					  : "ebx", "ecx", "edx", "memory");
 }
-#define spin_lock_prefetch(x)	prefetchw(x)
+
+#define cpu_relax()   rep_nop()
+
+static inline void __monitor(const void *eax, unsigned long ecx,
+		unsigned long edx)
+{
+	/* "monitor %eax,%ecx,%edx;" */
+	asm volatile(
+		".byte 0x0f,0x01,0xc8;"
+		: :"a" (eax), "c" (ecx), "d"(edx));
+}
+
+static inline void __mwait(unsigned long eax, unsigned long ecx)
+{
+	/* "mwait %eax,%ecx;" */
+	asm volatile(
+		".byte 0x0f,0x01,0xc9;"
+		: :"a" (eax), "c" (ecx));
+}
+
+static inline void __sti_mwait(unsigned long eax, unsigned long ecx)
+{
+	/* "mwait %eax,%ecx;" */
+	asm volatile(
+		"sti; .byte 0x0f,0x01,0xc9;"
+		: :"a" (eax), "c" (ecx));
+}
+
+extern void mwait_idle_with_hints(unsigned long eax, unsigned long ecx);
+
+extern int force_mwait;
 
 extern void select_idle_routine(const struct cpuinfo_x86 *c);
 
-#define cache_line_size() (boot_cpu_data.x86_cache_alignment)
-
 extern unsigned long boot_option_idle_override;
+
 extern void enable_sep_cpu(void);
 extern int sysenter_setup(void);
 
 /* Defined in head.S */
-extern struct Xgt_desc_struct early_gdt_descr;
+extern struct desc_ptr early_gdt_descr;
 
 extern void cpu_set_gdt(int);
 extern void switch_to_new_gdt(void);
 extern void cpu_init(void);
 extern void init_gdt(int cpu);
 
-extern int force_mwait;
+/* from system description table in BIOS.  Mostly for MCA use, but
+ * others may find it useful. */
+extern unsigned int machine_id;
+extern unsigned int machine_submodel_id;
+extern unsigned int BIOS_revision;
 
-#endif /* ! __ASM_L4__ARCH_I386__PROCESSOR_H__ */
+/* Boot loader type from the setup header */
+extern int bootloader_type;
+
+extern char ignore_fpu_irq;
+#define cache_line_size() (boot_cpu_data.x86_cache_alignment)
+
+#define HAVE_ARCH_PICK_MMAP_LAYOUT 1
+#define ARCH_HAS_PREFETCHW
+#define ARCH_HAS_SPINLOCK_PREFETCH
+
+#ifdef CONFIG_X86_32
+#define BASE_PREFETCH	ASM_NOP4
+#define ARCH_HAS_PREFETCH
+#else
+#define BASE_PREFETCH	"prefetcht0 (%1)"
+#endif
+
+/* Prefetch instructions for Pentium III and AMD Athlon */
+/* It's not worth to care about 3dnow! prefetches for the K6
+   because they are microcoded there and very slow.
+   However we don't do prefetches for pre XP Athlons currently
+   That should be fixed. */
+static inline void prefetch(const void *x)
+{
+	alternative_input(BASE_PREFETCH,
+			  "prefetchnta (%1)",
+			  X86_FEATURE_XMM,
+			  "r" (x));
+}
+
+/* 3dnow! prefetch to get an exclusive cache line. Useful for
+   spinlocks to avoid one state transition in the cache coherency protocol. */
+static inline void prefetchw(const void *x)
+{
+	alternative_input(BASE_PREFETCH,
+			  "prefetchw (%1)",
+			  X86_FEATURE_3DNOW,
+			  "r" (x));
+}
+
+#define spin_lock_prefetch(x)	prefetchw(x)
+#ifdef CONFIG_X86_32
+/*
+ * User space process size: 3GB (default).
+ */
+#define TASK_SIZE	(0xBFC00000UL)
+#define STACK_TOP	TASK_SIZE
+#define STACK_TOP_MAX	STACK_TOP
+
+#define INIT_THREAD { }
+#define INIT_THREAD__ORIG  {						\
+	.sp0 = sizeof(init_stack) + (long)&init_stack,			\
+	.vm86_info = NULL,						\
+	.sysenter_cs = __KERNEL_CS,					\
+	.io_bitmap_ptr = NULL,						\
+	.fs = __KERNEL_PERCPU,						\
+}
+
+/*
+ * Note that the .io_bitmap member must be extra-big. This is because
+ * the CPU will access an additional byte beyond the end of the IO
+ * permission bitmap. The extra byte must be all 1 bits, and must
+ * be within the limit.
+ */
+#define INIT_TSS  {							\
+	.x86_tss = {							\
+		.sp0		= sizeof(init_stack) + (long)&init_stack, \
+		.ss0		= __KERNEL_DS,				\
+		.ss1		= __KERNEL_CS,				\
+		.io_bitmap_base	= INVALID_IO_BITMAP_OFFSET,		\
+	 },								\
+	.io_bitmap	= { [0 ... IO_BITMAP_LONGS] = ~0 },		\
+}
+
+#define start_thread_orig(regs, new_eip, new_esp) do {		\
+	__asm__("movl %0,%%gs": :"r" (0));			\
+	regs->fs = 0;						\
+	set_fs(USER_DS);					\
+	regs->ds = __USER_DS;					\
+	regs->es = __USER_DS;					\
+	regs->ss = __USER_DS;					\
+	regs->cs = __USER_CS;					\
+	regs->ip = new_eip;					\
+	regs->sp = new_esp;					\
+} while (0)
+void start_thread(struct pt_regs *regs, unsigned long eip, unsigned long esp);
+
+
+extern unsigned long thread_saved_pc(struct task_struct *tsk);
+
+#define THREAD_SIZE_LONGS      (THREAD_SIZE/sizeof(unsigned long))
+#define KSTK_TOP(info)                                                 \
+({                                                                     \
+       unsigned long *__ptr = (unsigned long *)(info);                 \
+       (unsigned long)(&__ptr[THREAD_SIZE_LONGS]);                     \
+})
+
+/*
+ * The below -8 is to reserve 8 bytes on top of the ring0 stack.
+ * This is necessary to guarantee that the entire "struct pt_regs"
+ * is accessable even if the CPU haven't stored the SS/ESP registers
+ * on the stack (interrupt gate does not save these registers
+ * when switching to the same priv ring).
+ * Therefore beware: accessing the ss/esp fields of the
+ * "struct pt_regs" is possible, but they may contain the
+ * completely wrong values.
+ */
+#define task_pt_regs_orig(task)                                             \
+({                                                                     \
+       struct pt_regs *__regs__;                                       \
+       __regs__ = (struct pt_regs *)(KSTK_TOP(task_stack_page(task))-8); \
+       __regs__ - 1;                                                   \
+})
+#define task_pt_regs(task)                                             \
+({                                                                     \
+       struct pt_regs *__regs__;                                       \
+       __regs__ = &(task)->thread.regs;                                \
+})
+
+#define KSTK_ESP(task) (task_pt_regs(task)->sp)
+
+#else
+/*
+ * User space process size. 47bits minus one guard page.
+ */
+#define TASK_SIZE64	(0x800000000000UL - 4096)
+
+/* This decides where the kernel will search for a free chunk of vm
+ * space during mmap's.
+ */
+#define IA32_PAGE_OFFSET ((current->personality & ADDR_LIMIT_3GB) ? \
+			   0xc0000000 : 0xFFFFe000)
+
+#define TASK_SIZE 		(test_thread_flag(TIF_IA32) ? \
+				 IA32_PAGE_OFFSET : TASK_SIZE64)
+#define TASK_SIZE_OF(child) 	((test_tsk_thread_flag(child, TIF_IA32)) ? \
+				  IA32_PAGE_OFFSET : TASK_SIZE64)
+
+#define STACK_TOP		TASK_SIZE
+#define STACK_TOP_MAX		TASK_SIZE64
+
+#define INIT_THREAD  { \
+	.sp0 = (unsigned long)&init_stack + sizeof(init_stack) \
+}
+
+#define INIT_TSS  { \
+	.x86_tss.sp0 = (unsigned long)&init_stack + sizeof(init_stack) \
+}
+
+#define start_thread(regs, new_rip, new_rsp) do { 			     \
+	asm volatile("movl %0,%%fs; movl %0,%%es; movl %0,%%ds": :"r" (0));  \
+	load_gs_index(0);						     \
+	(regs)->ip = (new_rip);						     \
+	(regs)->sp = (new_rsp);						     \
+	write_pda(oldrsp, (new_rsp));					     \
+	(regs)->cs = __USER_CS;						     \
+	(regs)->ss = __USER_DS;						     \
+	(regs)->flags = 0x200;						     \
+	set_fs(USER_DS);						     \
+} while (0)
+
+/*
+ * Return saved PC of a blocked thread.
+ * What is this good for? it will be always the scheduler or ret_from_fork.
+ */
+#define thread_saved_pc(t) (*(unsigned long *)((t)->thread.sp - 8))
+
+#define task_pt_regs(tsk) ((struct pt_regs *)(tsk)->thread.sp0 - 1)
+#define KSTK_ESP(tsk) -1 /* sorry. doesn't work for syscall. */
+#endif /* CONFIG_X86_64 */
+
+/* This decides where the kernel will search for a free chunk of vm
+ * space during mmap's.
+ */
+#define TASK_UNMAPPED_BASE	(PAGE_ALIGN(TASK_SIZE / 3))
+
+#define KSTK_EIP(task) (task_pt_regs(task)->ip)
+
+#endif

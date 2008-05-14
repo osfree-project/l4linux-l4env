@@ -5,6 +5,13 @@
 #include <linux/linkage.h>
 
 #ifdef ARCH_x86
+.section ".text"
+	mov 0(%esi), %edi
+	mov %edi, __l4_external_resolver
+	mov $l4sys_utcb_get, %edi
+	mov %edi, 4(%esi)
+	jmp main
+.previous
 .section ".bss.page_aligned","w"
 ENTRY(swapper_pg_dir)
 	.fill 1024,4,0

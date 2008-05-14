@@ -224,8 +224,8 @@ static inline int l4x_handle_page_fault(struct task_struct *p,
 	} else {
 		/* page fault in upage */
 		if ((pfa & PAGE_MASK) == UPAGE_USER_ADDRESS && !(pfa & 2)) {
-			*d1 = l4_fpage((l4_umword_t)&_upage_start,
-					L4_LOG2_PAGESIZE, L4_FPAGE_RO, L4_FPAGE_MAP).fpage;
+			*d1 = l4_fpage(upage_addr, L4_LOG2_PAGESIZE,
+			               L4_FPAGE_RO, L4_FPAGE_MAP).fpage;
 		} else
 			return 1;   /* invalid access */
 
@@ -413,7 +413,7 @@ void l4x_wakeup_idler(int cpu)
 	TBUF_LOG_WAKEUP_IDLE(fiasco_tbuf_log_3val("wakeup idle", cpu, 0, 0));
 }
 
-static void idler_func(void *data)
+static L4_CV void idler_func(void *data)
 {
 	while (1)
 		l4_sleep_forever();

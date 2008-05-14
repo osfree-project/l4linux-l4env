@@ -14,4 +14,7 @@ obj-$(CONFIG_L4_FERRET)		+= ferret.o
 
 obj-$(CONFIG_L4_SAMPLE_MODULE)	+= l4x_module.o
 
+CFLAGS_l4lib.o-$(CONFIG_X86_32) := -Werror -mregparm=0
+CFLAGS_l4lib.o                  := $(CFLAGS_l4lib.o-y)
+
 export CPPFLAGS_vmlinux.lds += -U$(BASEARCH) -DARCH_$(L4_MK_ARCH)

@@ -12,7 +12,7 @@ void l4x_wakeup_idler(int cpu);
 void l4x_setup_user_dispatcher_after_fork(struct task_struct *p);
 asmlinkage void l4x_user_dispatcher(void);
 
-int l4_kernelinternal_execve(char * file, char ** argv, char ** envp);
+asmlinkage int l4_kernelinternal_execve(char * file, char ** argv, char ** envp);
 
 #ifdef CONFIG_L4_DEBUG_SEGFAULTS
 void l4x_print_vm_area_maps(struct task_struct *p);

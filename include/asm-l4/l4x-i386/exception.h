@@ -12,7 +12,7 @@ enum l4x_cpu_modes {
 
 static inline void l4x_set_cpu_mode(struct pt_regs *r, enum l4x_cpu_modes mode)
 {
-	r->xcs = mode;
+	r->cs = mode;
 }
 
 static inline void l4x_set_user_mode(struct pt_regs *r)
@@ -27,40 +27,40 @@ static inline void l4x_set_kernel_mode(struct pt_regs *r)
 
 static inline unsigned long l4x_get_cpu_mode(struct pt_regs *r)
 {
-	return r->xcs & 3;
+	return r->cs & 3;
 }
 
-#define U2P(p, u, r)   do { p->r = u->exc.r; } while (0)
+#define U2P(p, pr, u, ur)   do { p->pr = u->exc.ur; } while (0)
 static inline void utcb_to_ptregs(l4_utcb_t *utcb, struct pt_regs *ptregs)
 {
-	U2P(ptregs, utcb, eax);
-	U2P(ptregs, utcb, ebx);
-	U2P(ptregs, utcb, ecx);
-	U2P(ptregs, utcb, edx);
-	U2P(ptregs, utcb, edi);
-	U2P(ptregs, utcb, esi);
-	U2P(ptregs, utcb, ebp);
-	U2P(ptregs, utcb, eip);
-	U2P(ptregs, utcb, eflags);
-	U2P(ptregs, utcb, esp);
-	ptregs->xfs = utcb->exc.fs;
+	U2P(ptregs, ax,    utcb, eax);
+	U2P(ptregs, bx,    utcb, ebx);
+	U2P(ptregs, cx,    utcb, ecx);
+	U2P(ptregs, dx,    utcb, edx);
+	U2P(ptregs, di,    utcb, edi);
+	U2P(ptregs, si,    utcb, esi);
+	U2P(ptregs, bp,    utcb, ebp);
+	U2P(ptregs, ip,    utcb, eip);
+	U2P(ptregs, flags, utcb, eflags);
+	U2P(ptregs, sp,    utcb, esp);
+	ptregs->fs = utcb->exc.fs;
 }
 #undef U2P
 
-#define P2U(u, p, r) do { u->exc.r = p->r; } while (0)
+#define P2U(u, ur, p, pr) do { u->exc.ur = p->pr; } while (0)
 static inline void ptregs_to_utcb(struct pt_regs *ptregs, l4_utcb_t *utcb)
 {
-	P2U(utcb, ptregs, eax);
-	P2U(utcb, ptregs, ebx);
-	P2U(utcb, ptregs, ecx);
-	P2U(utcb, ptregs, edx);
-	P2U(utcb, ptregs, edi);
-	P2U(utcb, ptregs, esi);
-	P2U(utcb, ptregs, ebp);
-	P2U(utcb, ptregs, eip);
-	P2U(utcb, ptregs, eflags);
-	P2U(utcb, ptregs, esp);
-	utcb->exc.fs = ptregs->xfs;
+	P2U(utcb, eax,    ptregs, ax);
+	P2U(utcb, ebx,    ptregs, bx);
+	P2U(utcb, ecx,    ptregs, cx);
+	P2U(utcb, edx,    ptregs, dx);
+	P2U(utcb, edi,    ptregs, di);
+	P2U(utcb, esi,    ptregs, si);
+	P2U(utcb, ebp,    ptregs, bp);
+	P2U(utcb, eip,    ptregs, ip);
+	P2U(utcb, eflags, ptregs, flags);
+	P2U(utcb, esp,    ptregs, sp);
+	utcb->exc.fs = ptregs->fs;
 }
 #undef P2U
 

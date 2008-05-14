@@ -7,6 +7,7 @@
 #include <asm/l4lxapi/misc.h>
 #include <asm/l4lxapi/thread.h>
 
+#include <asm/generic/l4lib.h>
 #include <asm/generic/setup.h>
 #include <asm/generic/do_irq.h>
 
@@ -15,6 +16,12 @@
 MODULE_AUTHOR("Adam Lackorzynski <adam@os.inf.tu-dresden.de>");
 MODULE_DESCRIPTION("Ore stub driver");
 MODULE_LICENSE("GPL");
+
+L4_EXTERNAL_FUNC(l4ore_open);
+L4_EXTERNAL_FUNC(l4ore_send);
+L4_EXTERNAL_FUNC(l4ore_recv_blocking);
+L4_EXTERNAL_FUNC(l4ore_close);
+L4_EXTERNAL_FUNC(l4ore_set_config);
 
 static int  l4x_ore_irqnum = -1;
 static int  l4x_ore_numdevs = 1;
@@ -116,7 +123,7 @@ static irqreturn_t l4x_ore_interrupt(int irq, void *dev_id)
 /*
  * Receive thread to get packets
  */
-static void l4x_ore_irq_thread(void *data)
+static L4_CV void l4x_ore_irq_thread(void *data)
 {
 	struct net_device *netdev = *(struct net_device **)data;
 	struct l4x_ore_priv *priv = netdev_priv(netdev);

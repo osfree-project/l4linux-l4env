@@ -12,7 +12,7 @@
  * Some libs/code from the DROPS tree which is linked to L4Linux
  * needs l4_sleep...
  */
-void l4_sleep(int ms)
+L4_CV void l4_sleep(int ms)
 {
 	l4lx_sleep(ms);
 }

@@ -34,15 +34,13 @@ L4API		:= v2
 BASEARCH	:= i386
 LINSRCARCH      := x86
 
-CHECKFLAGS	:= -D__i386__
-
 L4_MK_ARCH	:= x86
 L4_MK_ARCH_CAP	:= X86
 
 OBJCOPYARCH	:= elf32-i386
 endif
 
-export BASEARCH L4_MK_ARCH
+export BASEARCH L4_MK_ARCH L4_MK_API L4_MK_CPU
 
 KBUILD_DEFCONFIG := x86-native_defconfig
 
@@ -77,31 +75,62 @@ UTS_MACHINE	:= $(BASEARCH)
 
 KBUILD_CFLAGS   += -gstabs+ -pipe -msoft-float -DARCH_$(L4_MK_ARCH)
 
+ifeq ($(CONFIG_X86_32),y)
+	BITS := 32
+	UTS_MACHINE := i386
+	CHECKFLAGS += -D__i386__
+
+	biarch := $(call cc-option,-m32)
+	KBUILD_AFLAGS += $(biarch)
+	KBUILD_CFLAGS += $(biarch)
+
+	ifdef CONFIG_RELOCATABLE
+		LDFLAGS_vmlinux := --emit-relocs
+	endif
+
+	#KBUILD_CFLAGS += -msoft-float -mregparm=3 -freg-struct-return
+	KBUILD_CFLAGS += -mregparm=3
+
+	# prevent gcc from keeping the stack 16 byte aligned
+	KBUILD_CFLAGS += $(call cc-option,-mpreferred-stack-boundary=2,)
+
+	# Disable unit-at-a-time mode on pre-gcc-4.0 compilers, it makes gcc use
+	# a lot more stack due to the lack of sharing of stacklots:
+	KBUILD_CFLAGS += $(shell if [ $(call cc-version) -lt 0400 ] ; then \
+		echo $(call cc-option,-fno-unit-at-a-time); fi ;)
+
+
+	# CPU-specific tuning. Anything which can be shared with UML should go here.
+	include $(srctree)/arch/x86/Makefile_32.cpu
+	KBUILD_CFLAGS += $(cflags-y)
+
+	# temporary until string.h is fixed
+	KBUILD_CFLAGS += -ffreestanding
+endif
+
 ifeq ($(BASEARCH),i386)
-# prevent gcc from keeping the stack 16 byte aligned
-KBUILD_CFLAGS += $(call cc-option,-mpreferred-stack-boundary=2,)
-
-# CPU-specific tuning. Anything which can be shared with UML should go here.
-include $(srctree)/arch/x86/Makefile_32.cpu
-
-# temporary until string.h is fixed
-cflags-y += -ffreestanding
-
-# this works around some issues with generating unwind tables in older gccs
-# newer gccs do it by default
-cflags-y += -maccumulate-outgoing-args
-
-# Disable unit-at-a-time mode on pre-gcc-4.0 compilers, it makes gcc use
-# a lot more stack due to the lack of sharing of stacklots:
-KBUILD_CFLAGS				+= $(shell if [ $(call cc-version) -lt 0400 ] ; then echo $(call cc-option,-fno-unit-at-a-time); fi ;)
+# Stackpointer is addressed different for 32 bit and 64 bit x86
+sp-$(CONFIG_X86_32) := esp
+sp-$(CONFIG_X86_64) := rsp
 
 # do binutils support CFI?
-cflags-y += $(call as-instr,.cfi_startproc\n.cfi_rel_offset esp${comma}0\n.cfi_endproc,-DCONFIG_AS_CFI=1,)
-KBUILD_AFLAGS += $(call as-instr,.cfi_startproc\n.cfi_rel_offset esp${comma}0\n.cfi_endproc,-DCONFIG_AS_CFI=1,)
-
+cfi := $(call as-instr,.cfi_startproc\n.cfi_rel_offset $(sp-y)$(comma)0\n.cfi_endproc,-DCONFIG_AS_CFI=1)
 # is .cfi_signal_frame supported too?
-cflags-y += $(call as-instr,.cfi_startproc\n.cfi_signal_frame\n.cfi_endproc,-DCONFIG_AS_CFI_SIGNAL_FRAME=1,)
-KBUILD_AFLAGS += $(call as-instr,.cfi_startproc\n.cfi_signal_frame\n.cfi_endproc,-DCONFIG_AS_CFI_SIGNAL_FRAME=1,)
+cfi-sigframe := $(call as-instr,.cfi_startproc\n.cfi_signal_frame\n.cfi_endproc,-DCONFIG_AS_CFI_SIGNAL_FRAME=1)
+KBUILD_AFLAGS += $(cfi) $(cfi-sigframe)
+KBUILD_CFLAGS += $(cfi) $(cfi-sigframe)
+
+LDFLAGS := -m elf_$(UTS_MACHINE)
+
+# Speed up the build
+KBUILD_CFLAGS += -pipe
+# Workaround for a gcc prelease that unfortunately was shipped in a suse release
+KBUILD_CFLAGS += -Wno-sign-compare
+#
+KBUILD_CFLAGS += -fno-asynchronous-unwind-tables
+# prevent gcc from generating any FP code by mistake
+KBUILD_CFLAGS += $(call cc-option,-mno-sse -mno-mmx -mno-sse2 -mno-3dnow,)
+
 endif
 
 ifeq ($(BASEARCH),arm)
@@ -128,8 +157,6 @@ KBUILD_CFLAGS += $(arch-y) $(tune-y)
 
 endif
 
-KBUILD_CFLAGS += $(cflags-y)
-
 
 # -----------------------------------------------
 
@@ -142,19 +169,23 @@ export L4DIR
 
 
 # Extra Libs
-L4LX_E_L-$(CONFIG_L4_FB_DRIVER) += -ll4dope -lvscreen -lcon -lconstream-server
-L4LX_E_L-$(CONFIG_L4_BLK_DRV)   += -lgeneric_blk
+L4LX_E_L-$(CONFIG_L4_FB_DRIVER)    += -ll4dope -lvscreen -lcon -lconstream-server
+L4LX_E_L-$(CONFIG_L4_BLK_DRV)      += -lgeneric_blk
 L4LX_E_L-$(CONFIG_L4_EXTERNAL_RTC) += -lrtc
-L4LX_E_L-$(CONFIG_L4_ORE_DRV)   += -lore
-L4LX_E_L-$(CONFIG_L4_IRQ_OMEGA0) += -lomega0
-L4LX_E_L-$(CONFIG_L4_PDSPBLK_DRV) += -lpers_dsp
-L4LX_E_L-$(CONFIG_L4_USE_L4VMM)	+= -ll4vmm-api$(if $(CONFIG_L4_USE_L4VMM_DBG),-dbg) \
-                                   -ll4vmm-core$(if $(CONFIG_L4_USE_L4VMM_DBG),-dbg) \
-                                   -ll4vmm-c -ll4vmm-cxx
-L4LX_E_L-$(CONFIG_L4_CONS)      += -lcons-client
-L4LX_E_L_O-$(CONFIG_L4_USE_L4VMM) += -ll4vmm-devices$(if $(CONFIG_L4_USE_L4VMM_DBG),-dbg).o \
+L4LX_E_L-$(CONFIG_L4_ORE_DRV)      += -lore
+L4LX_E_L-$(CONFIG_L4_IRQ_OMEGA0)   += -lomega0
+L4LX_E_L-$(CONFIG_L4_PDSPBLK_DRV)  += -lpers_dsp
+L4LX_E_L-$(CONFIG_L4_TCG_STPM)     += -lstpm-client
+L4LX_E_L-$(CONFIG_L4_USE_L4VMM)	   += -ll4vmm-api$(if $(CONFIG_L4_USE_L4VMM_DBG),-dbg) \
+                                      -ll4vmm-core$(if $(CONFIG_L4_USE_L4VMM_DBG),-dbg) \
+                                      $(if $(CONFIG_L4_LDR),,-ll4vmm-c) -ll4vmm-cxx
+L4LX_E_L-$(CONFIG_L4_CONS)         += -lcons-client
+L4LX_E_L-$(CONFIG_L4_FERRET)       += -lferret_client -lferret_producer \
+                                      -lferret_init
 
-L4LIBS		= -L$(L4OBJ)/lib/$(L4_MK_ARCH)_$(L4_MK_CPU)/$(L4_MK_API) \
+L4LX_E_L_O-$(CONFIG_L4_USE_L4VMM)  += -ll4vmm-devices$(if $(CONFIG_L4_USE_L4VMM_DBG),-dbg).o
+
+L4LIBS_PATH	= -L$(L4OBJ)/lib/$(L4_MK_ARCH)_$(L4_MK_CPU)/$(L4_MK_API) \
 		  -L$(L4OBJ)/lib/$(L4_MK_ARCH)_$(L4_MK_CPU) \
 		  -L$(L4OBJ)/lib
 
@@ -166,12 +197,13 @@ L4INC		= -I$(L4OBJ)/include/$(L4_MK_ARCH)/$(L4_MK_API) \
 		  -I$(L4BID_DICE_INCDIR) \
 		  $(L4LX_E_I-y)
 
-libs-static-n = -llogserver -ldm_mem -ldm_generic -lgeneric_ts \
+L4LIBS-$(CONFIG_L4_STATIC_BUILD) = \
+                  -llogserver -ldm_mem -ldm_generic -lgeneric_ts \
                   -ll4rm -ll4env -lthread -lsigma0 $(L4LX_E_L-y) \
                   -lsemaphore -lnames -ll4env_err -lgeneric_fprov \
                   -ll4util_root -lslab -levents -lc_be_l4env_start_stop \
-		  -lroot \
-                  $(shell $(CC) -print-file-name=libgcc.a)
+                  -lroot \
+		  $(shell $(CC) -print-file-name=libgcc.a)
 
 head-y := arch/l4/kernel/head.o arch/l4/kernel/init_task.o
 
@@ -182,6 +214,8 @@ libs-y				+= arch/l4/lib/arch-$(BASEARCH)/	\
 core-y				+= arch/l4/kernel/			\
 				   arch/l4/kernel/arch-$(BASEARCH)/	\
 				   arch/l4/mm/arch-$(BASEARCH)/
+core-$(CONFIG_L4_ARCH_X86)	+= arch/x86/crypto/
+core-$(CONFIG_L4_ARCH_X86)	+= arch/x86/vdso/
 
 ifeq ($(BASEARCH),i386)
 drivers-$(CONFIG_PCI)		+= arch/l4/pci/
@@ -192,39 +226,47 @@ ifeq ($(BASEARCH),arm)
 core-$(CONFIG_FPE_NWFPE)	+= arch/arm/nwfpe/
 endif
 
-libs-y				+= $(L4LIBS) -lio-ll -ldm_phys \
+L4LIBS-y			:= $(L4LIBS_PATH) -lio-ll -ldm_phys \
 				   -ll4util -ll4sys $(L4LX_E_L-y) \
-				   $(libs-static-y)
+				   $(L4LIBS-y)
 
-libs-$(CONFIG_L4_FERRET)	+= -lferret_client -lferret_producer \
-				   -lferret_init
-
-boot := arch/l4/boot
+ifeq ($(CONFIG_L4_LDR),y)
+  libs-y			+= $(L4LIBS_PATH) -ll4sys
+  export L4INC L4LIBS_PATH L4LIBS-y
+else
+  libs-y			+= $(L4LIBS-y)
+endif
 
 MACH_INC_i386	:= -Iinclude/asm-l4/$(LINSRCARCH)-arch/asm/mach-default
 MACH_INC_arm	:= -Iinclude/asm-l4/$(BASEARCH)-arch
+L4_CRT0		:= $(L4OBJ)/lib/$(L4_MK_ARCH)_$(L4_MK_CPU)/crt0.o
+L4_DYNLINK	:= --dynamic-linker libld-l4.s.so $(L4_CRT0) \
+                   -lloader.s $(L4LX_E_L_O-y) -z now
+export L4_DYNLINK
 
-LDFLAGS_vmlinux-dynamic = --dynamic-linker libld-l4.s.so \
-                          $(L4OBJ)/lib/$(L4_MK_ARCH)_$(L4_MK_CPU)/crt0.o \
-                          -lloader.s $(L4LX_E_L_O-y) -z now
-LDFLAGS_vmlinux-static  = $(L4OBJ)/lib/$(L4_MK_ARCH)_$(L4_MK_CPU)/crt0.o
+ifeq ($(CONFIG_L4_STATIC_BUILD),y)
+  LDFLAGS_vmlinux  = $(L4_CRT0)
+else
+  ifeq ($(CONFIG_L4_LDR),y)
+    LDFLAGS_vmlinux  = 
+  else
+    LDFLAGS_vmlinux  = $(L4_DYNLINK)
+  endif
+endif
 
-LDFLAGS_vmlinux	+= $(LDFLAGS_vmlinux-dynamic)
-KBUILD_CPPFLAGS	+= -Iinclude/asm-l4/l4-arch -Iinclude/asm-l4/$(LINSRCARCH)-arch \
+KBUILD_CPPFLAGS	+= -Iinclude/asm-l4/l4-arch \
+		   -Iinclude/asm-l4/$(LINSRCARCH)-arch \
 		   $(MACH_INC_$(BASEARCH)) $(L4INC) $(CPPFLAGS_SYSENTER-y) \
 		   $(L4BID_CPPFLAGS_SYSCALLS-y)
 
 # for DICE
 KBUILD_CPPFLAGS	+= -DL4API_$(L4_MK_API)
 
-# IDL also generates header files
-KBUILD_CPPFLAGS	+= -I$(obj)/arch/l4/idl
-
-all: vmlinuzimage
+all: lImage
 
 boot := arch/l4/boot
 
-vmlinuzimage: vmlinux
+lImage: vmlinux
 	$(Q)$(MAKE) $(build)=$(boot) $@
 
 mtags:
@@ -320,6 +362,10 @@ check_linux_config:
 	  if [ -n "$$failed" ]; then                       \
 	    echo; exit 1;                                  \
 	  fi
+	@if [ "$(CONFIG_X86)" = "y" -a "$(CONFIG_PAGE_OFFSET)" != "0" ]; then \
+	  echo "CONFIG_PAGE_OFFSET must be 0."; \
+	  exit 1; \
+	fi
 
 PHONY += chkl4conf check_linux_config
 

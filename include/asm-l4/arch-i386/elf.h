@@ -7,22 +7,22 @@
 /* ...but dosen't have segment registers */
 #undef ELF_CORE_COPY_REGS
 #define ELF_CORE_COPY_REGS(pr_reg, regs)		\
-	pr_reg[0] = regs->ebx;				\
-	pr_reg[1] = regs->ecx;				\
-	pr_reg[2] = regs->edx;				\
-	pr_reg[3] = regs->esi;				\
-	pr_reg[4] = regs->edi;				\
-	pr_reg[5] = regs->ebp;				\
-	pr_reg[6] = regs->eax;				\
+	pr_reg[0] = regs->bx;				\
+	pr_reg[1] = regs->cx;				\
+	pr_reg[2] = regs->dx;				\
+	pr_reg[3] = regs->si;				\
+	pr_reg[4] = regs->di;				\
+	pr_reg[5] = regs->bp;				\
+	pr_reg[6] = regs->ax;				\
 	pr_reg[7] = 0; /* fake ds */			\
 	pr_reg[8] = 0; /* fake es */			\
-	pr_reg[9] = regs->xfs; ;			\
+	pr_reg[9] = regs->fs;				\
 	pr_reg[10] = 0; /* fake gs */			\
-	pr_reg[11] = regs->orig_eax;			\
-	pr_reg[12] = regs->eip;				\
+	pr_reg[11] = regs->orig_ax;			\
+	pr_reg[12] = regs->ip;				\
 	pr_reg[13] = 0; /* fake cs */			\
-	pr_reg[14] = regs->eflags;			\
-	pr_reg[15] = regs->esp;				\
+	pr_reg[14] = regs->flags;			\
+	pr_reg[15] = regs->sp;				\
 	pr_reg[16] = 0; /* fake ss */
 
 #include <asm/api/config.h>

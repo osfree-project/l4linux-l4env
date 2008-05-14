@@ -27,7 +27,7 @@
 /* __bss_stop is not defined in asm-generic/sections.h */
 extern char __bss_stop[];
 
-fastcall int l4x_do_page_fault(unsigned long address, unsigned long error_code);
+int l4x_do_page_fault(unsigned long address, unsigned long error_code);
 
 static inline pte_t *lookup_pte(pgd_t *page_dir, unsigned long address)
 {
@@ -82,7 +82,7 @@ static inline int l4x_pte_read(pte_t pte)
 }
 
 static inline unsigned long parse_ptabs_read(unsigned long address,
-                                             unsigned long *offset) 
+                                             unsigned long *offset)
 {
 	pte_t *ptep = lookup_pte((pgd_t *)current->mm->pgd, address);
 
@@ -93,7 +93,7 @@ static inline unsigned long parse_ptabs_read(unsigned long address,
 
 	if ((ptep == NULL) || !pte_present(*ptep)) {
 		if (l4x_do_page_fault(address,
-		                     PF_EKERNEL|PF_EREAD|PF_ENOTPRESENT) == -1) 
+		                      PF_EKERNEL|PF_EREAD|PF_ENOTPRESENT) == -1)
 			return -EFAULT;
 
 		if (ptep == NULL)

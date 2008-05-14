@@ -95,12 +95,12 @@ static inline int l4x_is_triggered_exception(l4_umword_t val)
 
 static inline unsigned long regs_pc(struct thread_struct *t)
 {
-	return t->regs.eip;
+	return t->regs.ip;
 }
 
 static inline unsigned long regs_sp(struct thread_struct *t)
 {
-	return t->regs.esp;
+	return t->regs.sp;
 }
 
 static inline void l4x_arch_task_setup(struct thread_struct *t)
@@ -148,7 +148,7 @@ static inline void l4x_arch_task_start_setup(struct task_struct *p)
 	unsigned int v = (gs & 0xffff) >> 3;
 	if (   v < l4x_fiasco_gdt_entry_offset
 	    || v > l4x_fiasco_gdt_entry_offset + 3)
-		p->thread.regs.xfs = gs;
+		p->thread.regs.fs = gs;
 
 	/* Setup LDTs */
 	if (p->mm && p->mm->context.size)
@@ -157,7 +157,7 @@ static inline void l4x_arch_task_start_setup(struct task_struct *p)
 		               p->thread.user_thread_id.id.task);
 }
 
-extern void fastcall do_signal(struct pt_regs *regs);
+extern void do_signal(struct pt_regs *regs);
 static inline int l4x_do_signal(struct pt_regs *regs, int syscall)
 {
 	do_signal(regs);
@@ -166,7 +166,6 @@ static inline int l4x_do_signal(struct pt_regs *regs, int syscall)
 
 // foo
 extern void l4x_show_sigpending_processes(void);
-extern void schedule_tail(struct task_struct *prev);
 
 static inline l4_umword_t l4x_l4pfa(struct thread_struct *t)
 {
@@ -180,10 +179,12 @@ static inline int l4x_ispf(struct thread_struct *t)
 
 static inline void l4x_print_regs(struct thread_struct *t)
 {
-	printk("eip: %08lx esp: %08lx err: %08lx trp: %08lx\n",
-	       t->regs.eip, t->regs.esp, t->error_code, t->trap_no);
-	printk("eax: %08lx ebx: %08lx ecx: %08lx edx: %08lx\n",
-	       t->regs.eax, t->regs.ebx, t->regs.ecx, t->regs.edx);
+	printk("ip: %08lx sp: %08lx err: %08lx trp: %08lx\n",
+	       t->regs.ip, t->regs.sp, t->error_code, t->trap_no);
+	printk("ax: %08lx bx: %08lx  cx: %08lx  dx: %08lx\n",
+	       t->regs.ax, t->regs.bx, t->regs.cx, t->regs.dx);
+	printk("di: %08lx si: %08lx  bp: %08lx\n",
+	       t->regs.di, t->regs.si, t->regs.bp);
 }
 
 asmlinkage void ret_from_fork(void) __asm__("ret_from_fork");
@@ -221,7 +222,7 @@ static void l4x_setup_next_exec(struct task_struct *p, unsigned long f)
 	*--sp = 0;
 	*--sp = f;
 
-	p->thread.esp = (unsigned long)sp;
+	p->thread.sp = (unsigned long)sp;
 }
 
 void l4x_setup_user_dispatcher_after_fork(struct task_struct *p)
@@ -229,9 +230,96 @@ void l4x_setup_user_dispatcher_after_fork(struct task_struct *p)
 	l4x_setup_next_exec(p, (unsigned long)ret_from_fork);
 }
 
+static inline void // from process.c
+__switch_to_xtra(struct task_struct *prev_p, struct task_struct *next_p,
+                 struct tss_struct *tss)
+{
+	struct thread_struct *prev, *next;
+	//unsigned long debugctl;
+
+	prev = &prev_p->thread;
+	next = &next_p->thread;
+
+#ifdef NOT_FOR_L4
+	debugctl = prev->debugctlmsr;
+	if (next->ds_area_msr != prev->ds_area_msr) {
+		/* we clear debugctl to make sure DS
+		 * is not in use when we change it */
+		debugctl = 0;
+		wrmsrl(MSR_IA32_DEBUGCTLMSR, 0);
+		wrmsr(MSR_IA32_DS_AREA, next->ds_area_msr, 0);
+	}
+
+	if (next->debugctlmsr != debugctl)
+		wrmsr(MSR_IA32_DEBUGCTLMSR, next->debugctlmsr, 0);
+
+	if (test_tsk_thread_flag(next_p, TIF_DEBUG)) {
+		set_debugreg(next->debugreg0, 0);
+		set_debugreg(next->debugreg1, 1);
+		set_debugreg(next->debugreg2, 2);
+		set_debugreg(next->debugreg3, 3);
+		/* no 4 and 5 */
+		set_debugreg(next->debugreg6, 6);
+		set_debugreg(next->debugreg7, 7);
+	}
+
+#ifdef CONFIG_SECCOMP
+	if (test_tsk_thread_flag(prev_p, TIF_NOTSC) ^
+	    test_tsk_thread_flag(next_p, TIF_NOTSC)) {
+		/* prev and next are different */
+		if (test_tsk_thread_flag(next_p, TIF_NOTSC))
+			hard_disable_TSC();
+		else
+			hard_enable_TSC();
+	}
+#endif
+#endif
+
+#ifdef X86_BTS
+	if (test_tsk_thread_flag(prev_p, TIF_BTS_TRACE_TS))
+		ptrace_bts_take_timestamp(prev_p, BTS_TASK_DEPARTS);
+
+	if (test_tsk_thread_flag(next_p, TIF_BTS_TRACE_TS))
+		ptrace_bts_take_timestamp(next_p, BTS_TASK_ARRIVES);
+#endif
+
+#ifdef NOT_FOR_L4
+	if (!test_tsk_thread_flag(next_p, TIF_IO_BITMAP)) {
+		/*
+		 * Disable the bitmap via an invalid offset. We still cache
+		 * the previous bitmap owner and the IO bitmap contents:
+		 */
+		tss->x86_tss.io_bitmap_base = INVALID_IO_BITMAP_OFFSET;
+		return;
+	}
+
+	if (likely(next == tss->io_bitmap_owner)) {
+		/*
+		 * Previous owner of the bitmap (hence the bitmap content)
+		 * matches the next task, we dont have to do anything but
+		 * to set a valid offset in the TSS:
+		 */
+		tss->x86_tss.io_bitmap_base = IO_BITMAP_OFFSET;
+		return;
+	}
+	/*
+	 * Lazy TSS's I/O bitmap copy. We set an invalid offset here
+	 * and we let the task to get a GPF in case an I/O instruction
+	 * is performed.  The handler of the GPF will verify that the
+	 * faulting task has a valid I/O bitmap and, it true, does the
+	 * real copy and restart the instruction.  This will save us
+	 * redundant copies when the currently switched task does not
+	 * perform any I/O during its timeslice.
+	 */
+	tss->x86_tss.io_bitmap_base = INVALID_IO_BITMAP_OFFSET_LAZY;
+#endif
+}
+
+
+
 #include <asm/generic/stack_id.h>
-//struct task_struct fastcall * __switch_to(struct task_struct *prev, struct task_struct *next)
-void fastcall l4x_switch_to(struct task_struct *prev, struct task_struct *next)
+
+void l4x_switch_to(struct task_struct *prev, struct task_struct *next)
 {
 #if 0
 	LOG_printf("%s: " PRINTF_L4TASK_FORM ": %s(%d)[%ld] -> %s(%d)[%ld]\n",
@@ -243,6 +331,12 @@ void fastcall l4x_switch_to(struct task_struct *prev, struct task_struct *next)
 
 	__unlazy_fpu(prev);
 	per_cpu(l4x_current_process, smp_processor_id()) = next;
+
+	if (unlikely(task_thread_info(prev)->flags & _TIF_WORK_CTXSW_PREV ||
+	             task_thread_info(next)->flags & _TIF_WORK_CTXSW_NEXT))
+		__switch_to_xtra(prev, next, NULL);
+
+
 	x86_write_percpu(current_task, next);
 
 #ifdef CONFIG_SMP
@@ -301,8 +395,8 @@ static inline void dispatch_system_call(struct task_struct *p)
 
 	//syscall_count++;
 
-	regsp->orig_eax = syscall = regsp->eax;
-	regsp->eax = -ENOSYS;
+	regsp->orig_ax = syscall = regsp->ax;
+	regsp->ax = -ENOSYS;
 
 #ifdef CONFIG_L4_FERRET_SYSCALL_COUNTER
 	ferret_histo_bin_inc(l4x_ferret_syscall_ctr, syscall);
@@ -313,7 +407,7 @@ static inline void dispatch_system_call(struct task_struct *p)
 		char *filename;
 		printk("execve: pid: %d(%s), " PRINTF_L4TASK_FORM ": ",
 		       p->pid, p->comm, PRINTF_L4TASK_ARG(p->thread.user_thread_id));
-		filename = getname((char *)regsp->ebx);
+		filename = getname((char *)regsp->bx);
 		printk("%s\n", IS_ERR(filename) ? "UNKNOWN" : filename);
 	}
 #endif
@@ -325,21 +419,22 @@ static inline void dispatch_system_call(struct task_struct *p)
 #endif
 #if 0
 	LOG_printf("Syscall %3d for %s(%d at %p): arg1 = %lx\n",
-	           syscall, p->comm, p->pid, (void *)regsp->eip,
-	           regsp->ebx);
+	           syscall, p->comm, p->pid, (void *)regsp->ip,
+	           regsp->bx);
 #endif
 
 #if 0
 	if (syscall == 120)
 		LOG_printf("Syscall %3d for %s(%d at %p): arg1 = %lx\n",
-		           syscall, p->comm, p->pid, (void *)regsp->eip,
-		           regsp->ebx);
+		           syscall, p->comm, p->pid, (void *)regsp->ip,
+		           regsp->bx);
 #endif
 	if (!is_lx_syscall(syscall))
 	{
+	  // XXX
 	LOG_printf("Syscall %3d for %s(%d at %p): arg1 = %lx\n",
-	           syscall, p->comm, p->pid, (void *)regsp->eip,
-	           regsp->ebx);
+	           syscall, p->comm, p->pid, (void *)regsp->ip,
+	           regsp->bx);
 		enter_kdebug("no syscall");
 	}
 	if (likely((is_lx_syscall(syscall))
@@ -354,17 +449,17 @@ static inline void dispatch_system_call(struct task_struct *p)
 		                | _TIF_SECCOMP
 		                | _TIF_SYSCALL_AUDIT))) {
 			do_syscall_trace(regsp, 0);
-			regsp->eax = syscall_fn(regsp->ebx, regsp->ecx,
-						regsp->edx, regsp->esi,
-						regsp->edi, regsp->ebp);
+			regsp->ax = syscall_fn(regsp->bx, regsp->cx,
+			                       regsp->dx, regsp->si,
+			                       regsp->di, regsp->bp);
 			do_syscall_trace(regsp, 1);
 		} else {
-			regsp->eax = syscall_fn(regsp->ebx, regsp->ecx,
-						regsp->edx, regsp->esi,
-						regsp->edi, regsp->ebp);
+			regsp->ax = syscall_fn(regsp->bx, regsp->cx,
+			                       regsp->dx, regsp->si,
+			                       regsp->di, regsp->bp);
 		}
 	}
-	//LOG_printf("syscall: %d ret=%d\n", syscall, regsp->eax);
+	//LOG_printf("syscall: %d ret=%d\n", syscall, regsp->ax);
 
 	if (signal_pending(p))
 		l4x_do_signal(regsp, syscall);
@@ -374,8 +469,8 @@ static inline void dispatch_system_call(struct task_struct *p)
 
 #if 0
 	LOG_printf("Syscall %3d for %s(%d at %p): return %lx\n",
-	           syscall, p->comm, p->pid, (void *)regsp->eip,
-	           regsp->eax);
+	           syscall, p->comm, p->pid, (void *)regsp->ip,
+	           regsp->ax);
 #endif
 	if (unlikely(syscall == -38))
 		enter_kdebug("no ssycall");
@@ -390,27 +485,27 @@ static inline int l4x_port_emulation(struct pt_regs *regs)
 {
 	u8 op;
 
-	if (get_user(op, (char *)regs->eip))
+	if (get_user(op, (char *)regs->ip))
 		return 0; /* User memory could not be accessed */
 
-	//printf("OP: %x (eip: %08x) dx = 0x%x\n", op, regs->eip, regs->edx & 0xffff);
+	//printf("OP: %x (ip: %08x) dx = 0x%x\n", op, regs->ip, regs->edx & 0xffff);
 
 	switch (op) {
 		case 0xed: /* in dx, eax */
 		case 0xec: /* in dx, al */
-			switch (regs->edx & 0xffff) {
+			switch (regs->dx & 0xffff) {
 				case 0xcf8:
 				case 0x3da:
 				case 0x3cc:
 				case 0x3c1:
-					regs->eax = -1;
-					regs->eip++;
+					regs->ax = -1;
+					regs->ip++;
 					return 1;
 			};
 		case 0xee: /* out al, dx */
-			switch (regs->edx & 0xffff) {
+			switch (regs->dx & 0xffff) {
 				case 0x3c0:
-					regs->eip++;
+					regs->ip++;
 					return 1;
 			};
 	};
@@ -429,7 +524,7 @@ static inline int l4x_port_emulation(struct pt_regs *regs)
 static int l4x_kdebug_emulation(struct pt_regs *regs)
 {
 	u8 op = 0, val;
-	char *addr = (char *)regs->eip;
+	char *addr = (char *)regs->ip;
 	int i, len;
 
 	if (get_user(op, addr))
@@ -445,7 +540,7 @@ static int l4x_kdebug_emulation(struct pt_regs *regs)
 	if (op == 0xeb) { /* enter_kdebug */
 		if (get_user(len, addr + 2))
 			return 0; /* Access failure */
-		regs->eip += len + 3;
+		regs->ip += len + 3;
 		outstring("User enter_kdebug text: ");
 		for (i = 3; len; len--) {
 			if (get_user(val, addr + i++))
@@ -462,44 +557,44 @@ static int l4x_kdebug_emulation(struct pt_regs *regs)
 			return 0; /* Access failure */
 		switch (op) {
 			case 0: /* outchar */
-				outchar(regs->eax & 0xff);
+				outchar(regs->ax & 0xff);
 				break;
 			case 1: /* outnstring */
-				len = regs->ebx;
+				len = regs->bx;
 				for (i = 0;
-				     !get_user(val, (char *)(regs->eax + i++))
+				     !get_user(val, (char *)(regs->ax + i++))
 				     && len;
 				     len--)
 					outchar(val);
 				break;
 			case 2: /* outstring */
 				for (i = 0;
-				     !get_user(val, (char *)(regs->eax + i++))
+				     !get_user(val, (char *)(regs->ax + i++))
 				     && val;)
 					outchar(val);
 				break;
 			case 5: /* outhex32 */
-				outhex32(regs->eax);
+				outhex32(regs->ax);
 				break;
 			case 6: /* outhex20 */
-				outhex20(regs->eax);
+				outhex20(regs->ax);
 				break;
 			case 7: /* outhex16 */
-				outhex16(regs->eax);
+				outhex16(regs->ax);
 				break;
 			case 8: /* outhex12 */
-				outhex12(regs->eax);
+				outhex12(regs->ax);
 				break;
 			case 9: /* outhex8 */
-				outhex8(regs->eax);
+				outhex8(regs->ax);
 				break;
 			case 11: /* outdec */
-				outdec(regs->eax);
+				outdec(regs->ax);
 				break;
 			default:
 				return 0; /* Did not understand */
 		};
-		regs->eip += 3;
+		regs->ip += 3;
 		return 1; /* handled */
 	}
 
@@ -520,18 +615,18 @@ static inline int l4x_dispatch_exception(struct task_struct *p,
 
 	if (t->trap_no == 0xff) {
 		/* we come here for suspend events */
-		TBUF_LOG_SUSPEND(fiasco_tbuf_log_3val("dsp susp", TBUF_TID(t->user_thread_id), regs->eip, 0));
+		TBUF_LOG_SUSPEND(fiasco_tbuf_log_3val("dsp susp", TBUF_TID(t->user_thread_id), regs->ip, 0));
 		l4x_dispatch_suspend(p, t);
 
 		return 0;
 	} else if (likely(t->trap_no == 0xd && t->error_code == 0x402)) {
 		/* int 0x80 is trap 0xd and err 0x402 (0x80 << 3 | 2) */
 
-		TBUF_LOG_INT80(fiasco_tbuf_log_3val("int80  ", TBUF_TID(t->user_thread_id), regs->eip, regs->eax));
+		TBUF_LOG_INT80(fiasco_tbuf_log_3val("int80  ", TBUF_TID(t->user_thread_id), regs->ip, regs->ax));
 
 		/* set after int 0x80, before syscall so the forked childs
 		 * get the increase too */
-		regs->eip += 2;
+		regs->ip += 2;
 
 		dispatch_system_call(p);
 
@@ -547,8 +642,6 @@ static inline int l4x_dispatch_exception(struct task_struct *p,
 		return 2;
 
 	} else if (t->trap_no == 7) {
-
-		extern asmlinkage void math_state_restore(void/*struct pt_regs regs*/);
 		math_state_restore();
 
 		/* XXX: math emu*/
@@ -559,12 +652,12 @@ static inline int l4x_dispatch_exception(struct task_struct *p,
 	} else if (unlikely(t->trap_no == 0x1)) {
 		/* Singlestep */
 #if 0
-		LOG_printf("eip: %08lx esp: %08lx err: %08lx trp: %08lx\n",
-		           regs->eip, regs->esp,
+		LOG_printf("ip: %08lx sp: %08lx err: %08lx trp: %08lx\n",
+		           regs->ip, regs->sp,
 		           t->error_code, t->trap_no);
-		LOG_printf("eax: %08lx ebx: %08lx ecx: %08lx edx: %08lx\n",
-		           regs->eax, regs->ebx, regs->ecx,
-		           regs->edx);
+		LOG_printf("ax: %08lx ebx: %08lx ecx: %08lx edx: %08lx\n",
+		           regs->ax, regs->bx, regs->cx,
+		           regs->dx);
 #endif
 		return 0;
 	} else if (t->trap_no == 0xd) {

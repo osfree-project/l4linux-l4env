@@ -67,7 +67,7 @@ void l4lx_thread_init(void);
  *                             |----------------- ESP for new thread
  * </pre>
  */
-l4_threadid_t l4lx_thread_create(void (*thread_func)(void *data),
+l4_threadid_t l4lx_thread_create(L4_CV void (*thread_func)(void *data),
                                  unsigned cpu,
 				 void *stack_pointer,
 				 void *stack_data, unsigned stack_data_size,

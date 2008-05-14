@@ -265,7 +265,7 @@ static inline void wait_for_irq_message(unsigned irq, l4_threadid_t irq_th,
  * IRQ thread, here we sit in a loop waiting to handle
  * incoming interrupts
  */
-static void irq_thread_hw(void *data)
+static L4_CV void irq_thread_hw(void *data)
 {
 	l4_threadid_t irq_th;
 	unsigned irq = *(unsigned *)data;
@@ -296,7 +296,7 @@ static void irq_thread_hw(void *data)
 	}
 } /* irq_thread_hw */
 
-static void irq_thread_virt(void *data)
+static L4_CV void irq_thread_virt(void *data)
 {
 	l4_threadid_t irq_th;
 	unsigned irq = *(unsigned *)data;

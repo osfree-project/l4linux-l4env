@@ -22,6 +22,7 @@
 #include <linux/platform_device.h>
 #include <linux/screen_info.h>
 
+#include <asm/generic/l4lib.h>
 #include <l4/env/errno.h>
 #include <l4/names/libnames.h>
 #include <l4/dm_phys/dm_phys.h>
@@ -52,6 +53,33 @@ enum mode {
 	MODE_CON
 };
 
+typedef L4_CV void stream_io_push_component_t(CORBA_Object _dice_corba_obj,
+                                              const stream_io_input_event_t *event,
+                                              CORBA_Server_Environment *_dice_corba_env);
+L4_CV void register_stream_io_push_component(stream_io_push_component_t *func);
+
+L4_EXTERNAL_FUNC(register_stream_io_push_component);
+
+L4_EXTERNAL_FUNC(dope_cmd);
+L4_EXTERNAL_FUNC(dope_cmdf);
+L4_EXTERNAL_FUNC(dope_deinit_app);
+L4_EXTERNAL_FUNC(dope_eventloop);
+L4_EXTERNAL_FUNC(dope_init);
+L4_EXTERNAL_FUNC(dope_init_app);
+L4_EXTERNAL_FUNC(dope_bind);
+L4_EXTERNAL_FUNC(vscr_get_fb);
+
+L4_EXTERNAL_FUNC(con_vc_close_call);
+L4_EXTERNAL_FUNC(con_vc_direct_update_call);
+L4_EXTERNAL_FUNC(stream_io_server_loop);
+L4_EXTERNAL_FUNC(con_vc_share_call);
+L4_EXTERNAL_FUNC(con_if_openqry_call);
+L4_EXTERNAL_FUNC(con_vc_smode_call);
+L4_EXTERNAL_FUNC(con_vc_graph_gmode_call);
+L4_EXTERNAL_FUNC(con_vc_graph_get_rgb_call);
+L4_EXTERNAL_FUNC(con_vc_direct_setfb_call);
+
+
 static unsigned int xres = SCR_DFL_WIDTH, yres = SCR_DFL_HEIGHT;
 static unsigned int depth;
 
@@ -59,7 +87,7 @@ static unsigned int dope_xpos = 120, dope_ypos = 60;
 static char *dope_window_title = "Linux console";
 static unsigned int nograb;
 static l4dm_dataspace_t fbds;
-static int disable, use_con, use_dope;
+static int disable, use_con, use_dope, dope_back;
 
 static enum mode mode = MODE_NONE;
 
@@ -371,7 +399,7 @@ static void l4fb_dope_input_callback(dope_event *e, void *arg)
 	input_sync(inp);
 }
 
-static void l4fb_dope_input_thread(void *data)
+static L4_CV void l4fb_dope_input_thread(void *data)
 {
 	l4x_prepare_irq_thread(current_thread_info(), 0);
 	dope_eventloop(dope_app_id);
@@ -401,7 +429,9 @@ static int l4fb_input_setup_generic(void)
 	for (i = 0; i < 0x100; i++)
 		set_bit(i, l4input_dev_key->keybit);
 
-	input_register_device(l4input_dev_key);
+	i = input_register_device(l4input_dev_key);
+	if (i)
+		return i;
 
 	/* Mouse */
 	l4input_dev_mouse->name = "l4input mouse";
@@ -444,7 +474,9 @@ static int l4fb_input_setup_generic(void)
 	l4input_dev_mouse->absflat[ABS_X] = 0;
 	l4input_dev_mouse->absflat[ABS_Y] = 0;
 
-	input_register_device(l4input_dev_mouse);
+	i = input_register_device(l4input_dev_mouse);
+	if (i)
+		return i;
 
 	return 0;
 }
@@ -473,9 +505,9 @@ static __attribute__((unused)) void l4fb_dope_input_cleanup(void)
 	input_unregister_device(l4input_dev_mouse);
 }
 
-void stream_io_push_component(CORBA_Object _dice_corba_obj,
-                              const stream_io_input_event_t *event,
-                              CORBA_Server_Environment *_dice_corba_env)
+L4_CV void stream_io_push_component(CORBA_Object _dice_corba_obj,
+                                    const stream_io_input_event_t *event,
+                                    CORBA_Server_Environment *_dice_corba_env)
 {
 	struct input_event *e = (struct input_event *)event;
 
@@ -508,13 +540,13 @@ void stream_io_push_component(CORBA_Object _dice_corba_obj,
 	}
 }
 
-static void l4fb_con_input_thread(void *data)
+static L4_CV void l4fb_con_input_thread(void *data)
 {
 	l4x_prepare_irq_thread(current_thread_info(), 0);
 	stream_io_server_loop(NULL);
 }
 
-static void l4fb_con_update_thread(void *data)
+static L4_CV void l4fb_con_update_thread(void *data)
 {
 	l4x_prepare_irq_thread(current_thread_info(), 0);
 	while (1) {
@@ -526,6 +558,10 @@ static void l4fb_con_update_thread(void *data)
 
 static int l4fb_con_input_setup(l4_threadid_t *id)
 {
+#ifdef CONFIG_L4_LDR
+	register_stream_io_push_component(stream_io_push_component);
+#endif
+
 	l4fb_input_thread = l4lx_thread_create(l4fb_con_input_thread, 0,
 	                                       NULL, NULL, 0,
 	                                       CONFIG_L4_PRIO_L4FB_INPUT,
@@ -538,7 +574,7 @@ static int l4fb_con_input_setup(l4_threadid_t *id)
 	return l4fb_input_setup_generic();
 }
 
-static void l4fb_create_refresher_thread(void (*refresher_thread)(void *),
+static void l4fb_create_refresher_thread(L4_CV void (*refresher_thread)(void *),
                                          const char *const name_tag)
 {
 	if (!l4fb_refresh_sleep)
@@ -692,7 +728,7 @@ static void l4fb_con_exit(void)
  * We need that for X or similar where no update events are available
  * with the fbdev X driver.
  */
-static void l4fb_dope_update_thread(void *data)
+static L4_CV void l4fb_dope_update_thread(void *data)
 {
 	l4x_prepare_irq_thread(current_thread_info(), 0);
 	while (1) {
@@ -723,6 +759,8 @@ static unsigned long l4fb_dope_init(struct fb_var_screeninfo *var,
 		dope_cmd(dope_app_id, "l4lxvscr.set(-grabmouse yes)");
 	dope_cmdf(dope_app_id,"l4lxwin.set(-x %d -y %d -workw %d -workh %d -background off -content l4lxvscr)", dope_xpos, dope_ypos, xres, yres);
 	dope_cmd(dope_app_id, "l4lxwin.open()");
+	if (dope_back)
+		dope_cmd(dope_app_id, "l4lxwin.back()");
 
 	/* hard-coded since DOpE doesn't support anything else right now */
 	var->bits_per_pixel = 16; /* also 16 for 15bpp modi */
@@ -971,3 +1009,5 @@ module_param(use_dope, bool, 0);
 MODULE_PARM_DESC(use_dope, "Use DOpE only");
 module_param(use_con, bool, 0);
 MODULE_PARM_DESC(use_con, "Use l4con only");
+module_param(dope_back, bool, 0);
+MODULE_PARM_DESC(dope_back, "Put DOpE window in background");

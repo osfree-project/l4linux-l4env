@@ -76,11 +76,16 @@ EXPORT_SYMBOL_GPL(used_vectors);
 #include <l4/sys/syscalls.h>
 #include <asm/l4lxapi/thread.h>
 
-struct desc_struct default_ldt[] = { { 0, 0 }, { 0, 0 }, { 0, 0 },
-		{ 0, 0 }, { 0, 0 } };
-
 /* Do we ignore FPU interrupts ? */
 char ignore_fpu_irq = 0;
+
+/*
+ * The IDT has to be page-aligned to simplify the Pentium
+ * F0 0F bug workaround.. We have a special link segment
+ * for this.
+ */
+gate_desc idt_table[256]
+        __attribute__((__section__(".data.idt"))) = { { { { 0, 0 } } }, };
 
 void divide_error(void);
 void debug(void);
@@ -108,6 +113,34 @@ void machine_check(void);
 int kstack_depth_to_print = 24;
 static unsigned int code_bytes = 64;
 
+void printk_address(unsigned long address, int reliable)
+{
+#ifdef CONFIG_KALLSYMS
+	unsigned long offset = 0, symsize;
+	const char *symname;
+	char *modname;
+	char *delim = ":";
+	char namebuf[128];
+	char reliab[4] = "";
+
+	symname = kallsyms_lookup(address, &symsize, &offset,
+					&modname, namebuf);
+	if (!symname) {
+		printk(" [<%08lx>]\n", address);
+		return;
+	}
+	if (!reliable)
+		strcpy(reliab, "? ");
+
+	if (!modname)
+		modname = delim = "";
+	printk(" [<%08lx>] %s%s%s%s%s+0x%lx/0x%lx\n",
+		address, reliab, delim, modname, delim, symname, offset, symsize);
+#else
+	printk(" [<%08lx>]\n", address);
+#endif
+}
+
 static inline int valid_stack_ptr(struct thread_info *tinfo, void *p, unsigned size)
 {
 	return	p > (void *)tinfo &&
@@ -121,48 +154,35 @@ struct stack_frame {
 };
 
 static inline unsigned long print_context_stack(struct thread_info *tinfo,
-				unsigned long *stack, unsigned long ebp,
+				unsigned long *stack, unsigned long bp,
 				const struct stacktrace_ops *ops, void *data)
 {
-#ifdef	CONFIG_FRAME_POINTER
-	struct stack_frame *frame = (struct stack_frame *)ebp;
-	while (valid_stack_ptr(tinfo, frame, sizeof(*frame))) {
-		struct stack_frame *next;
-		unsigned long addr;
+	struct stack_frame *frame = (struct stack_frame *)bp;
 
-		addr = frame->return_address;
-		ops->address(data, addr);
-		/*
-		 * break out of recursive entries (such as
-		 * end_of_stack_stop_unwind_function). Also,
-		 * we can never allow a frame pointer to
-		 * move downwards!
-		 */
-		next = frame->next_frame;
-		if (next <= frame)
-			break;
-		frame = next;
-	}
-#else
 	while (valid_stack_ptr(tinfo, stack, sizeof(*stack))) {
 		unsigned long addr;
 
-		addr = *stack++;
-		if (__kernel_text_address(addr))
-			ops->address(data, addr);
+		addr = *stack;
+		if (__kernel_text_address(addr)) {
+			if ((unsigned long) stack == bp + 4) {
+				ops->address(data, addr, 1);
+				frame = frame->next_frame;
+				bp = (unsigned long) frame;
+			} else {
+				ops->address(data, addr, bp == 0);
+			}
+		}
+		stack++;
 	}
-#endif
-	return ebp;
+	return bp;
 }
 
 #define MSG(msg) ops->warning(data, msg)
 
 void dump_trace(struct task_struct *task, struct pt_regs *regs,
-	        unsigned long *stack,
+		unsigned long *stack, unsigned long bp,
 		const struct stacktrace_ops *ops, void *data)
 {
-	unsigned long ebp = 0;
-
 	if (!task)
 		task = current;
 
@@ -170,17 +190,17 @@ void dump_trace(struct task_struct *task, struct pt_regs *regs,
 		unsigned long dummy;
 		stack = &dummy;
 		if (task != current)
-			stack = (unsigned long *)task->thread.esp;
+			stack = (unsigned long *)task->thread.sp;
 	}
 
 #ifdef CONFIG_FRAME_POINTER
-	if (!ebp) {
+	if (!bp) {
 		if (task == current) {
-			/* Grab ebp right from our regs */
-			asm ("movl %%ebp, %0" : "=r" (ebp) : );
+			/* Grab bp right from our regs */
+			asm ("movl %%ebp, %0" : "=r" (bp) : );
 		} else {
-			/* ebp is the last reg pushed by switch_to */
-			ebp = *(unsigned long *) task->thread.esp;
+			/* bp is the last reg pushed by switch_to */
+			bp = *(unsigned long *) task->thread.sp;
 		}
 	}
 #endif
@@ -189,7 +209,7 @@ void dump_trace(struct task_struct *task, struct pt_regs *regs,
 		struct thread_info *context;
 		context = (struct thread_info *)
 			((unsigned long)stack & (~(THREAD_SIZE - 1)));
-		ebp = print_context_stack(context, stack, ebp, ops, data);
+		bp = print_context_stack(context, stack, bp, ops, data);
 		/* Should be after the line below, but somewhere
 		   in early boot context comes out corrupted and we
 		   can't reference it -AK */
@@ -224,9 +244,11 @@ static int print_trace_stack(void *data, char *name)
 /*
  * Print one address/symbol entries per line.
  */
-static void print_trace_address(void *data, unsigned long addr)
+static void print_trace_address(void *data, unsigned long addr, int reliable)
 {
 	printk("%s [<%08lx>] ", (char *)data, addr);
+	if (!reliable)
+		printk("? ");
 	print_symbol("%s\n", addr);
 	touch_nmi_watchdog();
 }
@@ -240,32 +262,32 @@ static const struct stacktrace_ops print_trace_ops = {
 
 static void
 show_trace_log_lvl(struct task_struct *task, struct pt_regs *regs,
-		   unsigned long * stack, char *log_lvl)
+		unsigned long *stack, unsigned long bp, char *log_lvl)
 {
-	dump_trace(task, regs, stack, &print_trace_ops, log_lvl);
+	dump_trace(task, regs, stack, bp, &print_trace_ops, log_lvl);
 	printk("%s =======================\n", log_lvl);
 }
 
 void show_trace(struct task_struct *task, struct pt_regs *regs,
-		unsigned long * stack)
+		unsigned long *stack, unsigned long bp)
 {
-	show_trace_log_lvl(task, regs, stack, "");
+	show_trace_log_lvl(task, regs, stack, bp, "");
 }
 
 static void show_stack_log_lvl(struct task_struct *task, struct pt_regs *regs,
-			       unsigned long *esp, char *log_lvl)
+		       unsigned long *sp, unsigned long bp, char *log_lvl)
 {
 	unsigned long *stack;
 	int i;
 
-	if (esp == NULL) {
+	if (sp == NULL) {
 		if (task)
-			esp = (unsigned long*)task->thread.esp;
+			sp = (unsigned long*)task->thread.sp;
 		else
-			esp = (unsigned long *)&esp;
+			sp = (unsigned long *)&sp;
 	}
 
-	stack = esp;
+	stack = sp;
 	for(i = 0; i < kstack_depth_to_print; i++) {
 		if (kstack_end(stack))
 			break;
@@ -274,13 +296,13 @@ static void show_stack_log_lvl(struct task_struct *task, struct pt_regs *regs,
 		printk("%08lx ", *stack++);
 	}
 	printk("\n%sCall Trace:\n", log_lvl);
-	show_trace_log_lvl(task, regs, esp, log_lvl);
+	show_trace_log_lvl(task, regs, sp, bp, log_lvl);
 }
 
-void show_stack(struct task_struct *task, unsigned long *esp)
+void show_stack(struct task_struct *task, unsigned long *sp)
 {
 	printk("       ");
-	show_stack_log_lvl(task, NULL, esp, "");
+	show_stack_log_lvl(task, NULL, sp, 0, "");
 }
 
 /*
@@ -289,13 +311,19 @@ void show_stack(struct task_struct *task, unsigned long *esp)
 void dump_stack(void)
 {
 	unsigned long stack;
+	unsigned long bp = 0;
+
+#ifdef CONFIG_FRAME_POINTER
+	if (!bp)
+		asm("movl %%ebp, %0" : "=r" (bp):);
+#endif
 
 	printk("Pid: %d, comm: %.20s %s %s %.*s\n",
 		current->pid, current->comm, print_tainted(),
 		init_utsname()->release,
 		(int)strcspn(init_utsname()->version, " "),
 		init_utsname()->version);
-	show_trace(current, NULL, &stack);
+	show_trace(current, NULL, &stack, bp);
 }
 
 EXPORT_SYMBOL(dump_stack);
@@ -314,34 +342,34 @@ void show_registers(struct pt_regs *regs)
 	 * time of the fault..
 	 */
 	if (!user_mode_vm(regs)) {
-		u8 *eip;
+		u8 *ip;
 		unsigned int code_prologue = code_bytes * 43 / 64;
 		unsigned int code_len = code_bytes;
 		unsigned char c;
 
 		printk("\n" KERN_EMERG "Stack: ");
-		show_stack_log_lvl(NULL, regs, &regs->esp, KERN_EMERG);
+		show_stack_log_lvl(NULL, regs, &regs->sp, 0, KERN_EMERG);
 
 		printk(KERN_EMERG "Code: ");
 
-		eip = (u8 *)regs->eip - code_prologue;
-		if (eip < (u8 *)PAGE_OFFSET ||
-			probe_kernel_address(eip, c)) {
+		ip = (u8 *)regs->ip - code_prologue;
+		if (ip < (u8 *)PAGE_OFFSET ||
+			probe_kernel_address(ip, c)) {
 			/* try starting at EIP */
-			eip = (u8 *)regs->eip;
+			ip = (u8 *)regs->ip;
 			code_len = code_len - code_prologue + 1;
 		}
-		for (i = 0; i < code_len; i++, eip++) {
+		for (i = 0; i < code_len; i++, ip++) {
 #if 0
-			if (eip < (u8 *)PAGE_OFFSET ||
-				probe_kernel_address(eip, c)) {
+			if (ip < (u8 *)PAGE_OFFSET ||
+				probe_kernel_address(ip, c)) {
 				printk(" Bad EIP value.");
 				break;
 			}
 #else
-			c = *(unsigned char *)eip;
+			c = *(unsigned char *)ip;
 #endif
-			if (eip == (u8 *)regs->eip)
+			if (ip == (u8 *)regs->ip)
 				printk("<%02x> ", c);
 			else
 				printk("%02x ", c);
@@ -350,16 +378,55 @@ void show_registers(struct pt_regs *regs)
 	printk("\n");
 }	
 
-int is_valid_bugaddr(unsigned long eip)
+int is_valid_bugaddr(unsigned long ip)
 {
 	unsigned short ud2;
 
-	if (eip < PAGE_OFFSET)
+	if (ip < PAGE_OFFSET)
 		return 0;
-	if (probe_kernel_address((unsigned short *)eip, ud2))
+	if (probe_kernel_address((unsigned short *)ip, ud2))
 		return 0;
 
 	return ud2 == 0x0b0f;
+}
+
+static int die_counter;
+
+int __kprobes __die(const char * str, struct pt_regs * regs, long err)
+{
+	unsigned long sp;
+	unsigned short ss;
+
+	printk(KERN_EMERG "%s: %04lx [#%d] ", str, err & 0xffff, ++die_counter);
+#ifdef CONFIG_PREEMPT
+	printk("PREEMPT ");
+#endif
+#ifdef CONFIG_SMP
+	printk("SMP ");
+#endif
+#ifdef CONFIG_DEBUG_PAGEALLOC
+	printk("DEBUG_PAGEALLOC");
+#endif
+	printk("\n");
+
+	if (notify_die(DIE_OOPS, str, regs, err,
+				current->thread.trap_no, SIGSEGV) !=
+			NOTIFY_STOP) {
+		show_registers(regs);
+		/* Executive summary in case the oops scrolled away */
+		sp = (unsigned long) (&regs->sp);
+		savesegment(ss, ss);
+		if (user_mode(regs)) {
+			sp = regs->sp;
+			ss = regs->ss & 0xffff;
+		}
+		printk(KERN_EMERG "EIP: [<%08lx>] ", regs->ip);
+		print_symbol("%s", regs->ip);
+		printk(" SS:ESP %04x:%08lx\n", ss, sp);
+		return 0;
+	} else {
+		return 1;
+	}
 }
 
 /*
@@ -377,7 +444,6 @@ void die(const char * str, struct pt_regs * regs, long err)
 		.lock_owner =		-1,
 		.lock_owner_depth =	0
 	};
-	static int die_counter;
 	unsigned long flags;
 
 	oops_enter();
@@ -393,43 +459,13 @@ void die(const char * str, struct pt_regs * regs, long err)
 		raw_local_irq_save(flags);
 
 	if (++die.lock_owner_depth < 3) {
-		unsigned long esp;
-		unsigned short ss;
+		report_bug(regs->ip, regs);
 
-		report_bug(regs->eip, regs);
-
-		printk(KERN_EMERG "%s: %04lx [#%d] ", str, err & 0xffff,
-		       ++die_counter);
-#ifdef CONFIG_PREEMPT
-		printk("PREEMPT ");
-#endif
-#ifdef CONFIG_SMP
-		printk("SMP ");
-#endif
-#ifdef CONFIG_DEBUG_PAGEALLOC
-		printk("DEBUG_PAGEALLOC");
-#endif
-		printk("\n");
-
-		if (notify_die(DIE_OOPS, str, regs, err,
-					current->thread.trap_no, SIGSEGV) !=
-				NOTIFY_STOP) {
-			show_registers(regs);
-			/* Executive summary in case the oops scrolled away */
-			esp = (unsigned long) (&regs->esp);
-			savesegment(ss, ss);
-			if (user_mode(regs)) {
-				esp = regs->esp;
-				ss = regs->xss & 0xffff;
-			}
-			printk(KERN_EMERG "EIP: [<%08lx>] ", regs->eip);
-			print_symbol("%s", regs->eip);
-			printk(" SS:ESP %04x:%08lx\n", ss, esp);
-		}
-		else
+		if (__die(str, regs, err))
 			regs = NULL;
-  	} else
+	} else {
 		printk(KERN_EMERG "Recursive die() failure, output suppressed\n");
+	}
 
 	bust_spinlocks(0);
 	die.lock_owner = -1;
@@ -482,7 +518,7 @@ void unexpected_ret_from_exception(const char * str, struct pt_regs * regs, long
 }
 
 #define DO_ERROR(trapnr, signr, die_nr, str, name, tsk)			\
-fastcall void __kprobes do_##name(struct pt_regs * regs, long error_code) \
+void __kprobes do_##name(struct pt_regs * regs, long error_code) \
 {									\
 	if (notify_die(die_nr, str, regs, error_code, trapnr, signr)	\
 						== NOTIFY_STOP)		\
@@ -511,7 +547,7 @@ DO_ERROR(18, SIGSEGV, DIE_TRAP,  "machine check", machine_check, current)
 #endif
 DO_ERROR(19, SIGFPE,  DIE_TRAP,  "simd coprocessor error", simd_coprocessor_error, current)
 
-fastcall void do_nmi(struct pt_regs * regs, long error_code)
+void do_nmi(struct pt_regs * regs, long error_code)
 {
 }
 
@@ -579,7 +615,7 @@ int l4x_deliver_signal(int exception_nr, int errcode)
 	 * e.g. do_divide_error( struct ptregs * regs, long error);
 	 */
 
-	current->thread.regs.orig_eax = -1;
+	current->thread.regs.orig_ax = -1;
 
 	switch (exception_nr) {
 	case 0:
@@ -649,7 +685,7 @@ int l4x_deliver_signal(int exception_nr, int errcode)
 	}
 
 	if (signal_pending(current)) {
-		extern void fastcall do_signal(struct pt_regs *regs);
+		extern void do_signal(struct pt_regs *regs);
 		do_signal(&current->thread.regs);
 		return 1;
 	}

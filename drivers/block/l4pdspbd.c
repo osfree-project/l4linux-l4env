@@ -17,6 +17,7 @@
 
 #include <asm/api/macros.h>
 
+#include <asm/generic/l4lib.h>
 #include <l4/sys/types.h>
 #include <l4/sys/syscalls.h>
 #include <l4/names/libnames.h>
@@ -28,6 +29,9 @@
 MODULE_AUTHOR("Adam Lackorzynski <adam@os.inf.tu-dresden.de");
 MODULE_DESCRIPTION("Block driver working on persistent dataspaces");
 MODULE_LICENSE("GPL");
+
+L4_EXTERNAL_FUNC(l4pdsp_open);
+L4_EXTERNAL_FUNC(l4pdsp_close);
 
 static char name[32];
 module_param_string(name, name, sizeof(name), 0);

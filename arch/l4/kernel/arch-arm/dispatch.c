@@ -167,7 +167,7 @@ asm(
 );
 
 #include <asm/generic/stack_id.h>
-void fastcall l4x_switch_to(struct task_struct *prev, struct task_struct *next)
+void l4x_switch_to(struct task_struct *prev, struct task_struct *next)
 {
 	TBUF_LOG_SWITCH(fiasco_tbuf_log_3val("SWITCH", TBUF_TID(prev->thread.user_thread_id), TBUF_TID(next->thread.user_thread_id), 0));
 

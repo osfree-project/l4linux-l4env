@@ -101,7 +101,7 @@ int l4x_syscall_guard(struct task_struct *p, int sysnr)
 #ifdef ARCH_arm
 		   (void *)p->thread.regs.ARM_pc
 #else
-	           (void *)p->thread.regs.eip
+	           (void *)p->thread.regs.ip
 #endif
 		   );
 

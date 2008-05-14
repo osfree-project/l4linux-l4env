@@ -29,7 +29,6 @@ extern void          fastcall l4x_pte_clear(struct mm_struct *mm, unsigned long 
 static inline void l4x_cpu_set_pte_ext(pte_t *pteptr, pte_t pteval,
                                        unsigned int ext)
 {
-	//LOG_printf("%s: for %08x pteptr = %p\n", __func__, (unsigned int)pte_val(pteval), pteptr);
 	if ((pte_val(*pteptr) & (L_PTE_PRESENT | L_PTE_MAPPED)) == (L_PTE_PRESENT | L_PTE_MAPPED)) {
 		if (pteval == __pte(0))
 			l4x_pte_clear(NULL, 0, *pteptr);

@@ -19,6 +19,7 @@
 
 #include <asm/api/macros.h>
 
+#include <asm/generic/l4lib.h>
 #include <l4/sys/types.h>
 #include <l4/sys/syscalls.h>
 #include <l4/names/libnames.h>
@@ -31,6 +32,15 @@
 MODULE_AUTHOR("Adam Lackorzynski <adam@os.inf.tu-dresden.de");
 MODULE_DESCRIPTION("Driver for the L4 generic block interface");
 MODULE_LICENSE("GPL");
+
+L4_EXTERNAL_FUNC(l4blk_get_driver_thread);
+L4_EXTERNAL_FUNC(l4blk_do_request);
+L4_EXTERNAL_FUNC(l4dm_revoke);
+L4_EXTERNAL_FUNC(l4blk_init);
+L4_EXTERNAL_FUNC(l4blk_open_driver);
+L4_EXTERNAL_FUNC(l4blk_ctrl_get_num_disks);
+L4_EXTERNAL_FUNC(l4blk_ctrl_get_disk_size);
+L4_EXTERNAL_FUNC(l4blk_close_driver);
 
 static char l4blk_name[32];
 module_param_string(l4blk_name, l4blk_name, sizeof(l4blk_name), 0);

@@ -56,7 +56,7 @@ static inline void show_current(int cpu)
 /*
  * Timer interrupt thread.
  */
-void timer_irq_thread(void *data)
+void L4_CV timer_irq_thread(void *data)
 {
 	int irq = TIMER_IRQ;
 	l4_timeout_t to;

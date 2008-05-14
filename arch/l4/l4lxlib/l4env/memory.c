@@ -5,8 +5,9 @@
 
 #include <linux/kernel.h>
 
-#include <asm/pgtable.h>
+#include <asm/page.h>
 #include <asm/l4lxapi/memory.h>
+#include <asm/api/api.h>
 
 #include <l4/l4rm/l4rm.h>
 #include <l4/env/errno.h>

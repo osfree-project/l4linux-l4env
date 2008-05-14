@@ -71,7 +71,7 @@ l4_threadid_t inline l4lx_thread_no_to_tid(int thread_no)
  *
  *  This all looks like another pro for V4...
  */
-l4_threadid_t l4lx_thread_create(void (*thread_func)(void *data),
+l4_threadid_t l4lx_thread_create(L4_CV void (*thread_func)(void *data),
                                  unsigned cpu,
 				 void *stack_pointer,
 				 void *stack_data, unsigned stack_data_size,
@@ -175,7 +175,6 @@ void l4lx_thread_shutdown(l4_threadid_t thread)
 	/* free "stack memory" used for data if there's some */
 	l4lx_thread_stack_return(thread);
 
-	/* XXX: V2 stuff */
 	l4thread_shutdown(thread.id.lthread);
 	l4lx_thread_name_delete(thread);
 }
@@ -195,7 +194,6 @@ int l4lx_thread_prio_set(l4_threadid_t thread,
  */
 int l4lx_thread_prio_get(l4_threadid_t thread)
 {
-	/* XXX: V2 stuff */
 	return l4thread_get_prio(thread.id.lthread);
 }
 

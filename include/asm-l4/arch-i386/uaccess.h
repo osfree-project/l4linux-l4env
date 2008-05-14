@@ -8,6 +8,7 @@
 #include <linux/thread_info.h>
 #include <linux/prefetch.h>
 #include <linux/string.h>
+#include <asm/asm.h>
 #include <asm/page.h>
 
 #define VERIFY_READ 0
@@ -199,13 +200,9 @@ extern long __put_user_bad(void);
  */
 #define __put_user_8_asm_wrap(x, addr, retval)				\
 	__asm__ __volatile__ (						\
-		"pushl %2		\n\t"				\
-		"pushl %%edx		\n\t"				\
-		"pushl %%eax		\n\t"				\
 		"call __put_user_8	\n\t"				\
-		"addl  $4*3,%%esp	\n\t"				\
 		: "=a" (retval)						\
-		: "A" (x), "g" (addr))
+		: "A" (x), "c" (addr))
 
 #define put_user_macro(x,ptr)						\
 	({								\

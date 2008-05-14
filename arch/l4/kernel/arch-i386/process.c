@@ -15,7 +15,6 @@
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
 #include <linux/user.h>
-#include <linux/a.out.h>
 #include <linux/interrupt.h>
 #include <linux/utsname.h>
 #include <linux/delay.h>
@@ -38,6 +37,7 @@
 #include <asm/processor.h>
 #include <asm/i387.h>
 #include <asm/desc.h>
+#include <asm/kdebug.h>
 
 #include <asm/api/macros.h>
 #include <asm/api/ids.h>
@@ -75,7 +75,7 @@ EXPORT_PER_CPU_SYMBOL(cpu_number);
  */
 unsigned long thread_saved_pc(struct task_struct *tsk)
 {
-	return ((unsigned long *)tsk->thread.esp)[0];
+	return ((unsigned long *)tsk->thread.sp)[0];
 }
 
 
@@ -132,7 +132,7 @@ void __show_registers(struct pt_regs *regs, int all)
 	unsigned long cr0 = 0L, cr2 = 0L, cr3 = 0L, cr4 = 0L;
 	unsigned long d0, d1, d2, d3, d6, d7;
 #endif
-	unsigned long esp;
+	unsigned long sp;
 	unsigned short ss, gs;
 
 	if (!regs) {
@@ -140,11 +140,11 @@ void __show_registers(struct pt_regs *regs, int all)
 		return;
 	}
 	if (user_mode_vm(regs)) {
-		esp = regs->esp;
-		ss = regs->xss & 0xffff;
+		sp = regs->sp;
+		ss = regs->ss & 0xffff;
 		savesegment(gs, gs);
 	} else {
-		esp = (unsigned long) (&regs->esp);
+		sp = (unsigned long) (&regs->sp);
 		savesegment(ss, ss);
 		savesegment(gs, gs);
 	}
@@ -157,17 +157,17 @@ void __show_registers(struct pt_regs *regs, int all)
 			init_utsname()->version);
 
 	printk("EIP: %04x:[<%08lx>] EFLAGS: %08lx CPU: %d\n",
-			0xffff & regs->xcs, regs->eip, regs->eflags,
+			0xffff & regs->cs, regs->ip, regs->flags,
 			smp_processor_id());
-	print_symbol("EIP is at %s\n", regs->eip);
+	print_symbol("EIP is at %s\n", regs->ip);
 
 	printk("EAX: %08lx EBX: %08lx ECX: %08lx EDX: %08lx\n",
-		regs->eax, regs->ebx, regs->ecx, regs->edx);
+		regs->ax, regs->bx, regs->cx, regs->dx);
 	printk("ESI: %08lx EDI: %08lx EBP: %08lx ESP: %08lx\n",
-		regs->esi, regs->edi, regs->ebp, esp);
+		regs->si, regs->di, regs->bp, sp);
 	printk(" DS: %04x ES: %04x FS: %04x GS: %04x SS: %04x\n",
-	       regs->xds & 0xffff, regs->xes & 0xffff,
-	       regs->xfs & 0xffff, gs, ss);
+	       regs->ds & 0xffff, regs->es & 0xffff,
+	       regs->fs & 0xffff, gs, ss);
 
 	if (!all)
 		return;
@@ -198,8 +198,8 @@ void show_regs(struct pt_regs *regs)
 {
 	__show_registers(regs, 1);
 	{
-		unsigned long foo; /* regs->esp is not on the stack */
-		show_trace(NULL, regs, &foo);
+		unsigned long foo; /* regs->sp is not on the stack */
+		show_trace(NULL, regs, &foo, regs->bp);
 	}
 }
 
@@ -212,16 +212,16 @@ int kernel_thread(int (*fn)(void *), void * arg, unsigned long flags)
 
 	memset(&regs, 0, sizeof(regs));
 
-	regs.ebx = (unsigned long) fn;
-	regs.edx = (unsigned long) arg;
+	regs.bx = (unsigned long) fn;
+	regs.dx = (unsigned long) arg;
 
-	regs.xds = __USER_DS;
-	regs.xes = __USER_DS;
-	regs.xfs = __KERNEL_PERCPU;
-	regs.orig_eax = -1;
-	//regs.eip = (unsigned long) kernel_thread_helper;
-	regs.xcs = __KERNEL_CS | get_kernel_rpl();
-	regs.eflags = X86_EFLAGS_IF | X86_EFLAGS_SF | X86_EFLAGS_PF | 0x2;
+	regs.ds = __USER_DS;
+	regs.es = __USER_DS;
+	regs.fs = __KERNEL_PERCPU;
+	regs.orig_ax = -1;
+	//regs.ip = (unsigned long) kernel_thread_helper;
+	regs.cs = __KERNEL_CS | get_kernel_rpl();
+	regs.flags = X86_EFLAGS_IF | X86_EFLAGS_SF | X86_EFLAGS_PF | 0x2;
 
 	/* Ok, create the new process.. */
 	return do_fork(flags | CLONE_VM | CLONE_UNTRACED, 0, &regs, COPY_THREAD_STACK_SIZE___FLAG_INKERNEL, NULL, NULL);
@@ -246,17 +246,16 @@ void ret_kernel_thread_start(void);
 asm(".section .text\n"
     ".align 4\n"
     "ret_kernel_thread_start: \n\t"
-    "pushl %eax               \n\t"
     "call kernel_thread_start \n\t"
     ".previous");
 
 void kernel_thread_start(struct task_struct *p)
 {
 	struct pt_regs *r = &current->thread.regs;
-	int (*func)(void *) = (void *)r->ebx;
+	int (*func)(void *) = (void *)r->bx;
 
 	schedule_tail(p);
-	do_exit(func((void *)r->edx));
+	do_exit(func((void *)r->dx));
 }
 
 /*
@@ -292,7 +291,7 @@ static int l4x_thread_create(struct task_struct *p, unsigned long clone_flags,
 		 * on the stack */
 		*(--sp) = (unsigned long) ret_kernel_thread_start;
 
-		t->esp = (unsigned long) sp;
+		t->sp = (unsigned long) sp;
 		return 0;
 	}
 
@@ -309,7 +308,7 @@ void prepare_to_copy(struct task_struct *tsk)
 	unlazy_fpu(tsk);
 }
 
-int copy_thread(int nr, unsigned long clone_flags, unsigned long esp,
+int copy_thread(int nr, unsigned long clone_flags, unsigned long sp,
 	unsigned long stack_size___used_for_inkernel_process_flag,
 	struct task_struct * p, struct pt_regs * regs)
 {
@@ -319,22 +318,13 @@ int copy_thread(int nr, unsigned long clone_flags, unsigned long esp,
 
 	childregs = task_pt_regs(p);
 	*childregs = *regs;
-	childregs->eax = 0;
-	childregs->esp = esp;
+	childregs->ax = 0;
+	childregs->sp = sp;
 
-	childregs->eflags |= 0x200;	/* sanity: set EI flag */
-	childregs->eflags &= 0x1ffff;
+	childregs->flags |= 0x200;	/* sanity: set EI flag */
+	childregs->flags &= 0x1ffff;
 
-	//p->thread.eip = (unsigned long) ret_from_fork;
-
-#ifdef DEBUG
-	printk("%s: esp: %lx on_page: %x\n",
-	       __func__, esp, (int)&childregs->esp);
-	printk("%s: current(%p)=%d, new(%p)=%d\n",
-	       __func__, current, current->pid, p, p->pid);
-	printk("%s: old eflags=%lx, new eflags=%lx\n",
-	       __func__, regs->eflags, childregs->eflags);
-#endif
+	//p->thread.ip = (unsigned long) ret_from_fork;
 
 	/* Copy segment registers */
 	p->thread.gs = cur->thread.gs;
@@ -345,33 +335,19 @@ int copy_thread(int nr, unsigned long clone_flags, unsigned long esp,
 	if (unlikely(cur->thread.iodb))
 		l4x_iodb_copy(cur, p);
 
+	err = 0;
+
 	/*
 	 * Set a new TLS for the child thread?
 	 */
-	if (clone_flags & CLONE_SETTLS) {
-		struct desc_struct *desc;
-		struct user_desc info;
-		int idx;
+	if (clone_flags & CLONE_SETTLS)
+		err = do_set_thread_area(p, -1,
+			(struct user_desc __user *)childregs->si, 0);
 
-		err = -EFAULT;
-		if (copy_from_user(&info, (void __user *)childregs->esi, sizeof(info)))
-			goto out;
-		err = -EINVAL;
-		if (LDT_empty(&info))
-			goto out;
-
-		idx = info.entry_number;
-		if (idx < GDT_ENTRY_TLS_MIN || idx > GDT_ENTRY_TLS_MAX)
-			goto out;
-
-		desc = p->thread.tls_array + idx - GDT_ENTRY_TLS_MIN;
-		desc->a = LDT_entry_a(&info);
-		desc->b = LDT_entry_b(&info);
-	}
 
 	/* create the user task */
-	err = l4x_thread_create(p, clone_flags, stack_size___used_for_inkernel_process_flag == COPY_THREAD_STACK_SIZE___FLAG_INKERNEL);
-out:
+	if (!err)
+		err = l4x_thread_create(p, clone_flags, stack_size___used_for_inkernel_process_flag == COPY_THREAD_STACK_SIZE___FLAG_INKERNEL);
 	return err;
 }
 
@@ -432,78 +408,21 @@ void flush_thread(void)
 	clear_used_math();
 }
 
-void start_thread(struct pt_regs *regs, unsigned long eip,
-                  unsigned long esp)
+void start_thread(struct pt_regs *regs, unsigned long ip,
+                  unsigned long sp)
 {
-	regs->eip = eip;
-	regs->esp = esp;
+	regs->ip = ip;
+	regs->sp = sp;
 
 	current->thread.gs = 0;
-	regs->xfs = 0;
+	regs->fs = 0;
 
 	current->thread.restart = 1;
 
-	if (eip > TASK_SIZE)
+	if (ip > TASK_SIZE)
 		force_sig(SIGSEGV, current);
 }
 EXPORT_SYMBOL(start_thread);
-
-/* next is from arch/i386/kernel/process.c and adjusted to new pt_regs
-   structure */
-void dump_thread(struct pt_regs * regs, struct user * dump)
-{
-	int i;
-
-/* changed the size calculations - should hopefully work better. lbt */
-	dump->magic = CMAGIC;
-	dump->start_code = 0;
-	dump->start_stack = regs->esp & ~(PAGE_SIZE - 1);
-	dump->u_tsize = ((unsigned long) current->mm->end_code) >> PAGE_SHIFT;
-	dump->u_dsize = ((unsigned long) (current->mm->brk + (PAGE_SIZE-1))) >> PAGE_SHIFT;
-	dump->u_dsize -= dump->u_tsize;
-	dump->u_ssize = 0;
-	for (i = 0; i < 8; i++)
-		dump->u_debugreg[i] = 0; //current->debugreg[i];  
-
-	if (dump->start_stack < TASK_SIZE)
-		dump->u_ssize = ((unsigned long) (TASK_SIZE - dump->start_stack)) >> PAGE_SHIFT;
-
-	/* copy register contents */
-	memset((void *)&dump->regs, 0, (size_t)sizeof(dump->regs));
-	dump->regs.ebx = regs->ebx;
-	dump->regs.ecx = regs->ecx;
-	dump->regs.edx = regs->edx;
-	dump->regs.esi = regs->esi;
-	dump->regs.edi = regs->edi;
-	dump->regs.ebp = regs->ebp;
-	dump->regs.eax = regs->eax;
-	dump->regs.fs = regs->xfs;
-	dump->regs.orig_eax = regs->orig_eax;
-	dump->regs.eip = regs->eip;
-	dump->regs.eflags = regs->eflags;
-	dump->regs.esp = regs->esp;
-
-	dump->u_fpvalid = dump_fpu (regs, &dump->i387);
-}
-EXPORT_SYMBOL(dump_thread);
-
-/* 
- * Capture the user space registers if the task is not running (in user space)
- */
-int dump_task_regs(struct task_struct *tsk, elf_gregset_t *regs)
-{
-	struct pt_regs ptregs = *task_pt_regs(tsk);
-#if 0
-	ptregs.xcs &= 0xffff;
-	ptregs.xds &= 0xffff;
-	ptregs.xes &= 0xffff;
-	ptregs.xss &= 0xffff;
-#endif
-
-	elf_core_copy_regs(regs, &ptregs);
-
-	return 1;
-}
 
 #ifdef CONFIG_SECCOMP
 void hard_disable_TSC(void)
@@ -524,7 +443,7 @@ void hard_enable_TSC(void)
 asmlinkage int sys_fork(void)
 {
 	struct pt_regs *regs = &current->thread.regs;
-	return do_fork(SIGCHLD, regs->esp, regs, COPY_THREAD_STACK_SIZE___FLAG_USER, NULL, NULL);
+	return do_fork(SIGCHLD, regs->sp, regs, COPY_THREAD_STACK_SIZE___FLAG_USER, NULL, NULL);
 }
 
 asmlinkage int sys_clone(void)
@@ -534,12 +453,12 @@ asmlinkage int sys_clone(void)
 	unsigned long newsp;
 	int __user *parent_tidptr, *child_tidptr;
 
-	clone_flags = regs->ebx;
-	newsp = regs->ecx;
-	parent_tidptr = (int __user *)regs->edx;
-	child_tidptr = (int __user *)regs->edi;
+	clone_flags = regs->bx;
+	newsp = regs->cx;
+	parent_tidptr = (int __user *)regs->dx;
+	child_tidptr = (int __user *)regs->di;
 	if (!newsp)
-		newsp = regs->esp;
+		newsp = regs->sp;
 
 	return do_fork(clone_flags, newsp, regs, COPY_THREAD_STACK_SIZE___FLAG_USER, parent_tidptr, child_tidptr);
 }
@@ -559,13 +478,13 @@ asmlinkage int sys_vfork(void)
 {
 	struct pt_regs *regs = &current->thread.regs;
 
-	return do_fork(CLONE_VFORK | CLONE_VM | SIGCHLD, regs->esp, regs, COPY_THREAD_STACK_SIZE___FLAG_USER, NULL, NULL);
+	return do_fork(CLONE_VFORK | CLONE_VM | SIGCHLD, regs->sp, regs, COPY_THREAD_STACK_SIZE___FLAG_USER, NULL, NULL);
 }
 
 /*
  * sys_execve() executes a new program.
  */
-/* sys_*(ebx, ecx, edx, esi, edi); */
+/* sys_*(bx, cx, dx, si, di); */
 asmlinkage int sys_execve(char *name, char **argv, char **envp)
 {
 	int error;
@@ -579,9 +498,8 @@ asmlinkage int sys_execve(char *name, char **argv, char **envp)
 	error = do_execve(filename, argv, envp,
 			&current->thread.regs);
 	if (error == 0) {
-		task_lock(current);
-		current->ptrace &= ~PT_DTRACE;
-		task_unlock(current);
+		/* Make sure we don't return using sysenter.. */
+		//set_thread_flag(TIF_IRET);
 	}
 	putname(filename);
 out:
@@ -589,7 +507,7 @@ out:
 }
 
 /* kernel-internal execve() */
-int l4_kernelinternal_execve(char * file, char ** argv, char ** envp)
+asmlinkage int l4_kernelinternal_execve(char * file, char ** argv, char ** envp)
 {
 	int ret;
 	struct thread_struct *t = &current->thread;
@@ -599,7 +517,7 @@ int l4_kernelinternal_execve(char * file, char ** argv, char ** envp)
 	/* we are going to become a real user task now, so prepare a real
 	 * pt_regs structure. */
 	/* Enable Interrupts, Set IOPL (needed for X, hwclock etc.) */
-	t->regs.eflags = 0x3200; /* XXX hardcoded */
+	t->regs.flags = 0x3200; /* XXX hardcoded */
 
 	/* do_execve() will create the user task for us in start_thread()
 	   and call set_fs(USER_DS) in flush_thread. I know this sounds
@@ -644,7 +562,7 @@ unsigned long get_wchan(struct task_struct *p)
 	if (!p || p == current || p->state == TASK_RUNNING)
 		return 0;
 	stack_page = (unsigned long)task_stack_page(p);
-	esp = p->thread.esp;
+	esp = p->thread.sp;
 	if (!stack_page || esp < stack_page || esp > top_esp+stack_page)
 		return 0;
 
@@ -654,7 +572,7 @@ unsigned long get_wchan(struct task_struct *p)
 	 *  reflect that. And we leave the different name for
 	 *  esp to catch direct usage of thread data. */
 
-	esp = p->thread.esp + 4;/* add 4 to remove return address */
+	esp = p->thread.sp + 4;/* add 4 to remove return address */
 
 	/* include/asm-i386/system.h:switch_to() pushes ebp last. */
 	ebp = *(unsigned long *) esp;
@@ -669,123 +587,15 @@ unsigned long get_wchan(struct task_struct *p)
 	return 0;
 }
 
-/*
- * sys_alloc_thread_area: get a yet unused TLS descriptor index.
- */
-static int get_free_idx(void)
-{
-	struct thread_struct *t = &current->thread;
-	int idx;
-
-	for (idx = 0; idx < GDT_ENTRY_TLS_ENTRIES; idx++)
-		if (desc_empty(t->tls_array + idx))
-			return idx + GDT_ENTRY_TLS_MIN;
-	return -ESRCH;
-}
-
-/*
- * Set a given TLS descriptor:
- */
-asmlinkage int sys_set_thread_area(struct user_desc __user *u_info)
-{
-	struct thread_struct *t = &current->thread;
-	struct user_desc info;
-	struct desc_struct *desc;
-	int cpu, idx;
-
-	if (copy_from_user(&info, u_info, sizeof(info)))
-		return -EFAULT;
-	idx = info.entry_number;
-
-	/*
-	 * index -1 means the kernel should try to find and
-	 * allocate an empty descriptor:
-	 */
-	if (idx == -1) {
-		idx = get_free_idx();
-		if (idx < 0)
-			return idx;
-		if (put_user(idx, &u_info->entry_number))
-			return -EFAULT;
-	}
-
-	if (idx < GDT_ENTRY_TLS_MIN || idx > GDT_ENTRY_TLS_MAX)
-		return -EINVAL;
-
-	desc = t->tls_array + idx - GDT_ENTRY_TLS_MIN;
-
-	/*
-	 * We must not get preempted while modifying the TLS.
-	 */
-	cpu = get_cpu();
-
-	if (LDT_empty(&info)) {
-		desc->a = 0;
-		desc->b = 0;
-	} else {
-		desc->a = LDT_entry_a(&info);
-		desc->b = LDT_entry_b(&info);
-	}
-	load_TLS(t, cpu);
-
-	put_cpu();
-
-	return 0;
-}
-
-/*
- * Get the current Thread-Local Storage area:
- */
-
-#define GET_BASE(desc) ( \
-	(((desc)->a >> 16) & 0x0000ffff) | \
-	(((desc)->b << 16) & 0x00ff0000) | \
-	( (desc)->b        & 0xff000000)   )
-
-#define GET_LIMIT(desc) ( \
-	((desc)->a & 0x0ffff) | \
-	 ((desc)->b & 0xf0000) )
-	
-#define GET_32BIT(desc)		(((desc)->b >> 22) & 1)
-#define GET_CONTENTS(desc)	(((desc)->b >> 10) & 3)
-#define GET_WRITABLE(desc)	(((desc)->b >>  9) & 1)
-#define GET_LIMIT_PAGES(desc)	(((desc)->b >> 23) & 1)
-#define GET_PRESENT(desc)	(((desc)->b >> 15) & 1)
-#define GET_USEABLE(desc)	(((desc)->b >> 20) & 1)
-
-asmlinkage int sys_get_thread_area(struct user_desc __user *u_info)
-{
-	struct user_desc info;
-	struct desc_struct *desc;
-	int idx;
-
-	if (get_user(idx, &u_info->entry_number))
-		return -EFAULT;
-	if (idx < GDT_ENTRY_TLS_MIN || idx > GDT_ENTRY_TLS_MAX)
-		return -EINVAL;
-
-	memset(&info, 0, sizeof(info));
-
-	desc = current->thread.tls_array + idx - GDT_ENTRY_TLS_MIN;
-
-	info.entry_number = idx;
-	info.base_addr = GET_BASE(desc);
-	info.limit = GET_LIMIT(desc);
-	info.seg_32bit = GET_32BIT(desc);
-	info.contents = GET_CONTENTS(desc);
-	info.read_exec_only = !GET_WRITABLE(desc);
-	info.limit_in_pages = GET_LIMIT_PAGES(desc);
-	info.seg_not_present = !GET_PRESENT(desc);
-	info.useable = GET_USEABLE(desc);
-
-	if (copy_to_user(u_info, &info, sizeof(info)))
-		return -EFAULT;
-	return 0;
-}
-
 unsigned long arch_align_stack(unsigned long sp)
 {
 	if (!(current->personality & ADDR_NO_RANDOMIZE) && randomize_va_space)
 		sp -= get_random_int() % 8192;
 	return sp & ~0xf;
+}
+
+unsigned long arch_randomize_brk(struct mm_struct *mm)
+{
+	unsigned long range_end = mm->brk + 0x02000000;
+	return randomize_range(mm->brk, range_end, 0) ? : mm->brk;
 }

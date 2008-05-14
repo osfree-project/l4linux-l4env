@@ -186,10 +186,6 @@ long __put_user_4(unsigned int val, const void __user *address)
 
 	if (((unsigned long)address & ~PAGE_MASK) <= (PAGE_SIZE - sizeof(val))) {
 		page = parse_ptabs_write((unsigned long)address, &offset);
-#ifdef DEBUG_PUT_USER
-		herc_printf("%s %x @ %x (%x, %x, %x)\n", __func__, val,
-			    address, page, offset, page + offset);
-#endif
 		if (page != -EFAULT) {
 			*(unsigned long *)(page + offset) = val;
 			return 0;

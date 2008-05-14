@@ -26,12 +26,26 @@
 #include <asm/generic/setup.h>
 
 #ifdef CONFIG_L4_CONS
+#include <asm/generic/l4lib.h>
 #include <asm/generic/do_irq.h>
 #include <l4/names/libnames.h>
 #include <asm/l4lxapi/thread.h>
 #include <l4/cons/cons-client.h>
 #include <l4/cons/event-server.h>
 #include <l4/log/log_printf.h>
+
+typedef L4_CV void
+  cons_event_ping_component_t(CORBA_Object _dice_corba_obj,
+                              CORBA_Server_Environment *_dice_corba_env);
+
+L4_CV void register_cons_event_ping_component(cons_event_ping_component_t *func);
+
+L4_EXTERNAL_FUNC(register_cons_event_ping_component);
+
+L4_EXTERNAL_FUNC(cons_client_output_string_call);
+L4_EXTERNAL_FUNC(cons_client_get_input_call);
+L4_EXTERNAL_FUNC(cons_event_server_loop);
+L4_EXTERNAL_FUNC(cons_client_create_call);
 #endif
 
 /* This is the same major as the sa1100 one */
@@ -125,7 +139,7 @@ l4ser_rx_chars(struct uart_port *port)
 }
 
 #ifdef CONFIG_L4_CONS
-void
+L4_CV void
 cons_event_ping_component(CORBA_Object _dice_corba_obj,
                           CORBA_Server_Environment *_dice_corba_env)
 {
@@ -133,7 +147,7 @@ cons_event_ping_component(CORBA_Object _dice_corba_obj,
 }
 
 
-static void
+L4_CV static void
 l4ser_event_thread(void *d)
 {
 	(void)d;
@@ -315,6 +329,10 @@ static void __init l4ser_init_ports(void)
 			LOG_printf("Server 'cons' not found, aborting.\n");
 			return;
 		}
+
+#ifdef CONFIG_L4_LDR
+		register_cons_event_ping_component(cons_event_ping_component);
+#endif
 
 		ev_id = l4lx_thread_create(l4ser_event_thread, 0, NULL,
 		                           NULL, 0, CONFIG_L4_PRIO_L4ORE,

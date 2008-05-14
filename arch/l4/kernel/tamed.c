@@ -172,7 +172,7 @@ static inline void __wakeup_thread_without_switchto(l4_threadid_t t)
 /** The main semaphore thread. We need this thread to ensure atomicity.
  * We assume that this thread is not preempted by any other thread.
  */
-static void cli_sem_thread(void *data)
+static L4_CV void cli_sem_thread(void *data)
 {
 	l4_umword_t dw0;
 	int i;

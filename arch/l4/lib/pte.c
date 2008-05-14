@@ -90,9 +90,9 @@ do {								\
 } while (0)
 
 
-unsigned long fastcall l4x_set_pte(struct mm_struct *mm,
-                                   unsigned long addr,
-                                   pte_t old, pte_t pteval)
+unsigned long l4x_set_pte(struct mm_struct *mm,
+                          unsigned long addr,
+                          pte_t old, pte_t pteval)
 {
 	/*
 	 * Check if any invalidation is necessary
@@ -141,7 +141,7 @@ unsigned long fastcall l4x_set_pte(struct mm_struct *mm,
 	return pte_val(pteval);
 }
 
-void fastcall l4x_pte_clear(struct mm_struct *mm, unsigned long addr, pte_t pteval)
+void l4x_pte_clear(struct mm_struct *mm, unsigned long addr, pte_t pteval)
 {
 	/* Invalidate page */
 	l4x_flush_page(mm, pte_val(pteval), addr, PAGE_SHIFT,

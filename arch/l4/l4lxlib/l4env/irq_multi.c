@@ -167,7 +167,7 @@ static inline unsigned int wait_for_irq_message(unsigned int irq_to_ack)
  * IRQ thread, here we sit in a loop waiting to handle
  * incoming interrupts
  */
-static void irq_thread(void *data)
+static L4_CV void irq_thread(void *data)
 {
 	unsigned cpu = *(unsigned *)data;
 	unsigned int irq = 0;

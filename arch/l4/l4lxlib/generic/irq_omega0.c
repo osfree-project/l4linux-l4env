@@ -18,6 +18,7 @@
 #include <asm/generic/setup.h>
 #include <asm/generic/task.h>
 #include <asm/generic/do_irq.h>
+#include <asm/generic/l4lib.h>
 
 #include <l4/log/l4log.h>
 #include <l4/sys/kdebug.h>
@@ -26,6 +27,10 @@
 #ifdef CONFIG_L4_USE_L4VMM
 #include <l4/vmm/vmm-compat.h>
 #endif
+
+L4_EXTERNAL_FUNC(omega0_attach);
+L4_EXTERNAL_FUNC(omega0_request);
+L4_EXTERNAL_FUNC(omega0_detach);
 
 /* bitmap containing '1' if the corresponding irq was requested from
  *  * Omega0 but not yet unmasked. */
@@ -162,7 +167,7 @@ static inline void wait_for_irq_message(unsigned int irq)
 	}
 }
 
-static void irq_dev_thread(void *data)
+static L4_CV void irq_dev_thread(void *data)
 {
 	unsigned int irq = *(unsigned int *)data;
 	struct thread_info *ctx = current_thread_info();

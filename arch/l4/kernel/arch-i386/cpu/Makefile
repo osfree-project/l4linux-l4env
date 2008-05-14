@@ -3,6 +3,7 @@
 #
 
 obj-y			:= intel_cacheinfo.o addon_cpuid_features.o
+obj-y			+= feature_names.o
 
 obj-$(CONFIG_X86_32)	+= common.o proc.o bugs.o
 obj-$(CONFIG_X86_32)	+= amd.o
@@ -35,3 +36,4 @@ umc-y		       := $(b)/umc.o
 proc-y		       := $(b)/proc.o
 bugs-y		       := $(b)/bugs.o
 perfctr-watchdog-y     := $(b)/perfctr-watchdog.o
+feature_names-y        := $(b)/feature_names.o

@@ -1,27 +1,34 @@
-#ifndef __ASM_SYSTEM_H
-#define __ASM_SYSTEM_H
+#ifndef _ASM_X86_SYSTEM_H_
+#define _ASM_X86_SYSTEM_H_
 
-#include <linux/kernel.h>
+#include <asm/asm.h>
 #include <asm/segment.h>
 #include <asm/cpufeature.h>
 #include <asm/cmpxchg.h>
+#include <asm/nops.h>
 
-#include <l4/sys/utcb.h>
-#include <asm/l4x/exception.h> /* for l4_utcb_get_l4lx() */
+#include <linux/kernel.h>
+#include <linux/irqflags.h>
 
-#ifdef __KERNEL__
-#define AT_VECTOR_SIZE_ARCH 2 /* entries in ARCH_DLINFO */
+/* entries in ARCH_DLINFO: */
+#ifdef CONFIG_IA32_EMULATION
+# define AT_VECTOR_SIZE_ARCH 2
+#else
+# define AT_VECTOR_SIZE_ARCH 1
+#endif
 
-struct task_struct;	/* one of the stranger aspects of C forward declarations.. */
-extern struct task_struct * FASTCALL(__switch_to(struct task_struct *prev, struct task_struct *next));
-extern void FASTCALL(l4x_switch_to(struct task_struct *prev, struct task_struct *next));
+#ifdef CONFIG_X86_32
+
+struct task_struct; /* one of the stranger aspects of C forward declarations */
+struct task_struct *__switch_to(struct task_struct *prev,
+				struct task_struct *next);
 
 /*
  * Saving eflags is important. It switches not only IOPL between tasks,
  * it also protects other tasks from NT leaking through sysenter etc.
  */
-#define switch_to_i386(prev,next,last) do {					\
-	unsigned long esi,edi;						\
+#define switch_to_i386(prev, next, last) do {				\
+	unsigned long esi, edi;						\
 	asm volatile("pushfl\n\t"		/* Save flags */	\
 		     "pushl %%ebp\n\t"					\
 		     "movl %%esp,%0\n\t"	/* save ESP */		\
@@ -32,12 +39,13 @@ extern void FASTCALL(l4x_switch_to(struct task_struct *prev, struct task_struct 
 		     "1:\t"						\
 		     "popl %%ebp\n\t"					\
 		     "popfl"						\
-		     :"=m" (prev->thread.esp),"=m" (prev->thread.eip),	\
-		      "=a" (last),"=S" (esi),"=D" (edi)			\
-		     :"m" (next->thread.esp),"m" (next->thread.eip),	\
+		     :"=m" (prev->thread.sp), "=m" (prev->thread.ip),	\
+		      "=a" (last), "=S" (esi), "=D" (edi)		\
+		     :"m" (next->thread.sp), "m" (next->thread.ip),	\
 		      "2" (prev), "d" (next));				\
 } while (0)
 
+extern void l4x_switch_to(struct task_struct *prev, struct task_struct *next);
 #define switch_to(prev,next,last) do {					\
 	/* we need to make sure this works with and without	      */\
 	/* -fomit-frame-pointer; that's why we save %epb on the stack */\
@@ -54,13 +62,54 @@ extern void FASTCALL(l4x_switch_to(struct task_struct *prev, struct task_struct 
 	"popl %%ebp;		\n"					\
 	"popl %%edi;		\n"					\
 	"popl %%esi;		\n"					\
-	: "=b" (last), "=m" (prev->thread.esp)				\
-	: "m" (next->thread.esp),					\
+	: "=b" (last), "=m" (prev->thread.sp)				\
+	: "m" (next->thread.sp),					\
 	  "a" (prev), "b" (prev), "c"(next)				\
 	);								\
 } while (0)
 
-#define _set_base(addr,base) do { unsigned long __pr; \
+/*
+ * disable hlt during certain critical i/o operations
+ */
+#define HAVE_DISABLE_HLT
+#else
+#define __SAVE(reg, offset) "movq %%" #reg ",(14-" #offset ")*8(%%rsp)\n\t"
+#define __RESTORE(reg, offset) "movq (14-" #offset ")*8(%%rsp),%%" #reg "\n\t"
+
+/* frame pointer must be last for get_wchan */
+#define SAVE_CONTEXT    "pushf ; pushq %%rbp ; movq %%rsi,%%rbp\n\t"
+#define RESTORE_CONTEXT "movq %%rbp,%%rsi ; popq %%rbp ; popf\t"
+
+#define __EXTRA_CLOBBER  \
+	, "rcx", "rbx", "rdx", "r8", "r9", "r10", "r11", \
+	  "r12", "r13", "r14", "r15"
+
+/* Save restore flags to clear handle leaking NT */
+#define switch_to(prev, next, last) \
+	asm volatile(SAVE_CONTEXT						    \
+	     "movq %%rsp,%P[threadrsp](%[prev])\n\t" /* save RSP */	  \
+	     "movq %P[threadrsp](%[next]),%%rsp\n\t" /* restore RSP */	  \
+	     "call __switch_to\n\t"					  \
+	     ".globl thread_return\n"					  \
+	     "thread_return:\n\t"					  \
+	     "movq %%gs:%P[pda_pcurrent],%%rsi\n\t"			  \
+	     "movq %P[thread_info](%%rsi),%%r8\n\t"			  \
+	     LOCK_PREFIX "btr  %[tif_fork],%P[ti_flags](%%r8)\n\t"	  \
+	     "movq %%rax,%%rdi\n\t" 					  \
+	     "jc   ret_from_fork\n\t"					  \
+	     RESTORE_CONTEXT						  \
+	     : "=a" (last)					  	  \
+	     : [next] "S" (next), [prev] "D" (prev),			  \
+	       [threadrsp] "i" (offsetof(struct task_struct, thread.sp)), \
+	       [ti_flags] "i" (offsetof(struct thread_info, flags)),	  \
+	       [tif_fork] "i" (TIF_FORK),			  	  \
+	       [thread_info] "i" (offsetof(struct task_struct, stack)),   \
+	       [pda_pcurrent] "i" (offsetof(struct x8664_pda, pcurrent))  \
+	     : "memory", "cc" __EXTRA_CLOBBER)
+#endif
+
+#ifdef __KERNEL__
+#define _set_base(addr, base) do { unsigned long __pr; \
 __asm__ __volatile__ ("movw %%dx,%1\n\t" \
 	"rorl $16,%%edx\n\t" \
 	"movb %%dl,%2\n\t" \
@@ -69,10 +118,10 @@ __asm__ __volatile__ ("movw %%dx,%1\n\t" \
 	:"m" (*((addr)+2)), \
 	 "m" (*((addr)+4)), \
 	 "m" (*((addr)+7)), \
-         "0" (base) \
-        ); } while(0)
+	 "0" (base) \
+	); } while (0)
 
-#define _set_limit(addr,limit) do { unsigned long __lr; \
+#define _set_limit(addr, limit) do { unsigned long __lr; \
 __asm__ __volatile__ ("movw %%dx,%1\n\t" \
 	"rorl $16,%%edx\n\t" \
 	"movb %2,%%dh\n\t" \
@@ -83,31 +132,30 @@ __asm__ __volatile__ ("movw %%dx,%1\n\t" \
 	:"m" (*(addr)), \
 	 "m" (*((addr)+6)), \
 	 "0" (limit) \
-        ); } while(0)
+	); } while (0)
 
-#define set_base(ldt,base) _set_base( ((char *)&(ldt)) , (base) )
-#define set_limit(ldt,limit) _set_limit( ((char *)&(ldt)) , ((limit)-1) )
+#define set_base(ldt, base) _set_base(((char *)&(ldt)) , (base))
+#define set_limit(ldt, limit) _set_limit(((char *)&(ldt)) , ((limit)-1))
+
+extern void load_gs_index(unsigned);
 
 /*
  * Load a segment. Fall back on loading the zero
  * segment if something goes wrong..
  */
-#define loadsegment(seg,value)			\
+#define loadsegment(seg, value)			\
 	asm volatile("\n"			\
 		"1:\t"				\
-		"mov %0,%%" #seg "\n"		\
+		"movl %k0,%%" #seg "\n"		\
 		"2:\n"				\
 		".section .fixup,\"ax\"\n"	\
 		"3:\t"				\
-		"pushl $0\n\t"			\
-		"popl %%" #seg "\n\t"		\
+		"movl %k1, %%" #seg "\n\t"	\
 		"jmp 2b\n"			\
 		".previous\n"			\
-		".section __ex_table,\"a\"\n\t"	\
-		".align 4\n\t"			\
-		".long 1b,3b\n"			\
-		".previous"			\
-		: :"rm" (value))
+		_ASM_EXTABLE(1b,3b)		\
+		: :"r" (value), "r" (0))
+
 
 /*
  * Save a segment register away
@@ -115,6 +163,13 @@ __asm__ __volatile__ ("movw %%dx,%1\n\t" \
 #define savesegment(seg, value) \
 	asm volatile("mov %%" #seg ",%0":"=rm" (value))
 
+static inline unsigned long get_limit(unsigned long segment)
+{
+	unsigned long __limit;
+	__asm__("lsll %1,%0"
+		:"=r" (__limit):"r" (segment));
+	return __limit+1;
+}
 
 void l4x_fpu_set(int on_off);
 
@@ -123,77 +178,97 @@ static inline void native_clts(void)
 	l4x_fpu_set(1);
 }
 
+/*
+ * Volatile isn't enough to prevent the compiler from reordering the
+ * read/write functions for the control registers and messing everything up.
+ * A memory clobber would solve the problem, but would prevent reordering of
+ * all loads stores around it, which can hurt performance. Solution is to
+ * use a variable and mimic reads and writes to it to enforce serialization
+ */
+static unsigned long __force_order;
+
 static inline unsigned long native_read_cr0(void)
 {
 	unsigned long val;
-	asm volatile("movl %%cr0,%0\n\t" :"=r" (val));
+	asm volatile("mov %%cr0,%0\n\t" :"=r" (val), "=m" (__force_order));
 	return val;
 }
 
 static inline void native_write_cr0(unsigned long val)
 {
-	asm volatile("movl %0,%%cr0": :"r" (val));
+	asm volatile("mov %0,%%cr0": :"r" (val), "m" (__force_order));
 }
 
 static inline unsigned long native_read_cr2(void)
 {
 	unsigned long val;
-	asm volatile("movl %%cr2,%0\n\t" :"=r" (val));
+	asm volatile("mov %%cr2,%0\n\t" :"=r" (val), "=m" (__force_order));
 	return val;
 }
 
 static inline void native_write_cr2(unsigned long val)
 {
-	asm volatile("movl %0,%%cr2": :"r" (val));
+	asm volatile("mov %0,%%cr2": :"r" (val), "m" (__force_order));
 }
 
 static inline unsigned long native_read_cr3(void)
 {
 	unsigned long val;
-	asm volatile("movl %%cr3,%0\n\t" :"=r" (val));
+	asm volatile("mov %%cr3,%0\n\t" :"=r" (val), "=m" (__force_order));
 	return val;
 }
 
 static inline void native_write_cr3(unsigned long val)
 {
-	asm volatile("movl %0,%%cr3": :"r" (val));
+	asm volatile("mov %0,%%cr3": :"r" (val), "m" (__force_order));
 }
 
 static inline unsigned long native_read_cr4(void)
 {
 	unsigned long val;
-	asm volatile("movl %%cr4,%0\n\t" :"=r" (val));
+	asm volatile("mov %%cr4,%0\n\t" :"=r" (val), "=m" (__force_order));
 	return val;
 }
 
 static inline unsigned long native_read_cr4_safe(void)
 {
 	unsigned long val;
-	/* This could fault if %cr4 does not exist */
-	asm volatile("1: movl %%cr4, %0		\n"
-		"2:				\n"
-		".section __ex_table,\"a\"	\n"
-		".long 1b,2b			\n"
-		".previous			\n"
-		: "=r" (val): "0" (0));
+	/* This could fault if %cr4 does not exist. In x86_64, a cr4 always
+	 * exists, so it will never fail. */
+#ifdef CONFIG_X86_32
+	asm volatile("1: mov %%cr4, %0\n"
+		     "2:\n"
+		     _ASM_EXTABLE(1b,2b)
+		     : "=r" (val), "=m" (__force_order) : "0" (0));
+#else
+	val = native_read_cr4();
+#endif
 	return val;
 }
 
 static inline void native_write_cr4(unsigned long val)
 {
-	asm volatile("movl %0,%%cr4": :"r" (val));
+	asm volatile("mov %0,%%cr4": :"r" (val), "m" (__force_order));
 }
+
+#ifdef CONFIG_X86_64
+static inline unsigned long native_read_cr8(void)
+{
+	unsigned long cr8;
+	asm volatile("movq %%cr8,%0" : "=r" (cr8));
+	return cr8;
+}
+
+static inline void native_write_cr8(unsigned long val)
+{
+	asm volatile("movq %0,%%cr8" :: "r" (val) : "memory");
+}
+#endif
 
 static inline void native_wbinvd(void)
 {
 	asm volatile("wbinvd": : :"memory");
 }
-
-static inline void clflush(volatile void *__p)
-{
-	asm volatile("clflush %0" : "+m" (*(char __force *)__p));
-}
-
 #ifdef CONFIG_PARAVIRT
 #include <asm/paravirt.h>
 #else
@@ -207,32 +282,45 @@ static inline void clflush(volatile void *__p)
 #define read_cr4_safe()	(native_read_cr4_safe())
 #define write_cr4(x)	(native_write_cr4(x))
 #define wbinvd()	(native_wbinvd())
+#ifdef CONFIG_X86_64
+#define read_cr8()	(native_read_cr8())
+#define write_cr8(x)	(native_write_cr8(x))
+#endif
 
 /* Clear the 'TS' bit */
 #define clts()		(native_clts())
 
 #endif/* CONFIG_PARAVIRT */
 
-/* Set the 'TS' bit */
-#define stts() { l4x_fpu_set(0); }
+#define stts() l4x_fpu_set(0)
 
-#endif	/* __KERNEL__ */
+#endif /* __KERNEL__ */
 
-static inline unsigned long get_limit(unsigned long segment)
+static inline void clflush(volatile void *__p)
 {
-	unsigned long __limit;
-	__asm__("lsll %1,%0"
-		:"=r" (__limit):"r" (segment));
-	return __limit+1;
+	asm volatile("clflush %0" : "+m" (*(volatile char __force *)__p));
 }
 
 #define nop() __asm__ __volatile__ ("nop")
+
+void disable_hlt(void);
+void enable_hlt(void);
+
+extern int es7000_plat;
+void cpu_idle_wait(void);
+
+extern unsigned long arch_align_stack(unsigned long sp);
+extern void free_init_pages(char *what, unsigned long begin, unsigned long end);
+
+void default_idle(void);
 
 /*
  * Force strict CPU ordering.
  * And yes, this is required on UP too when we're talking
  * to devices.
- *
+ */
+#ifdef CONFIG_X86_32
+/*
  * For now, "wmb()" doesn't actually do anything, as all
  * Intel CPU's follow what Intel calls a *Processor Order*,
  * in which all writes are seen in the program order even
@@ -245,11 +333,14 @@ static inline unsigned long get_limit(unsigned long segment)
  * Some non intel clones support out of order store. wmb() ceases to be a
  * nop for these.
  */
- 
-
 #define mb() alternative("lock; addl $0,0(%%esp)", "mfence", X86_FEATURE_XMM2)
 #define rmb() alternative("lock; addl $0,0(%%esp)", "lfence", X86_FEATURE_XMM2)
 #define wmb() alternative("lock; addl $0,0(%%esp)", "sfence", X86_FEATURE_XMM)
+#else
+#define mb() 	asm volatile("mfence":::"memory")
+#define rmb()	asm volatile("lfence":::"memory")
+#define wmb()	asm volatile("sfence" ::: "memory")
+#endif
 
 /**
  * read_barrier_depends - Flush all pending reads that subsequents reads
@@ -303,7 +394,7 @@ static inline unsigned long get_limit(unsigned long segment)
  * in cases like this where there are no data dependencies.
  **/
 
-#define read_barrier_depends()	do { } while(0)
+#define read_barrier_depends()	do { } while (0)
 
 #ifdef CONFIG_SMP
 #define smp_mb()	mb()
@@ -323,26 +414,21 @@ static inline unsigned long get_limit(unsigned long segment)
 #define smp_mb()	barrier()
 #define smp_rmb()	barrier()
 #define smp_wmb()	barrier()
-#define smp_read_barrier_depends()	do { } while(0)
+#define smp_read_barrier_depends()	do { } while (0)
 #define set_mb(var, value) do { var = value; barrier(); } while (0)
 #endif
 
-#include <linux/irqflags.h>
-
 /*
- * disable hlt during certain critical i/o operations
+ * Stop RDTSC speculation. This is needed when you need to use RDTSC
+ * (or get_cycles or vread that possibly accesses the TSC) in a defined
+ * code region.
+ *
+ * (Could use an alternative three way for this if there was one.)
  */
-#define HAVE_DISABLE_HLT
-void disable_hlt(void);
-void enable_hlt(void);
-
-extern int es7000_plat;
-void cpu_idle_wait(void);
-
-extern unsigned long arch_align_stack(unsigned long sp);
-extern void free_init_pages(char *what, unsigned long begin, unsigned long end);
-
-void default_idle(void);
-void __show_registers(struct pt_regs *, int all);
+static inline void rdtsc_barrier(void)
+{
+	alternative(ASM_NOP3, "mfence", X86_FEATURE_MFENCE_RDTSC);
+	alternative(ASM_NOP3, "lfence", X86_FEATURE_LFENCE_RDTSC);
+}
 
 #endif
