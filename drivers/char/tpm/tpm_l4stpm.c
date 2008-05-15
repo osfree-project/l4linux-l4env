@@ -18,7 +18,7 @@ MODULE_DESCRIPTION("Device driver for the L4 Secure Trusted Platform Module (STP
 MODULE_SUPPORTED_DEVICE(TPM_DEVICE_NAME);
 
 L4_EXTERNAL_FUNC(stpm_transmit);
-L4_EXTERNAL_FUNC(check_tpm_server);
+L4_EXTERNAL_FUNC(stpm_check_server);
 
 static char * l4x_vtpm_instance = NULL;
 
@@ -135,9 +135,9 @@ int __init init_tpm_module(void)
 	// connect to (v)TPM specified by module param if available
 	// default is stpm, a tpm service with real hw tpm driver
 	if (l4x_vtpm_instance == NULL)
-		error = check_tpm_server("stpm", 1);
+		error = stpm_check_server("stpm", 1);
 	else
-		error = check_tpm_server(l4x_vtpm_instance, 1);
+		error = stpm_check_server(l4x_vtpm_instance, 1);
 
 	if (error) {
 		printk(KERN_ERR "TPM %s not found\n",
