@@ -115,39 +115,52 @@ int __init init_tpm_module(void)
 	int rc, error;
 	struct tpm_chip *chip;
 
+	/* only do anything if service name was specified */
+	if (!l4x_vtpm_instance)
+		return -ENODEV;
+
 	rc = driver_register(&emu_drv);
 	if (rc < 0)
 		return rc;
 
 	if (IS_ERR(pdev = platform_device_register_simple(TPM_DEVICE_NAME,
-	                                                  -1, NULL, 0)))
-		return PTR_ERR(pdev);
+	                                                  -1, NULL, 0))) {
+		rc = PTR_ERR(pdev);
+		goto out1;
+	}
 
+	rc = -ENODEV;
 	if (!(chip = tpm_register_hardware(&pdev->dev, &tpm_emu)))
-		return -ENODEV;
+		goto out2;
 
+	rc = -ENOMEM;
 	stpm_data.read = kmalloc(STPM_BUF_SIZE, GFP_KERNEL);
 	if (!stpm_data.read)
-		return -ENOMEM;
+		goto out3;
 
 	stpm_data.size = STPM_BUF_SIZE;
 
-	// connect to (v)TPM specified by module param if available
-	// default is stpm, a tpm service with real hw tpm driver
-	if (l4x_vtpm_instance == NULL)
-		error = stpm_check_server("stpm", 1);
-	else
-		error = stpm_check_server(l4x_vtpm_instance, 1);
+	/* connect to service */
+	error = stpm_check_server(l4x_vtpm_instance, 1);
 
 	if (error) {
-		printk(KERN_ERR "TPM %s not found\n",
-		       (l4x_vtpm_instance == NULL ? "stpm" : l4x_vtpm_instance));
-		LOG_printf("TPM %s not found",
-		           (l4x_vtpm_instance == NULL ? "stpm" : l4x_vtpm_instance));
-		return -ENODEV;
+		printk(KERN_ERR "TPM %s not found\n", l4x_vtpm_instance);
+		LOG_printf("TPM %s not found", l4x_vtpm_instance);
+		rc = -ENODEV;
+		goto out4;
 	}
 
 	return 0;
+
+out4:
+	kfree(stpm_data.read);
+out3:
+	tpm_remove_hardware(&pdev->dev);
+out2:
+	platform_device_unregister(pdev);
+out1:
+	driver_unregister(&emu_drv);
+	return rc;
 }
 
 void __exit cleanup_tpm_module(void)
@@ -156,6 +169,7 @@ void __exit cleanup_tpm_module(void)
 	stpm_data.read = NULL;
 	stpm_data.size = 0;
 
+	tpm_remove_hardware(&pdev->dev);
 	platform_device_unregister(pdev);
 	driver_unregister(&emu_drv);
 }
