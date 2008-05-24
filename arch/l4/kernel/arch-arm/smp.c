@@ -36,6 +36,7 @@
 #include <asm/generic/smp.h>
 #include <asm/generic/stack_id.h>
 #include <l4/sys/kdebug.h>
+#include <l4/util/util.h>
 
 /*
  * bitmask of present and online CPUs.
