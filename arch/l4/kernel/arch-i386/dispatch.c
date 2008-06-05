@@ -473,7 +473,7 @@ static inline void dispatch_system_call(struct task_struct *p)
 	           regsp->ax);
 #endif
 	if (unlikely(syscall == -38))
-		enter_kdebug("no ssycall");
+		enter_kdebug("no syscall");
 }
 
 /*
