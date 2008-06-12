@@ -253,6 +253,7 @@ static const char *required_kernel_features[] =
     "deceit_bit_disables_switch",
 #endif
 #ifdef ARCH_x86
+    "io_prot",
     "segments",
 #endif
   };
@@ -269,7 +270,8 @@ static void l4x_configuration_sanity_check(const char *cmdline)
 			           "      %s\n"
 			           "feature enabled!\n",
 			           required_kernel_features[i]);
-			enter_kdebug("Microkernel feature missing!");
+			while (1)
+				enter_kdebug("Microkernel feature missing!");
 		}
 	}
 
@@ -278,7 +280,8 @@ static void l4x_configuration_sanity_check(const char *cmdline)
 		           "I need %ld\n",
 		           l4sigma0_kip_kernel_abi_version(),
 		           required_kernel_abi_version);
-		enter_kdebug("Stop!");
+		while (1)
+			enter_kdebug("Stop!");
 	}
 
 #ifndef CONFIG_L4_USE_L4VMM
