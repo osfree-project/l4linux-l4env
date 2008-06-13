@@ -1979,6 +1979,8 @@ static int l4x_handle_msr(l4_utcb_t *u)
 
 		if (reg == MSR_IA32_MISC_ENABLE) {
 			u->exc.eax = u->exc.edx = 0;
+		} else if (reg == MSR_K7_CLK_CTL) {
+			u->exc.eax = 0x20000000;
 		} else
 			LOG_printf("WARNING: Unknown rdmsr: %08lx at %p\n", reg, pc);
 
