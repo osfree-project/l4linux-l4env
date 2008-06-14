@@ -199,10 +199,12 @@ extern long __put_user_bad(void);
  * u64) we use this dirty asm wrapper trick.
  */
 #define __put_user_8_asm_wrap(x, addr, retval)				\
+	({ unsigned long dummy;                                         \
 	__asm__ __volatile__ (						\
 		"call __put_user_8	\n\t"				\
-		: "=a" (retval)						\
-		: "A" (x), "c" (addr))
+		: "=a" (retval), "=d" (dummy), "=c" (dummy)		\
+		: "A" (x), "c" (addr));                                 \
+	 })
 
 #define put_user_macro(x,ptr)						\
 	({								\
