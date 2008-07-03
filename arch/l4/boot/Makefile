@@ -23,7 +23,7 @@ objects-$(CONFIG_L4_LDR) := ldr.o startup.o res.o
 
 targets	:= $(objects-y)
 
-KBUILD_CFLAGS	:= $(L4INC) -I$(L4OBJ)/include/uclibc \
+KBUILD_CFLAGS	:= -m32 $(L4INC) -I$(L4OBJ)/include/uclibc \
 		   -Wall -fno-strict-aliasing -O2 -pipe \
 		   -DARCH_$(L4_MK_ARCH) \
 		   -DVMLINUX_IMAGE=\"Image\" \
