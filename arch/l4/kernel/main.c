@@ -97,8 +97,10 @@
  #endif
 
  // this may be a bit harsh but well...
- #if defined(ARCH_x86) && !defined(CONFIG_L4_FB_DRIVER) && !defined(CONFIG_VGA_CONSOLE)
-  #error L4_FB_DRIVER nor VGA_CONSOLE enabled, choose one.
+ #if defined(ARCH_x86) && !defined(CONFIG_L4_FB_DRIVER) && \
+     !defined(CONFIG_VGA_CONSOLE) && \
+     !defined(CONFIG_FRAMEBUFFER_CONSOLE)
+  #error L4_FB_DRIVER nor VGA_CONSOLE nor FRAMEBUFFER_CONSOLE enabled, choose one.
  #endif
 
 #endif
@@ -1488,7 +1490,13 @@ static l4vmm_config_t l4vmm_config = {
 
 static int l4vmm_handle_exception_r0(l4_utcb_t *u)
 {
-	return l4vmm_handle_exception(u);
+	int r;
+	l4_utcb_t cu;
+
+	memcpy(&cu.exc, &u->exc, sizeof(unsigned long) * L4_UTCB_EXCEPTION_REGS_SIZE);
+	r = l4vmm_handle_exception(&cu);
+	memcpy(&u->exc, &cu.exc, sizeof(unsigned long) * L4_UTCB_EXCEPTION_REGS_SIZE);
+	return r;
 }
 #endif
 
