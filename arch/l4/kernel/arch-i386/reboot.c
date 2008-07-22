@@ -9,6 +9,13 @@
 
 #include <asm/reboot.h>
 
+/*
+ * Power off function, if any
+ */
+void (*pm_power_off)(void);
+EXPORT_SYMBOL(pm_power_off);
+
+int reboot_force;
 
 void machine_halt(void)
 {

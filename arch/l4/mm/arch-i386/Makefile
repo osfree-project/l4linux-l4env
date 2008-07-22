@@ -3,9 +3,10 @@
 #
 
 
-obj-y	:= fault.o extable.o init.o ioremap.o pageattr.o pgtable_32.o mmap.o
+obj-y	:= fault.o extable.o init.o ioremap.o pageattr.o pgtable_32.o pgtable.o mmap.o pat.o
 
 extable-y	+= ../../../x86/mm/extable.o
 mmap-y		+= ../../../x86/mm/mmap.o
+pat-y		+= ../../../x86/mm/pat.o
 pageattr-y	+= ../../../x86/mm/pageattr.o
 pgtable_32-y	+= ../../../x86/mm/pgtable_32.o

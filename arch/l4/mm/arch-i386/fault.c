@@ -504,6 +504,11 @@ static int vmalloc_fault(unsigned long address)
 	unsigned long pgd_paddr;
 	pmd_t *pmd_k;
 	pte_t *pte_k;
+
+	/* Make sure we are in vmalloc area */
+	if (!(address >= VMALLOC_START && address < VMALLOC_END))
+		return -1;
+
 	/*
 	 * Synchronize this task's top level page-table
 	 * with the 'reference' page table.
@@ -652,7 +657,7 @@ int __kprobes l4x_do_page_fault(unsigned long __address, unsigned long error_cod
 #ifdef CONFIG_X86_32
 	/* It's safe to allow irq's after cr2 has been saved and the vmalloc
 	   fault has been handled. */
-	if (regs->flags & (X86_EFLAGS_IF|VM_MASK))
+	if (regs->flags & (X86_EFLAGS_IF | X86_VM_MASK))
 		local_irq_enable();
 
 	/*
@@ -997,9 +1002,5 @@ void vmalloc_sync_all(void)
 		if (address == start)
 			start = address + PGDIR_SIZE;
 	}
-	/* Check that there is no need to do the same for the modules area. */
-	BUILD_BUG_ON(!(MODULES_VADDR > __START_KERNEL));
-	BUILD_BUG_ON(!(((MODULES_END - 1) & PGDIR_MASK) ==
-				(__START_KERNEL & PGDIR_MASK)));
 #endif
 }

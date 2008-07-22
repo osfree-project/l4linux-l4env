@@ -3,6 +3,9 @@
  *
  *	(c) 1995 Alan Cox, Building #3 <alan@redhat.com>
  *	(c) 1998-99, 2000 Ingo Molnar <mingo@redhat.com>
+ *      (c) 2002,2003 Andi Kleen, SuSE Labs.
+ *
+ *	i386 and x86_64 integration by Glauber Costa <gcosta@redhat.com>
  *
  *	This code is released under the GNU General Public License version 2 or
  *	later.
@@ -18,11 +21,12 @@
 #include <linux/cache.h>
 #include <linux/interrupt.h>
 #include <linux/cpu.h>
-#include <linux/module.h>
 
 #include <asm/mtrr.h>
 #include <asm/tlbflush.h>
 #include <asm/mmu_context.h>
+#include <asm/proto.h>
+#include <mach_ipi.h>
 #include <mach_apic.h>
 
 #include <asm/generic/smp.h>
@@ -106,399 +110,6 @@
  *	about nothing of note with C stepping upwards.
  */
 
-DEFINE_PER_CPU(struct tlb_state, cpu_tlbstate) ____cacheline_aligned = { &init_mm, 0, };
-
-/*
- * the following functions deal with sending IPIs between CPUs.
- *
- * We use 'broadcast', CPU->CPU IPIs and self-IPIs too.
- */
-
-static inline int __prepare_ICR (unsigned int shortcut, int vector)
-{
-	unsigned int icr = shortcut | APIC_DEST_LOGICAL;
-
-	switch (vector) {
-	default:
-		icr |= APIC_DM_FIXED | vector;
-		break;
-	case NMI_VECTOR:
-		icr |= APIC_DM_NMI;
-		break;
-	}
-	return icr;
-}
-
-static inline int __prepare_ICR2 (unsigned int mask)
-{
-	return SET_APIC_DEST_FIELD(mask);
-}
-
-void __l4x_send_IPI_shortcut(unsigned int shortcut, int vector);
-
-void __send_IPI_shortcut(unsigned int shortcut, int vector)
-{
-#if 0
-	/*
-	 * Subtle. In the case of the 'never do double writes' workaround
-	 * we have to lock out interrupts to be safe.  As we don't care
-	 * of the value read we use an atomic rmw access to avoid costly
-	 * cli/sti.  Otherwise we use an even cheaper single atomic write
-	 * to the APIC.
-	 */
-	unsigned int cfg;
-
-	/*
-	 * Wait for idle.
-	 */
-	apic_wait_icr_idle();
-
-	/*
-	 * No need to touch the target chip field
-	 */
-	cfg = __prepare_ICR(shortcut, vector);
-
-	/*
-	 * Send the IPI. The write to APIC_ICR fires this off.
-	 */
-	apic_write_around(APIC_ICR, cfg);
-#endif
-	__l4x_send_IPI_shortcut(shortcut, vector);
-}
-
-void send_IPI_self(int vector)
-{
-	__send_IPI_shortcut(APIC_DEST_SELF, vector);
-}
-
-/*
- * This is used to send an IPI with no shorthand notation (the destination is
- * specified in bits 56 to 63 of the ICR).
- */
-static inline void __send_IPI_dest_field(unsigned long mask, int vector)
-{
-	l4x_send_IPI_mask_bitmask(mask, vector);
-#if 0
-	unsigned long cfg;
-
-	/*
-	 * Wait for idle.
-	 */
-	if (unlikely(vector == NMI_VECTOR))
-		safe_apic_wait_icr_idle();
-	else
-		apic_wait_icr_idle();
-		
-	/*
-	 * prepare target chip field
-	 */
-	cfg = __prepare_ICR2(mask);
-	apic_write_around(APIC_ICR2, cfg);
-		
-	/*
-	 * program the ICR 
-	 */
-	cfg = __prepare_ICR(0, vector);
-			
-	/*
-	 * Send the IPI. The write to APIC_ICR fires this off.
-	 */
-	apic_write_around(APIC_ICR, cfg);
-#endif
-}
-
-/*
- * This is only used on smaller machines.
- */
-void send_IPI_mask_bitmask(cpumask_t cpumask, int vector)
-{
-	unsigned long mask = cpus_addr(cpumask)[0];
-	unsigned long flags;
-
-	local_irq_save(flags);
-	WARN_ON(mask & ~cpus_addr(cpu_online_map)[0]);
-	__send_IPI_dest_field(mask, vector);
-	local_irq_restore(flags);
-}
-
-void send_IPI_mask_sequence(cpumask_t mask, int vector)
-{
-	unsigned long flags;
-	unsigned int query_cpu;
-
-	/*
-	 * Hack. The clustered APIC addressing mode doesn't allow us to send 
-	 * to an arbitrary mask, so I do a unicasts to each CPU instead. This 
-	 * should be modified to do 1 message per cluster ID - mbligh
-	 */ 
-
-	local_irq_save(flags);
-	for_each_possible_cpu(query_cpu) {
-		if (cpu_isset(query_cpu, mask)) {
-			__send_IPI_dest_field(cpu_to_logical_apicid(query_cpu),
-					      vector);
-		}
-	}
-	local_irq_restore(flags);
-}
-
-#include <mach_ipi.h> /* must come after the send_IPI functions above for inlining */
-
-void __l4x_send_IPI_shortcut(unsigned int shortcut, int vector)
-{
-	if (shortcut == APIC_DEST_ALLBUT) {
-		cpumask_t mask = cpu_online_map;
-		cpu_clear(smp_processor_id(), mask);
-		send_IPI_mask(mask, vector);
-	} else if (shortcut == APIC_DEST_ALLINC) {
-		send_IPI_mask(cpu_online_map, vector);
-	} else if (shortcut == APIC_DEST_SELF) {
-		cpumask_t mask = CPU_MASK_NONE;
-		cpu_set(smp_processor_id(), mask);
-		send_IPI_mask(mask, vector);
-	} else {
-		LOG_printf("Unknown IPI shortcut %x\n", shortcut);
-		enter_kdebug("Unknown IPI shortcut");
-	}
-}
-
-void l4x_smp_broadcast_timer(void)
-{
-	send_IPI_allbutself(L4X_TIMER_VECTOR);
-}
-
-
-/*
- *	Smarter SMP flushing macros. 
- *		c/o Linus Torvalds.
- *
- *	These mean you can really definitely utterly forget about
- *	writing to user space from interrupts. (Its not allowed anyway).
- *
- *	Optimizations Manfred Spraul <manfred@colorfullife.com>
- */
-
-static cpumask_t flush_cpumask;
-static struct mm_struct * flush_mm;
-static unsigned long flush_va;
-static DEFINE_SPINLOCK(tlbstate_lock);
-
-/*
- * We cannot call mmdrop() because we are in interrupt context,
- * instead update mm->cpu_vm_mask.
- *
- * We need to reload %cr3 since the page tables may be going
- * away from under us..
- */
-void leave_mm(int cpu)
-{
-	if (per_cpu(cpu_tlbstate, cpu).state == TLBSTATE_OK)
-		BUG();
-	cpu_clear(cpu, per_cpu(cpu_tlbstate, cpu).active_mm->cpu_vm_mask);
-	//l4/load_cr3(swapper_pg_dir);
-}
-EXPORT_SYMBOL_GPL(leave_mm);
-
-/*
- *
- * The flush IPI assumes that a thread switch happens in this order:
- * [cpu0: the cpu that switches]
- * 1) switch_mm() either 1a) or 1b)
- * 1a) thread switch to a different mm
- * 1a1) cpu_clear(cpu, old_mm->cpu_vm_mask);
- * 	Stop ipi delivery for the old mm. This is not synchronized with
- * 	the other cpus, but smp_invalidate_interrupt ignore flush ipis
- * 	for the wrong mm, and in the worst case we perform a superfluous
- * 	tlb flush.
- * 1a2) set cpu_tlbstate to TLBSTATE_OK
- * 	Now the smp_invalidate_interrupt won't call leave_mm if cpu0
- *	was in lazy tlb mode.
- * 1a3) update cpu_tlbstate[].active_mm
- * 	Now cpu0 accepts tlb flushes for the new mm.
- * 1a4) cpu_set(cpu, new_mm->cpu_vm_mask);
- * 	Now the other cpus will send tlb flush ipis.
- * 1a4) change cr3.
- * 1b) thread switch without mm change
- *	cpu_tlbstate[].active_mm is correct, cpu0 already handles
- *	flush ipis.
- * 1b1) set cpu_tlbstate to TLBSTATE_OK
- * 1b2) test_and_set the cpu bit in cpu_vm_mask.
- * 	Atomically set the bit [other cpus will start sending flush ipis],
- * 	and test the bit.
- * 1b3) if the bit was 0: leave_mm was called, flush the tlb.
- * 2) switch %%esp, ie current
- *
- * The interrupt must handle 2 special cases:
- * - cr3 is changed before %%esp, ie. it cannot use current->{active_,}mm.
- * - the cpu performs speculative tlb reads, i.e. even if the cpu only
- *   runs in kernel space, the cpu could load tlb entries for user space
- *   pages.
- *
- * The good news is that cpu_tlbstate is local to each cpu, no
- * write/read ordering problems.
- */
-
-/*
- * TLB flush IPI:
- *
- * 1) Flush the tlb entries if the cpu uses the mm that's being flushed.
- * 2) Leave the mm if we are in the lazy tlb mode.
- */
-
-void smp_invalidate_interrupt(struct pt_regs *regs)
-{
-	unsigned long cpu;
-
-	cpu = get_cpu();
-
-	if (!cpu_isset(cpu, flush_cpumask))
-		goto out;
-		/* 
-		 * This was a BUG() but until someone can quote me the
-		 * line from the intel manual that guarantees an IPI to
-		 * multiple CPUs is retried _only_ on the erroring CPUs
-		 * its staying as a return
-		 *
-		 * BUG();
-		 */
-		 
-	if (flush_mm == per_cpu(cpu_tlbstate, cpu).active_mm) {
-		if (per_cpu(cpu_tlbstate, cpu).state == TLBSTATE_OK) {
-			if (flush_va == TLB_FLUSH_ALL)
-				local_flush_tlb();
-			else
-				__flush_tlb_one(flush_va);
-		} else
-			leave_mm(cpu);
-	}
-	ack_APIC_irq();
-	smp_mb__before_clear_bit();
-	cpu_clear(cpu, flush_cpumask);
-	smp_mb__after_clear_bit();
-out:
-	put_cpu_no_resched();
-	__get_cpu_var(irq_stat).irq_tlb_count++;
-}
-
-void native_flush_tlb_others(const cpumask_t *cpumaskp, struct mm_struct *mm,
-			     unsigned long va)
-{
-	cpumask_t cpumask = *cpumaskp;
-
-	/*
-	 * A couple of (to be removed) sanity checks:
-	 *
-	 * - current CPU must not be in mask
-	 * - mask must exist :)
-	 */
-	BUG_ON(cpus_empty(cpumask));
-	BUG_ON(cpu_isset(smp_processor_id(), cpumask));
-	BUG_ON(!mm);
-
-#ifdef CONFIG_HOTPLUG_CPU
-	/* If a CPU which we ran on has gone down, OK. */
-	cpus_and(cpumask, cpumask, cpu_online_map);
-	if (unlikely(cpus_empty(cpumask)))
-		return;
-#endif
-
-	/*
-	 * i'm not happy about this global shared spinlock in the
-	 * MM hot path, but we'll see how contended it is.
-	 * AK: x86-64 has a faster method that could be ported.
-	 */
-	spin_lock(&tlbstate_lock);
-	
-	flush_mm = mm;
-	flush_va = va;
-	cpus_or(flush_cpumask, cpumask, flush_cpumask);
-	/*
-	 * We have to send the IPI only to
-	 * CPUs affected.
-	 */
-	//l4/send_IPI_mask(cpumask, INVALIDATE_TLB_VECTOR);
-
-	while (!cpus_empty(flush_cpumask))
-		/* nothing. lockup detection does not belong here */
-		cpu_relax();
-
-	flush_mm = NULL;
-	flush_va = 0;
-	spin_unlock(&tlbstate_lock);
-}
-	
-void flush_tlb_current_task(void)
-{
-	struct mm_struct *mm = current->mm;
-	cpumask_t cpu_mask;
-
-	preempt_disable();
-	cpu_mask = mm->cpu_vm_mask;
-	cpu_clear(smp_processor_id(), cpu_mask);
-
-	local_flush_tlb();
-	if (!cpus_empty(cpu_mask))
-		flush_tlb_others(cpu_mask, mm, TLB_FLUSH_ALL);
-	preempt_enable();
-}
-
-void flush_tlb_mm (struct mm_struct * mm)
-{
-	cpumask_t cpu_mask;
-
-	preempt_disable();
-	cpu_mask = mm->cpu_vm_mask;
-	cpu_clear(smp_processor_id(), cpu_mask);
-
-	if (current->active_mm == mm) {
-		if (current->mm)
-			local_flush_tlb();
-		else
-			leave_mm(smp_processor_id());
-	}
-	if (!cpus_empty(cpu_mask))
-		flush_tlb_others(cpu_mask, mm, TLB_FLUSH_ALL);
-
-	preempt_enable();
-}
-
-void flush_tlb_page(struct vm_area_struct * vma, unsigned long va)
-{
-	struct mm_struct *mm = vma->vm_mm;
-	cpumask_t cpu_mask;
-
-	preempt_disable();
-	cpu_mask = mm->cpu_vm_mask;
-	cpu_clear(smp_processor_id(), cpu_mask);
-
-	if (current->active_mm == mm) {
-		if(current->mm)
-			__flush_tlb_one(va);
-		 else
-		 	leave_mm(smp_processor_id());
-	}
-
-	if (!cpus_empty(cpu_mask))
-		flush_tlb_others(cpu_mask, mm, va);
-
-	preempt_enable();
-}
-EXPORT_SYMBOL(flush_tlb_page);
-
-static void do_flush_tlb_all(void* info)
-{
-	unsigned long cpu = smp_processor_id();
-
-	__flush_tlb_all();
-	if (per_cpu(cpu_tlbstate, cpu).state == TLBSTATE_LAZY)
-		leave_mm(cpu);
-}
-
-void flush_tlb_all(void)
-{
-	on_each_cpu(do_flush_tlb_all, NULL, 1, 1);
-}
-
 /*
  * this function sends a 'reschedule' IPI to another CPU.
  * it goes straight through and wastes no time serializing
@@ -506,7 +117,10 @@ void flush_tlb_all(void)
  */
 static void native_smp_send_reschedule(int cpu)
 {
-	WARN_ON(cpu_is_offline(cpu));
+	if (unlikely(cpu_is_offline(cpu))) {
+		WARN_ON(1);
+		return;
+	}
 	send_IPI_mask(cpumask_of_cpu(cpu), RESCHEDULE_VECTOR);
 }
 
@@ -554,17 +168,17 @@ static void __smp_call_function(void (*func) (void *info), void *info,
 
 	call_data = &data;
 	mb();
-	
+
 	/* Send a message to all other CPUs and wait for them to respond */
 	send_IPI_allbutself(CALL_FUNCTION_VECTOR);
 
 	/* Wait for response */
 	while (atomic_read(&data.started) != cpus)
-		l4_sleep(2); //l4/cpu_relax();
+		l4_sleep(2); //cpu_relax();
 
 	if (wait)
 		while (atomic_read(&data.finished) != cpus)
-			l4_sleep(2); //l4/cpu_relax();
+			l4_sleep(2); //cpu_relax();
 }
 
 
@@ -617,27 +231,28 @@ native_smp_call_function_mask(cpumask_t mask,
 		atomic_set(&data.finished, 0);
 
 	call_data = &data;
-	mb();
+	wmb();
 
 	/* Send a message to other CPUs */
-	if (cpus_equal(mask, allbutself))
+	if (cpus_equal(mask, allbutself) &&
+	    cpus_equal(cpu_online_map, cpu_callout_map))
 		send_IPI_allbutself(CALL_FUNCTION_VECTOR);
 	else
 		send_IPI_mask(mask, CALL_FUNCTION_VECTOR);
 
 	/* Wait for response */
 	while (atomic_read(&data.started) != cpus)
-		l4_sleep(2); //l4/cpu_relax();
+		l4_sleep(2); //cpu_relax();
 
 	if (wait)
 		while (atomic_read(&data.finished) != cpus)
-			l4_sleep(2); //l4/cpu_relax();
+			l4_sleep(2); //cpu_relax();
 	spin_unlock(&call_lock);
 
 	return 0;
 }
 
-static void stop_this_cpu (void * dummy)
+static void stop_this_cpu(void *dummy)
 {
 	local_irq_disable();
 	/*
@@ -645,8 +260,8 @@ static void stop_this_cpu (void * dummy)
 	 */
 	cpu_clear(smp_processor_id(), cpu_online_map);
 	disable_local_APIC();
-	if (cpu_data(smp_processor_id()).hlt_works_ok)
-		for(;;) ; //l4/halt();
+	if (hlt_works(smp_processor_id()))
+		for (;;) ; //l4/halt();
 	for (;;);
 }
 
@@ -656,10 +271,14 @@ static void stop_this_cpu (void * dummy)
 
 static void native_smp_send_stop(void)
 {
-	/* Don't deadlock on the call lock in panic */
-	int nolock = !spin_trylock(&call_lock);
+	int nolock;
 	unsigned long flags;
 
+	if (reboot_force)
+		return;
+
+	/* Don't deadlock on the call lock in panic */
+	nolock = !spin_trylock(&call_lock);
 	local_irq_save(flags);
 	__smp_call_function(stop_this_cpu, NULL, 0, 0);
 	if (!nolock)
@@ -676,7 +295,11 @@ static void native_smp_send_stop(void)
 void smp_reschedule_interrupt(struct pt_regs *regs)
 {
 	//l4/ack_APIC_irq();
+#ifdef CONFIG_X86_32
 	__get_cpu_var(irq_stat).irq_resched_count++;
+#else
+	add_pda(irq_resched_count, 1);
+#endif
 }
 
 void smp_call_function_interrupt(struct pt_regs *regs)
@@ -697,40 +320,17 @@ void smp_call_function_interrupt(struct pt_regs *regs)
 	 */
 	irq_enter();
 	(*func)(info);
+#ifdef CONFIG_X86_32
 	__get_cpu_var(irq_stat).irq_call_count++;
+#else
+	add_pda(irq_call_count, 1);
+#endif
 	irq_exit();
 
 	if (wait) {
 		mb();
 		atomic_inc(&call_data->finished);
 	}
-}
-
-static int convert_apicid_to_cpu(int apic_id)
-{
-	int i;
-
-	for_each_possible_cpu(i) {
-		if (per_cpu(x86_cpu_to_apicid, i) == apic_id)
-			return i;
-	}
-	return -1;
-}
-
-int safe_smp_processor_id(void)
-{
-	int apicid, cpuid;
-
-	if (!boot_cpu_has(X86_FEATURE_APIC))
-		return 0;
-
-	apicid = hard_smp_processor_id();
-	if (apicid == BAD_APICID)
-		return 0;
-
-	cpuid = convert_apicid_to_cpu(apicid);
-
-	return cpuid >= 0 ? cpuid : 0;
 }
 
 struct smp_ops smp_ops = {
@@ -744,3 +344,4 @@ struct smp_ops smp_ops = {
 	.smp_call_function_mask = native_smp_call_function_mask,
 };
 EXPORT_SYMBOL_GPL(smp_ops);
+

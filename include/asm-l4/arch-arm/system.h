@@ -55,6 +55,22 @@ struct pt_regs *l4x_fp_get_user_regs(void);
 #define CPUID_TCM	2
 #define CPUID_TLBTYPE	3
 
+/*
+ * This is used to ensure the compiler did actually allocate the register we
+ * asked it for some inline assembly sequences.  Apparently we can't trust
+ * the compiler from one version to another so a bit of paranoia won't hurt.
+ * This string is meant to be concatenated with the inline asm string and
+ * will cause compilation to stop on mismatch.
+ * (for details, see gcc PR 15089)
+ */
+#define __asmeq(x, y)  ".ifnc " x "," y " ; .err ; .endif\n\t"
+
+#ifndef __ASSEMBLY__
+
+#include <linux/linkage.h>
+#include <linux/stringify.h>
+#include <linux/irqflags.h>
+
 #ifdef CONFIG_CPU_CP15
 #define read_cpuid(reg)							\
 	({								\
@@ -71,24 +87,9 @@ struct pt_regs *l4x_fp_get_user_regs(void);
 		__val;							\
 	})
 #else
+extern unsigned int processor_id;
 #define read_cpuid(reg) (processor_id)
 #endif
-
-/*
- * This is used to ensure the compiler did actually allocate the register we
- * asked it for some inline assembly sequences.  Apparently we can't trust
- * the compiler from one version to another so a bit of paranoia won't hurt.
- * This string is meant to be concatenated with the inline asm string and
- * will cause compilation to stop on mismatch.
- * (for details, see gcc PR 15089)
- */
-#define __asmeq(x, y)  ".ifnc " x "," y " ; .err ; .endif\n\t"
-
-#ifndef __ASSEMBLY__
-
-#include <linux/linkage.h>
-#include <linux/stringify.h>
-#include <linux/irqflags.h>
 
 /*
  * The CPU ID never changes at run time, so we might as well tell the

@@ -9,26 +9,28 @@
  * 'Traps.c' handles hardware traps and faults after we have saved some
  * state in 'asm.s'.
  */
-#include <linux/sched.h>
-#include <linux/kernel.h>
-#include <linux/string.h>
-#include <linux/errno.h>
-#include <linux/timer.h>
-#include <linux/mm.h>
-#include <linux/init.h>
-#include <linux/delay.h>
-#include <linux/spinlock.h>
 #include <linux/interrupt.h>
-#include <linux/highmem.h>
 #include <linux/kallsyms.h>
-#include <linux/ptrace.h>
-#include <linux/utsname.h>
+#include <linux/spinlock.h>
+#include <linux/highmem.h>
 #include <linux/kprobes.h>
-#include <linux/kexec.h>
-#include <linux/unwind.h>
 #include <linux/uaccess.h>
-#include <linux/nmi.h>
+#include <linux/utsname.h>
+#include <linux/kdebug.h>
+#include <linux/kernel.h>
+#include <linux/module.h>
+#include <linux/ptrace.h>
+#include <linux/string.h>
+#include <linux/unwind.h>
+#include <linux/delay.h>
+#include <linux/errno.h>
+#include <linux/kexec.h>
+#include <linux/sched.h>
+#include <linux/timer.h>
+#include <linux/init.h>
 #include <linux/bug.h>
+#include <linux/nmi.h>
+#include <linux/mm.h>
 
 #ifdef CONFIG_EISA
 #include <linux/ioport.h>
@@ -43,28 +45,20 @@
 #include <linux/edac.h>
 #endif
 
+#include <asm/arch_hooks.h>
+#include <asm/stacktrace.h>
 #include <asm/processor.h>
-#include <asm/system.h>
-#include <asm/io.h>
-#include <asm/atomic.h>
 #include <asm/debugreg.h>
+#include <asm/atomic.h>
+#include <asm/system.h>
+#include <asm/unwind.h>
 #include <asm/desc.h>
 #include <asm/i387.h>
 #include <asm/nmi.h>
-#include <asm/unwind.h>
 #include <asm/smp.h>
-#include <asm/arch_hooks.h>
-#include <linux/kdebug.h>
-#include <asm/stacktrace.h>
-
-#include <linux/module.h>
+#include <asm/io.h>
 
 #include "mach_traps.h"
-
-int panic_on_unrecovered_nmi;
-
-DECLARE_BITMAP(used_vectors, NR_VECTORS);
-EXPORT_SYMBOL_GPL(used_vectors);
 
 #include <asm/api/ids.h>
 #include <asm/api/macros.h>
@@ -76,8 +70,16 @@ EXPORT_SYMBOL_GPL(used_vectors);
 #include <l4/sys/syscalls.h>
 #include <asm/l4lxapi/thread.h>
 
+
+int panic_on_unrecovered_nmi;
+
+DECLARE_BITMAP(used_vectors, NR_VECTORS);
+EXPORT_SYMBOL_GPL(used_vectors);
+
+asmlinkage int system_call(void);
+
 /* Do we ignore FPU interrupts ? */
-char ignore_fpu_irq = 0;
+char ignore_fpu_irq;
 
 /*
  * The IDT has to be page-aligned to simplify the Pentium
@@ -85,7 +87,7 @@ char ignore_fpu_irq = 0;
  * for this.
  */
 gate_desc idt_table[256]
-        __attribute__((__section__(".data.idt"))) = { { { { 0, 0 } } }, };
+	__attribute__((__section__(".data.idt"))) = { { { { 0, 0 } } }, };
 
 void divide_error(void);
 void debug(void);
@@ -116,12 +118,13 @@ static unsigned int code_bytes = 64;
 void printk_address(unsigned long address, int reliable)
 {
 #ifdef CONFIG_KALLSYMS
-	unsigned long offset = 0, symsize;
+	char namebuf[KSYM_NAME_LEN];
+	unsigned long offset = 0;
+	unsigned long symsize;
 	const char *symname;
-	char *modname;
-	char *delim = ":";
-	char namebuf[128];
 	char reliab[4] = "";
+	char *delim = ":";
+	char *modname;
 
 	symname = kallsyms_lookup(address, &symsize, &offset,
 					&modname, namebuf);
@@ -149,13 +152,14 @@ static inline int valid_stack_ptr(struct thread_info *tinfo, void *p, unsigned s
 
 /* The form of the top of the frame on the stack */
 struct stack_frame {
-	struct stack_frame *next_frame;
-	unsigned long return_address;
+	struct stack_frame*next_frame;
+	unsigned longreturn_address;
 };
 
-static inline unsigned long print_context_stack(struct thread_info *tinfo,
-				unsigned long *stack, unsigned long bp,
-				const struct stacktrace_ops *ops, void *data)
+static inline unsigned long
+print_context_stack(struct thread_info *tinfo,
+		    unsigned long *stack, unsigned long bp,
+		    const struct stacktrace_ops *ops, void *data)
 {
 	struct stack_frame *frame = (struct stack_frame *)bp;
 
@@ -177,7 +181,7 @@ static inline unsigned long print_context_stack(struct thread_info *tinfo,
 	return bp;
 }
 
-#define MSG(msg) ops->warning(data, msg)
+#define MSG(msg)		ops->warning(data, msg)
 
 void dump_trace(struct task_struct *task, struct pt_regs *regs,
 		unsigned long *stack, unsigned long bp,
@@ -188,6 +192,7 @@ void dump_trace(struct task_struct *task, struct pt_regs *regs,
 
 	if (!stack) {
 		unsigned long dummy;
+
 		stack = &dummy;
 		if (task != current)
 			stack = (unsigned long *)task->thread.sp;
@@ -197,7 +202,7 @@ void dump_trace(struct task_struct *task, struct pt_regs *regs,
 	if (!bp) {
 		if (task == current) {
 			/* Grab bp right from our regs */
-			asm ("movl %%ebp, %0" : "=r" (bp) : );
+			asm("movl %%ebp, %0" : "=r" (bp) :);
 		} else {
 			/* bp is the last reg pushed by switch_to */
 			bp = *(unsigned long *) task->thread.sp;
@@ -207,15 +212,18 @@ void dump_trace(struct task_struct *task, struct pt_regs *regs,
 
 	while (1) {
 		struct thread_info *context;
+
 		context = (struct thread_info *)
 			((unsigned long)stack & (~(THREAD_SIZE - 1)));
 		bp = print_context_stack(context, stack, bp, ops, data);
-		/* Should be after the line below, but somewhere
-		   in early boot context comes out corrupted and we
-		   can't reference it -AK */
+		/*
+		 * Should be after the line below, but somewhere
+		 * in early boot context comes out corrupted and we
+		 * can't reference it:
+		 */
 		if (ops->stack(data, "IRQ") < 0)
 			break;
-		stack = (unsigned long*)context->previous_esp;
+		stack = (unsigned long *)context->previous_esp;
 		if (!stack)
 			break;
 		touch_nmi_watchdog();
@@ -254,15 +262,15 @@ static void print_trace_address(void *data, unsigned long addr, int reliable)
 }
 
 static const struct stacktrace_ops print_trace_ops = {
-	.warning = print_trace_warning,
-	.warning_symbol = print_trace_warning_symbol,
-	.stack = print_trace_stack,
-	.address = print_trace_address,
+	.warning		= print_trace_warning,
+	.warning_symbol		= print_trace_warning_symbol,
+	.stack			= print_trace_stack,
+	.address		= print_trace_address,
 };
 
 static void
 show_trace_log_lvl(struct task_struct *task, struct pt_regs *regs,
-		unsigned long *stack, unsigned long bp, char *log_lvl)
+		   unsigned long *stack, unsigned long bp, char *log_lvl)
 {
 	dump_trace(task, regs, stack, bp, &print_trace_ops, log_lvl);
 	printk("%s =======================\n", log_lvl);
@@ -274,21 +282,22 @@ void show_trace(struct task_struct *task, struct pt_regs *regs,
 	show_trace_log_lvl(task, regs, stack, bp, "");
 }
 
-static void show_stack_log_lvl(struct task_struct *task, struct pt_regs *regs,
-		       unsigned long *sp, unsigned long bp, char *log_lvl)
+static void
+show_stack_log_lvl(struct task_struct *task, struct pt_regs *regs,
+		   unsigned long *sp, unsigned long bp, char *log_lvl)
 {
 	unsigned long *stack;
 	int i;
 
 	if (sp == NULL) {
 		if (task)
-			sp = (unsigned long*)task->thread.sp;
+			sp = (unsigned long *)task->thread.sp;
 		else
 			sp = (unsigned long *)&sp;
 	}
 
 	stack = sp;
-	for(i = 0; i < kstack_depth_to_print; i++) {
+	for (i = 0; i < kstack_depth_to_print; i++) {
 		if (kstack_end(stack))
 			break;
 		if (i && ((i % 8) == 0))
@@ -296,6 +305,7 @@ static void show_stack_log_lvl(struct task_struct *task, struct pt_regs *regs,
 		printk("%08lx ", *stack++);
 	}
 	printk("\n%sCall Trace:\n", log_lvl);
+
 	show_trace_log_lvl(task, regs, sp, bp, log_lvl);
 }
 
@@ -310,8 +320,8 @@ void show_stack(struct task_struct *task, unsigned long *sp)
  */
 void dump_stack(void)
 {
-	unsigned long stack;
 	unsigned long bp = 0;
+	unsigned long stack;
 
 #ifdef CONFIG_FRAME_POINTER
 	if (!bp)
@@ -323,6 +333,7 @@ void dump_stack(void)
 		init_utsname()->release,
 		(int)strcspn(init_utsname()->version, " "),
 		init_utsname()->version);
+
 	show_trace(current, NULL, &stack, bp);
 }
 
@@ -334,6 +345,7 @@ void show_registers(struct pt_regs *regs)
 
 	print_modules();
 	__show_registers(regs, 0);
+
 	printk(KERN_EMERG "Process %.*s (pid: %d, ti=%p task=%p task.ti=%p)",
 		TASK_COMM_LEN, current->comm, task_pid_nr(current),
 		current_thread_info(), current, task_thread_info(current));
@@ -342,10 +354,10 @@ void show_registers(struct pt_regs *regs)
 	 * time of the fault..
 	 */
 	if (!user_mode_vm(regs)) {
-		u8 *ip;
 		unsigned int code_prologue = code_bytes * 43 / 64;
 		unsigned int code_len = code_bytes;
 		unsigned char c;
+		u8 *ip;
 
 		printk("\n" KERN_EMERG "Stack: ");
 		show_stack_log_lvl(NULL, regs, &regs->sp, 0, KERN_EMERG);
@@ -376,7 +388,7 @@ void show_registers(struct pt_regs *regs)
 		}
 	}
 	printk("\n");
-}	
+}
 
 int is_valid_bugaddr(unsigned long ip)
 {
@@ -392,10 +404,10 @@ int is_valid_bugaddr(unsigned long ip)
 
 static int die_counter;
 
-int __kprobes __die(const char * str, struct pt_regs * regs, long err)
+int __kprobes __die(const char *str, struct pt_regs *regs, long err)
 {
-	unsigned long sp;
 	unsigned short ss;
+	unsigned long sp;
 
 	printk(KERN_EMERG "%s: %04lx [#%d] ", str, err & 0xffff, ++die_counter);
 #ifdef CONFIG_PREEMPT
@@ -410,8 +422,8 @@ int __kprobes __die(const char * str, struct pt_regs * regs, long err)
 	printk("\n");
 
 	if (notify_die(DIE_OOPS, str, regs, err,
-				current->thread.trap_no, SIGSEGV) !=
-			NOTIFY_STOP) {
+			current->thread.trap_no, SIGSEGV) != NOTIFY_STOP) {
+
 		show_registers(regs);
 		/* Executive summary in case the oops scrolled away */
 		sp = (unsigned long) (&regs->sp);
@@ -423,17 +435,18 @@ int __kprobes __die(const char * str, struct pt_regs * regs, long err)
 		printk(KERN_EMERG "EIP: [<%08lx>] ", regs->ip);
 		print_symbol("%s", regs->ip);
 		printk(" SS:ESP %04x:%08lx\n", ss, sp);
+
 		return 0;
-	} else {
-		return 1;
 	}
+
+	return 1;
 }
 
 /*
- * This is gone through when something in the kernel has done something bad and
- * is about to be terminated.
+ * This is gone through when something in the kernel has done something bad
+ * and is about to be terminated:
  */
-void die(const char * str, struct pt_regs * regs, long err)
+void die(const char *str, struct pt_regs *regs, long err)
 {
 	static struct {
 		raw_spinlock_t lock;
@@ -455,8 +468,9 @@ void die(const char * str, struct pt_regs * regs, long err)
 		die.lock_owner = smp_processor_id();
 		die.lock_owner_depth = 0;
 		bust_spinlocks(1);
-	} else
+	} else {
 		raw_local_irq_save(flags);
+	}
 
 	if (++die.lock_owner_depth < 3) {
 		report_bug(regs->ip, regs);
@@ -489,10 +503,11 @@ void die(const char * str, struct pt_regs * regs, long err)
 	do_exit(SIGSEGV);
 }
 
-
-static inline void die_if_kernel(const char * str, struct pt_regs * regs, long err)
+static inline void
+die_if_kernel(const char *str, struct pt_regs *regs, long err)
 {
-  	die(str, regs, err);
+	if (!user_mode_vm(regs))
+		die(str, regs, err);
 }
 
 #ifdef CONFIG_SMP
@@ -606,7 +621,12 @@ EXPORT_SYMBOL_GPL(math_state_restore);
 /* Called from init/main.c */
 void __init trap_init(void)
 {
+
+	init_thread_xstate();
+
 	cpu_init();
+
+	//trap_init_hook();
 }
 
 int l4x_deliver_signal(int exception_nr, int errcode)

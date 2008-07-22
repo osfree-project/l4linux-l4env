@@ -2,7 +2,7 @@
 # arch/l4/kernel/arch-arm/Makefile
 #
 
-obj-y		:= process.o sys_arm.o time.o semaphore.o traps.o \
+obj-y		:= process.o sys_arm.o time.o traps.o \
 		   switch_to.o setup.o l4.o signal.o irq.o \
 		   ptrace.o entry.o dispatch.o mach_setup.o io.o
 
@@ -13,7 +13,6 @@ obj-$(CONFIG_L4_ARM_PLATFORM_ISG)		+= mach_isg.o
 
 dma-y		:= ../../../arm/kernel/dma.o
 irq-y		:= ../../../arm/kernel/irq.o
-semaphore-y	:= ../../../arm/kernel/semaphore.o
 module-y	:= ../../../arm/kernel/module.o
 time-y		:= ../../../arm/kernel/time.o
 io-y		:= ../../../arm/kernel/io.o

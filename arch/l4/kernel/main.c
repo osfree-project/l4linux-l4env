@@ -176,7 +176,7 @@ L4_EXTERNAL_FUNC(l4rtc_get_seconds_since_1970);
 
 #ifdef ARCH_x86
 struct desc_struct cpu_gdt_table[GDT_ENTRIES];
-struct Xgt_desc_struct early_gdt_descr;
+struct desc_ptr early_gdt_descr;
 struct desc_ptr idt_descr = { .size = IDT_ENTRIES*8-1, .address = (unsigned long)idt_table };
 
 unsigned l4x_fiasco_gdt_entry_offset;
@@ -338,10 +338,9 @@ unsigned long l4env_virt_to_phys(volatile void * address)
 	for (i = 0; i < l4env_phys_virt_addr_items; i++) {
 		if (l4env_phys_virt_addrs[i].virt <= address &&
 		    address < l4env_phys_virt_addrs[i].virt
-		              + l4env_phys_virt_addrs[i].size) {
+		              + l4env_phys_virt_addrs[i].size)
 			return (address - l4env_phys_virt_addrs[i].virt)
 			       + l4env_phys_virt_addrs[i].phys;
-		}
 	}
 
 	/* Whitelist: */
@@ -1477,6 +1476,7 @@ L4_EXTERNAL_FUNC(l4vmm_init);
 L4_EXTERNAL_FUNC(l4vmm_handle_exception);
 L4_EXTERNAL_FUNC(l4vmm_mmio_search_region);
 L4_EXTERNAL_FUNC(l4vmm_mmio_request_region);
+L4_EXTERNAL_FUNC(l4vmm_mmio_release_region);
 
 static L4_CV l4_addr_t l4env_phys_to_virt_r0(unsigned long address)
 {
@@ -2792,10 +2792,6 @@ void setup_pit_timer(void)
 EXPORT_SYMBOL(__VMALLOC_RESERVE);
 
 EXPORT_SYMBOL(swapper_pg_dir);
-EXPORT_SYMBOL(__down_failed);
-EXPORT_SYMBOL(__down_failed_interruptible);
-EXPORT_SYMBOL(__down_failed_trylock);
-EXPORT_SYMBOL(__up_wakeup);
 EXPORT_SYMBOL(init_thread_union);
 EXPORT_SYMBOL(csum_partial);
 EXPORT_SYMBOL(csum_partial_copy);

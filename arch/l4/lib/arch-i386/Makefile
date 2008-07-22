@@ -5,7 +5,6 @@
 lib-y	+= checksum.o memcpy.o ../memcpy_user.o ../uaccess.o ../pte.o
 lib-$(CONFIG_X86_USE_3DNOW) += mmx_32.o
 
-lib-y   += ../../../x86/lib/bitops_32.o
 lib-y	+= ../../../x86/lib/delay_32.o
 lib-y	+= ../../../x86/lib/strstr_32.o
 lib-y	+= ../../../x86/lib/semaphore_32.o
@@ -20,4 +19,4 @@ create_dir:
 
 PHONY += create_dir
 
-$(obj)/../../../x86/lib/bitops_32.o: create_dir
+$(obj)/../../../x86/lib/delay_32.o: create_dir

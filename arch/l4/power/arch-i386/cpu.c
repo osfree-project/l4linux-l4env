@@ -19,7 +19,7 @@ unsigned long saved_context_esp, saved_context_ebp;
 unsigned long saved_context_esi, saved_context_edi;
 unsigned long saved_context_eflags;
 
-void __save_processor_state(struct saved_context *ctxt)
+static void __save_processor_state(struct saved_context *ctxt)
 {
 	mtrr_save_fixed_ranges(NULL);
 	kernel_fpu_begin();
@@ -27,20 +27,20 @@ void __save_processor_state(struct saved_context *ctxt)
 	/*
 	 * descriptor tables
 	 */
- 	store_gdt(&ctxt->gdt);
- 	store_idt(&ctxt->idt);
- 	store_tr(ctxt->tr);
+	store_gdt(&ctxt->gdt);
+	store_idt(&ctxt->idt);
+	store_tr(ctxt->tr);
 
 	/*
 	 * segment registers
 	 */
- 	savesegment(es, ctxt->es);
- 	savesegment(fs, ctxt->fs);
- 	savesegment(gs, ctxt->gs);
- 	savesegment(ss, ctxt->ss);
+	savesegment(es, ctxt->es);
+	savesegment(fs, ctxt->fs);
+	savesegment(gs, ctxt->gs);
+	savesegment(ss, ctxt->ss);
 
 	/*
-	 * control registers 
+	 * control registers
 	 */
 	ctxt->cr0 = read_cr0();
 	ctxt->cr2 = read_cr2();
@@ -48,10 +48,12 @@ void __save_processor_state(struct saved_context *ctxt)
 	ctxt->cr4 = read_cr4();
 }
 
+/* Needed by apm.c */
 void save_processor_state(void)
 {
 	//__save_processor_state(&saved_context);
 }
+EXPORT_SYMBOL(save_processor_state);
 
 static void do_fpu_end(void)
 {
@@ -64,9 +66,14 @@ static void do_fpu_end(void)
 static void fix_processor_context(void)
 {
 	int cpu = smp_processor_id();
-	struct tss_struct * t = &per_cpu(init_tss, cpu);
+	struct tss_struct *t = &per_cpu(init_tss, cpu);
 
-	set_tss_desc(cpu,t);	/* This just modifies memory; should not be necessary. But... This is necessary, because 386 hardware has concept of busy TSS or some similar stupidity. */
+	set_tss_desc(cpu, t);	/*
+				 * This just modifies memory; should not be
+				 * necessary. But... This is necessary, because
+				 * 386 hardware has concept of busy TSS or some
+				 * similar stupidity.
+				 */
 
 	load_TR_desc();				/* This does ltr */
 	load_LDT(&current->active_mm->context);	/* This does lldt */
@@ -75,20 +82,20 @@ static void fix_processor_context(void)
 	 * Now maybe reload the debug registers
 	 */
 #if 0
-	if (current->thread.debugreg[7]){
-		set_debugreg(current->thread.debugreg[0], 0);
-		set_debugreg(current->thread.debugreg[1], 1);
-		set_debugreg(current->thread.debugreg[2], 2);
-		set_debugreg(current->thread.debugreg[3], 3);
+	if (current->thread.debugreg7) {
+		set_debugreg(current->thread.debugreg0, 0);
+		set_debugreg(current->thread.debugreg1, 1);
+		set_debugreg(current->thread.debugreg2, 2);
+		set_debugreg(current->thread.debugreg3, 3);
 		/* no 4 and 5 */
-		set_debugreg(current->thread.debugreg[6], 6);
-		set_debugreg(current->thread.debugreg[7], 7);
+		set_debugreg(current->thread.debugreg6, 6);
+		set_debugreg(current->thread.debugreg7, 7);
 	}
 #endif
 
 }
 
-void __restore_processor_state(struct saved_context *ctxt)
+static void __restore_processor_state(struct saved_context *ctxt)
 {
 	/*
 	 * control registers
@@ -102,16 +109,16 @@ void __restore_processor_state(struct saved_context *ctxt)
 	 * now restore the descriptor tables to their proper values
 	 * ltr is done i fix_processor_context().
 	 */
- 	load_gdt(&ctxt->gdt);
- 	load_idt(&ctxt->idt);
+	load_gdt(&ctxt->gdt);
+	load_idt(&ctxt->idt);
 
 	/*
 	 * segment registers
 	 */
- 	loadsegment(es, ctxt->es);
- 	loadsegment(fs, ctxt->fs);
- 	loadsegment(gs, ctxt->gs);
- 	loadsegment(ss, ctxt->ss);
+	loadsegment(es, ctxt->es);
+	loadsegment(fs, ctxt->fs);
+	loadsegment(gs, ctxt->gs);
+	loadsegment(ss, ctxt->ss);
 
 	/*
 	 * sysenter MSRs
@@ -125,11 +132,9 @@ void __restore_processor_state(struct saved_context *ctxt)
 	mcheck_init(&boot_cpu_data);
 }
 
+/* Needed by apm.c */
 void restore_processor_state(void)
 {
 	//__restore_processor_state(&saved_context);
 }
-
-/* Needed by apm.c */
-EXPORT_SYMBOL(save_processor_state);
 EXPORT_SYMBOL(restore_processor_state);

@@ -36,7 +36,7 @@ static void log_efault(const char *str, const void *user_addr,
 #define log_efault(str, to, from, size)
 #endif
 
-extern inline int __copy_to_user_page(void *to, const void *from,
+static inline int __copy_to_user_page(void *to, const void *from,
 				      unsigned long n)
 {
 	unsigned long page, offset;
@@ -93,7 +93,7 @@ copy_to_user(void __user *to, const void *from, unsigned long n)
 }
 EXPORT_SYMBOL(copy_to_user);
 
-extern inline int __copy_from_user_page(void *to, const void *from,
+static inline int __copy_from_user_page(void *to, const void *from,
 					unsigned long n)
 {
 	unsigned long page, offset;
@@ -150,7 +150,7 @@ copy_from_user(void *to, const void __user *from, unsigned long n)
 }
 EXPORT_SYMBOL(copy_from_user);
 
-extern inline int __clear_user_page(void * address, unsigned long n)
+static inline int __clear_user_page(void * address, unsigned long n)
 {
 	unsigned long page, offset;
 
@@ -245,7 +245,7 @@ do {									   \
 	} while (0)
 #endif
 
-extern inline int __strncpy_from_user_page(char * to, const char * from,
+static inline int __strncpy_from_user_page(char * to, const char * from,
 					   unsigned long n)
 {
 	unsigned long page, offset;
@@ -323,7 +323,7 @@ long strncpy_from_user(char *dst, const char *src, long count)
 }
 EXPORT_SYMBOL(strncpy_from_user);
 
-extern inline int __strnlen_from_user_page(const char *from,
+static inline int __strnlen_from_user_page(const char *from,
 					   unsigned long n, unsigned long *len)
 {
 	unsigned long page, offset;

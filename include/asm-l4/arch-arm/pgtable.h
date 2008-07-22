@@ -261,6 +261,7 @@ extern struct page *empty_zero_page;
 #define pte_write(pte)		(pte_val(pte) & L_PTE_WRITE)
 #define pte_dirty(pte)		(pte_val(pte) & L_PTE_DIRTY)
 #define pte_young(pte)		(pte_val(pte) & L_PTE_YOUNG)
+#define pte_special(pte)	(0)
 #define pte_mapped(pte)		(pte_val(pte) & L_PTE_MAPPED)
 
 /*
@@ -281,6 +282,8 @@ PTE_BIT_FUNC(mkclean,   &= ~L_PTE_DIRTY);
 PTE_BIT_FUNC(mkdirty,   |= L_PTE_DIRTY);
 PTE_BIT_FUNC(mkold,     &= ~L_PTE_YOUNG);
 PTE_BIT_FUNC(mkyoung,   |= L_PTE_YOUNG);
+
+static inline pte_t pte_mkspecial(pte_t pte) { return pte; }
 
 /*
  * Mark the prot value as uncacheable and unbufferable.

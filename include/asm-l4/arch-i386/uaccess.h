@@ -32,7 +32,7 @@
 #define get_fs()	(current_thread_info()->addr_limit)
 #define set_fs(x)	(current_thread_info()->addr_limit = (x))
 
-#define segment_eq(a,b)	((a).seg == (b).seg)
+#define segment_eq(a, b)	((a).seg == (b).seg)
 
 /*
  * movsl can be slow when source and dest are not both 8-byte aligned
@@ -44,7 +44,9 @@ extern struct movsl_mask {
 #endif
 
 #if 0
-#define __addr_ok(addr) ((unsigned long __force)(addr) < (current_thread_info()->addr_limit.seg))
+#define __addr_ok(addr)					\
+	((unsigned long __force)(addr) <		\
+	 (current_thread_info()->addr_limit.seg))
 
 /*
  * Test whether a block of memory is a valid user space address.
@@ -55,13 +57,16 @@ extern struct movsl_mask {
  *
  * This needs 33-bit arithmetic. We have a carry...
  */
-#define __range_ok(addr,size) ({ \
-	unsigned long flag,roksum; \
-	__chk_user_ptr(addr); \
-	asm("addl %3,%1 ; sbbl %0,%0; cmpl %1,%4; sbbl $0,%0" \
-		:"=&r" (flag), "=r" (roksum) \
-		:"1" (addr),"g" ((int)(size)),"rm" (current_thread_info()->addr_limit.seg)); \
-	flag; })
+#define __range_ok(addr, size)						\
+({									\
+	unsigned long flag, roksum;					\
+	__chk_user_ptr(addr);						\
+	asm("addl %3,%1 ; sbbl %0,%0; cmpl %1,%4; sbbl $0,%0"		\
+	    :"=&r" (flag), "=r" (roksum)				\
+	    :"1" (addr), "g" ((int)(size)),				\
+	    "rm" (current_thread_info()->addr_limit.seg));		\
+	flag;								\
+})
 #endif
 
 /**
@@ -83,8 +88,8 @@ extern struct movsl_mask {
  * checks that the pointer is in the user space range - after calling
  * this function, memory access functions may still return -EFAULT.
  */
-/*#define access_ok(type,addr,size) (likely(__range_ok(addr,size) == 0)) */
-#define access_ok(type,addr,size) ((void)(addr), (void)(size), 1)
+//#define access_ok(type, addr, size) (likely(__range_ok(addr, size) == 0))
+#define access_ok(type, addr, size) ((void)(addr), (void)(size), 1)
 
 /*
  * The exception table consists of pairs of addresses: the first is the
@@ -99,8 +104,7 @@ extern struct movsl_mask {
  * on our cache or tlb entries.
  */
 
-struct exception_table_entry
-{
+struct exception_table_entry {
 	unsigned long insn, fixup;
 };
 
@@ -127,7 +131,9 @@ extern long __get_user_4(unsigned int       *val, const void *address);
 extern long __get_user_8(unsigned long long *val, const void *address);
 extern long __get_user_bad(void);
 
-/* Careful: we have to cast the result to the type of the pointer for sign reasons */
+/* Careful: we have to cast the result to the type of the pointer
+ * for sign reasons */
+
 /**
  * get_user: - Get a simple variable from user space.
  * @x:   Variable to store result.
@@ -231,30 +237,33 @@ extern long __put_user_bad(void);
 struct __large_struct { unsigned long buf[100]; };
 #define __m(x) (*(struct __large_struct __user *)(x))
 
-unsigned long __must_check copy_to_user(void __user *to, const void *from,
-					unsigned long n);
-unsigned long __must_check copy_from_user(void *to, const void __user *from,
-					  unsigned long n);
 
 #define __copy_to_user copy_to_user
 #define __copy_from_user copy_from_user
 #define __copy_to_user_inatomic copy_to_user
 #define __copy_from_user_inatomic __copy_from_user
 
-unsigned long __must_check __copy_to_user_ll(void __user *to, const void *from,
-					     unsigned long n);
-unsigned long __must_check __copy_from_user_ll(void *to, const void __user *from,
-					       unsigned long n);
+unsigned long __must_check __copy_to_user_ll
+		(void __user *to, const void *from, unsigned long n);
+unsigned long __must_check __copy_from_user_ll
+		(void *to, const void __user *from, unsigned long n);
 
-/*
+/**
  * Here we special-case 1, 2 and 4-byte copy_*_user invocations.  On a fault
  * we return the initial request size (1, 2 or 4), as copy_*_user should do.
  * If a store crosses a page boundary and gets a fault, the x86 will not write
  * anything, so this is accurate.
  */
 
-long __must_check strncpy_from_user(char *dst, const char __user *src, long count);
-long __must_check __strncpy_from_user(char *dst, const char __user *src, long count);
+unsigned long __must_check copy_to_user(void __user *to,
+					const void *from, unsigned long n);
+unsigned long __must_check copy_from_user(void *to,
+					  const void __user *from,
+					  unsigned long n);
+long __must_check strncpy_from_user(char *dst, const char __user *src,
+				    long count);
+long __must_check __strncpy_from_user(char *dst,
+				      const char __user *src, long count);
 
 /**
  * strlen_user: - Get the size of a string in user space.
