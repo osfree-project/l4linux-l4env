@@ -1865,7 +1865,7 @@ static int l4x_handle_kprobes(l4_utcb_t *u)
 
 	/* Set after breakpoint instruction as for HLT pc is on the
 	 * instruction and for INT3 after the instruction */
-	regs.eip++;
+	regs.ip++;
 
 	l4x_setup_stack_for_traps(u, &regs, do_int3);
 	return 0;
@@ -2465,9 +2465,6 @@ static int l4x_power_mgmt_resume(struct platform_device *dev)
 		if (l4lx_task_get_new_task(L4_NIL_ID,
 		                           &p->thread.user_thread_id))
 			LOG_printf("l4lx_task_get_new_task failed\n");
-#ifdef CONFIG_SMP
-#warning resume: all tasks started on cpu0
-#endif
 		if (!l4lx_task_create_pager(p->thread.user_thread_id,
 		                            l4x_cpu_thread_get(0)))
 			LOG_printf("l4lx_task_create for %s(%d) failed\n",
