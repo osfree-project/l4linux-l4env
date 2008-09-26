@@ -99,8 +99,9 @@
  // this may be a bit harsh but well...
  #if defined(ARCH_x86) && !defined(CONFIG_L4_FB_DRIVER) && \
      !defined(CONFIG_VGA_CONSOLE) && \
-     !defined(CONFIG_FRAMEBUFFER_CONSOLE)
-  #error L4_FB_DRIVER nor VGA_CONSOLE nor FRAMEBUFFER_CONSOLE enabled, choose one.
+     !defined(CONFIG_FRAMEBUFFER_CONSOLE) && \
+     !defined(CONFIG_L4_SERIAL_CONSOLE)
+  #error L4_FB_DRIVER nor VGA_CONSOLE nor FRAMEBUFFER_CONSOLE nor L4_SERIAL_CONSOLE enabled, choose one.
  #endif
 
 #endif

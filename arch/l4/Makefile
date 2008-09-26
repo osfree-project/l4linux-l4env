@@ -318,8 +318,8 @@ symlinks      = include/asm-l4/api \
 		include/asm-l4/$(LINSRCARCH)-arch/asm \
                 $(symlinks_$(BASEARCH))
 
-#MRPROPER_FILES	+= $(symlinks)
-CLEAN_FILES	+= $(symlinks) Makeconf.l4conf
+MRPROPER_FILES	+= $(symlinks)
+CLEAN_FILES	+= Makeconf.l4conf
 
 ifeq ($(config-targets),0)
 ifneq ($(wildcard .config),)
