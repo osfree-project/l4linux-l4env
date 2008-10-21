@@ -15,7 +15,9 @@
 #include <l4/dm_phys/dm_phys.h>
 
 #include <l4/sys/compiler.h>
+#ifdef CONFIG_L4_FB_DRIVER
 #include <l4/l4con/stream-server.h>
+#endif
 
 char LOG_tag[9] = "l4lx";
 
