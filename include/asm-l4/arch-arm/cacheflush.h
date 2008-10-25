@@ -2,7 +2,7 @@
 #define __ASM_L4__ARCH_ARM__CACHEFLUSH_H__
 
 /* Avoid copying the whole file, we just redefined some macros */
-#include <asm-arm/cacheflush.h>
+#include <arm-arch/asm/cacheflush.h>
 
 #undef flush_cache_vmap
 #undef flush_cache_vunmap

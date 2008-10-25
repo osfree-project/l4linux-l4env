@@ -1,5 +1,5 @@
 /*
- *  linux/include/asm-arm/tlbflush.h
+ *  arch/arm/include/asm/tlbflush.h
  *
  *  Copyright (C) 1999-2003 Russell King
  *
@@ -39,6 +39,7 @@
 #define TLB_V6_D_ASID	(1 << 17)
 #define TLB_V6_I_ASID	(1 << 18)
 
+#define TLB_L2CLEAN_FR	(1 << 29)		/* Feroceon */
 #define TLB_DCLEAN	(1 << 30)
 #define TLB_WB		(1 << 31)
 
@@ -51,7 +52,9 @@
  *	  v4    - ARMv4 without write buffer
  *	  v4wb  - ARMv4 with write buffer without I TLB flush entry instruction
  *	  v4wbi - ARMv4 with write buffer with I TLB flush entry instruction
+ *	  fr    - Feroceon (v4wbi with non-outer-cacheable page table walks)
  *	  v6wbi - ARMv6 with write buffer with I TLB flush entry instruction
+ *	  v7wbi - identical to v6wbi
  */
 #undef _TLB
 #undef MULTI_TLB
@@ -101,6 +104,23 @@
 #else
 # define v4wbi_possible_flags	0
 # define v4wbi_always_flags	(-1UL)
+#endif
+
+#define fr_tlb_flags	(TLB_WB | TLB_DCLEAN | TLB_L2CLEAN_FR | \
+			 TLB_V4_I_FULL | TLB_V4_D_FULL | \
+			 TLB_V4_I_PAGE | TLB_V4_D_PAGE)
+
+#ifdef CONFIG_CPU_TLB_FEROCEON
+# define fr_possible_flags	fr_tlb_flags
+# define fr_always_flags	fr_tlb_flags
+# ifdef _TLB
+#  define MULTI_TLB 1
+# else
+#  define _TLB v4wbi
+# endif
+#else
+# define fr_possible_flags	0
+# define fr_always_flags	(-1UL)
 #endif
 
 #define v4wb_tlb_flags	(TLB_WB | TLB_DCLEAN | \
@@ -245,20 +265,24 @@ extern struct cpu_tlb_fns cpu_tlb;
 #define possible_tlb_flags	(v3_possible_flags | \
 				 v4_possible_flags | \
 				 v4wbi_possible_flags | \
+				 fr_possible_flags | \
 				 v4wb_possible_flags | \
-				 v6wbi_possible_flags)
+				 v6wbi_possible_flags | \
+				 v7wbi_possible_flags)
 
 #define always_tlb_flags	(v3_always_flags & \
 				 v4_always_flags & \
 				 v4wbi_always_flags & \
+				 fr_always_flags & \
 				 v4wb_always_flags & \
-				 v6wbi_always_flags)
+				 v6wbi_always_flags & \
+				 v7wbi_always_flags)
 
 #define tlb_flag(f)	((always_tlb_flags & (f)) || (__tlb_flag & possible_tlb_flags & (f)))
 
 static inline void local_flush_tlb_all(void)
 {
-#if 0
+#ifdef NOT_FOR_L4
 	const int zero = 0;
 	const unsigned int __tlb_flag = __cpu_tlb_flags;
 
@@ -287,7 +311,7 @@ static inline void local_flush_tlb_all(void)
 
 static inline void local_flush_tlb_mm(struct mm_struct *mm)
 {
-#if 0
+#ifdef NOT_FOR_L4
 	const int zero = 0;
 	const int asid = ASID(mm);
 	const unsigned int __tlb_flag = __cpu_tlb_flags;
@@ -326,7 +350,7 @@ static inline void local_flush_tlb_mm(struct mm_struct *mm)
 static inline void
 local_flush_tlb_page(struct vm_area_struct *vma, unsigned long uaddr)
 {
-#if 0
+#ifdef NOT_FOR_L4
 	const int zero = 0;
 	const unsigned int __tlb_flag = __cpu_tlb_flags;
 
@@ -367,7 +391,7 @@ local_flush_tlb_page(struct vm_area_struct *vma, unsigned long uaddr)
 
 static inline void local_flush_tlb_kernel_page(unsigned long kaddr)
 {
-#if 0
+#ifdef NOT_FOR_L4
 	const int zero = 0;
 	const unsigned int __tlb_flag = __cpu_tlb_flags;
 
@@ -420,12 +444,17 @@ static inline void local_flush_tlb_kernel_page(unsigned long kaddr)
  */
 static inline void flush_pmd_entry(pmd_t *pmd)
 {
-#if 0
+#ifdef NOT_FOR_L4
 	const unsigned int __tlb_flag = __cpu_tlb_flags;
 
 	if (tlb_flag(TLB_DCLEAN))
 		asm("mcr	p15, 0, %0, c7, c10, 1	@ flush_pmd"
 			: : "r" (pmd) : "cc");
+
+	if (tlb_flag(TLB_L2CLEAN_FR))
+		asm("mcr	p15, 1, %0, c15, c9, 1  @ L2 flush_pmd"
+			: : "r" (pmd) : "cc");
+
 	if (tlb_flag(TLB_WB))
 		dsb();
 #endif
@@ -433,11 +462,15 @@ static inline void flush_pmd_entry(pmd_t *pmd)
 
 static inline void clean_pmd_entry(pmd_t *pmd)
 {
-#if 0
+#ifdef NOT_FOR_L4
 	const unsigned int __tlb_flag = __cpu_tlb_flags;
 
 	if (tlb_flag(TLB_DCLEAN))
 		asm("mcr	p15, 0, %0, c7, c10, 1	@ flush_pmd"
+			: : "r" (pmd) : "cc");
+
+	if (tlb_flag(TLB_L2CLEAN_FR))
+		asm("mcr	p15, 1, %0, c15, c9, 1  @ L2 flush_pmd"
 			: : "r" (pmd) : "cc");
 #endif
 }

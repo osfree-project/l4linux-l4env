@@ -1,5 +1,5 @@
 /*
- *  linux/include/asm-arm/pgtable.h
+ *  arch/arm/include/asm/pgtable.h
  *
  *  Copyright (C) 1995-2002 Russell King
  *
@@ -20,7 +20,7 @@
 #else
 
 #include <asm/memory.h>
-#include <asm/arch/vmalloc.h>
+#include <mach/vmalloc.h>
 #include <asm/pgtable-hwdef.h>
 
 /*

@@ -13,6 +13,7 @@
 #include <asm/mtrr.h>
 #include <asm/mce.h>
 #include <asm/pat.h>
+#include <asm/asm.h>
 #ifdef CONFIG_X86_LOCAL_APIC
 #include <asm/mpspec.h>
 #include <asm/apic.h>
@@ -336,11 +337,24 @@ static void __init early_cpu_detect(void)
 
 	get_cpu_vendor(c, 1);
 
+	early_get_cap(c);
+
 	if (c->x86_vendor != X86_VENDOR_UNKNOWN &&
 	    cpu_devs[c->x86_vendor]->c_early_init)
 		cpu_devs[c->x86_vendor]->c_early_init(c);
+}
 
-	early_get_cap(c);
+/*
+ * The NOPL instruction is supposed to exist on all CPUs with
+ * family >= 6; unfortunately, that's not true in practice because
+ * of early VIA chips and (more importantly) broken virtualizers that
+ * are not easy to detect.  In the latter case it doesn't even *fail*
+ * reliably, so probing for it doesn't even work.  Disable it completely
+ * unless we can find a reliable way to detect all the broken cases.
+ */
+static void __cpuinit detect_nopl(struct cpuinfo_x86 *c)
+{
+	clear_cpu_cap(c, X86_FEATURE_NOPL);
 }
 
 static void __cpuinit generic_identify(struct cpuinfo_x86 *c)
@@ -397,8 +411,8 @@ static void __cpuinit generic_identify(struct cpuinfo_x86 *c)
 		}
 
 		init_scattered_cpuid_features(c);
+		detect_nopl(c);
 	}
-
 }
 
 static void __cpuinit squash_the_stupid_serial_number(struct cpuinfo_x86 *c)
@@ -429,7 +443,7 @@ __setup("serialnumber", x86_serial_nr_setup);
 /*
  * This does the hard work of actually picking apart the CPU stuff...
  */
-void __cpuinit identify_cpu(struct cpuinfo_x86 *c)
+static void __cpuinit identify_cpu(struct cpuinfo_x86 *c)
 {
 	int i;
 
@@ -672,7 +686,7 @@ void __cpuinit cpu_init(void)
 {
 	int cpu = smp_processor_id();
 	struct task_struct *curr = current;
-	//l4/struct tss_struct * t = &per_cpu(init_tss, cpu);
+	//l4/struct tss_struct *t = &per_cpu(init_tss, cpu);
 	//l4/struct thread_struct *thread = &curr->thread;
 
 	if (cpu_test_and_set(cpu, cpu_initialized)) {
@@ -710,9 +724,11 @@ void __cpuinit cpu_init(void)
 	__set_tss_desc(cpu, GDT_ENTRY_DOUBLEFAULT_TSS, &doublefault_tss);
 #endif
 
+#endif
 	/* Clear %gs. */
 	asm volatile ("mov %0, %%gs" : : "r" (0));
 
+#if 0
 	/* Clear all 6 debug registers: */
 	set_debugreg(0, 0);
 	set_debugreg(0, 1);

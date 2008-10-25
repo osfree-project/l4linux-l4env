@@ -8,11 +8,11 @@
 
 #include <l4/sys/types.h>
 
-#define SPURIOUS_APIC_VECTOR    1
-#define ERROR_APIC_VECTOR       2
-#define INVALIDATE_TLB_VECTOR   3
-#define RESCHEDULE_VECTOR       4
-#define CALL_FUNCTION_VECTOR    5
+//#define SPURIOUS_APIC_VECTOR    1
+//#define ERROR_APIC_VECTOR       2
+//#define INVALIDATE_TLB_VECTOR   3
+//#define RESCHEDULE_VECTOR       4
+//#define CALL_FUNCTION_VECTOR    5
 #define L4X_TIMER_VECTOR	9
 
 extern unsigned int l4x_nr_cpus;

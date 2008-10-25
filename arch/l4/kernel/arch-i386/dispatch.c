@@ -38,6 +38,7 @@
 #include <asm/generic/syscall_guard.h>
 #include <asm/generic/stats.h>
 #include <asm/generic/smp.h>
+#include <asm/generic/signal.h>
 
 #include <asm/l4x/exception.h>
 #include <asm/l4x/iodb.h>
@@ -79,8 +80,8 @@
 
 #endif
 
-__attribute__((regparm(3)))
-void do_syscall_trace(struct pt_regs *regs, int entryexit);
+asmregparm long syscall_trace_enter(struct pt_regs *regs);
+asmregparm long syscall_trace_leave(struct pt_regs *regs);
 
 static DEFINE_PER_CPU(int, l4x_fpu_enabled);
 static inline int l4x_msgtag_fpu(void)
@@ -111,9 +112,8 @@ static inline void l4x_arch_task_setup(struct thread_struct *t)
 static inline void l4x_arch_do_syscall_trace(struct task_struct *p,
                                              struct thread_struct *t)
 {
-	if (unlikely(current_thread_info()->flags
-	             & (_TIF_SYSCALL_TRACE | _TIF_SYSCALL_AUDIT | _TIF_SECCOMP)))
-		do_syscall_trace(&t->regs, 1);
+	if (unlikely(current_thread_info()->flags & _TIF_WORK_SYSCALL_EXIT))
+		syscall_trace_leave(&t->regs);
 }
 
 static inline int l4x_hybrid_check_after_syscall(l4_utcb_t *utcb)
@@ -157,7 +157,6 @@ static inline void l4x_arch_task_start_setup(struct task_struct *p)
 		               p->thread.user_thread_id.id.task);
 }
 
-extern void do_signal(struct pt_regs *regs);
 static inline int l4x_do_signal(struct pt_regs *regs, int syscall)
 {
 	do_signal(regs);
@@ -448,11 +447,11 @@ static inline void dispatch_system_call(struct task_struct *p)
 		                | _TIF_SYSCALL_TRACE
 		                | _TIF_SECCOMP
 		                | _TIF_SYSCALL_AUDIT))) {
-			do_syscall_trace(regsp, 0);
+			syscall_trace_enter(regsp);
 			regsp->ax = syscall_fn(regsp->bx, regsp->cx,
 			                       regsp->dx, regsp->si,
 			                       regsp->di, regsp->bp);
-			do_syscall_trace(regsp, 1);
+			syscall_trace_leave(regsp);
 		} else {
 			regsp->ax = syscall_fn(regsp->bx, regsp->cx,
 			                       regsp->dx, regsp->si,

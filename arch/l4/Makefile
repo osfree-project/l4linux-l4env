@@ -238,7 +238,6 @@ else
 endif
 
 MACH_INC_i386	:= -Iinclude/asm-l4/$(LINSRCARCH)-arch/asm/mach-default
-MACH_INC_arm	:= -Iinclude/asm-l4/$(BASEARCH)-arch
 L4_CRT0		:= $(L4OBJ)/lib/$(L4_MK_ARCH)_$(L4_MK_CPU)/crt0.o
 L4_DYNLINK	:= --dynamic-linker libld-l4.s.so $(L4_CRT0) \
                    -lloader.s $(L4LX_E_L_O-y) -z now
@@ -256,8 +255,11 @@ endif
 
 KBUILD_CPPFLAGS	+= -Iinclude/asm-l4/l4-arch \
 		   -Iinclude/asm-l4/$(LINSRCARCH)-arch \
-		   $(MACH_INC_$(BASEARCH)) $(L4INC) $(CPPFLAGS_SYSENTER-y) \
+                   -Iinclude/asm-l4 \
+		   $(MACH_INC_$(BASEARCH)) \
+                   $(L4INC) $(CPPFLAGS_SYSENTER-y) \
 		   $(L4BID_CPPFLAGS_SYSCALLS-y)
+
 
 # for DICE
 KBUILD_CPPFLAGS	+= -DL4API_$(L4_MK_API)
@@ -273,10 +275,22 @@ mtags:
 	(cd $(srctree) && $(MAKE) tags > /dev/null 2>&1; \
 	sort tags > .tags.sorting && mv .tags.sorting tags )
 
+ifeq ($(LINSRCARCH),x86)
 include/asm-l4/$(LINSRCARCH)-arch/asm:
 	@echo '  Creating asm-l4/$(BASEARCH)-arch/asm symlink'
 	$(Q)mkdir -p $(@D)
 	$(Q)ln -s $(src)/include/asm-$(LINSRCARCH) $@
+else
+include/asm-l4/$(LINSRCARCH)-arch/asm:
+	@echo '  Creating asm-l4/$(LINSRCARCH)-arch/asm symlink'
+	$(Q)mkdir -p $(@D)
+	$(Q)ln -s $(src)/arch/$(LINSRCARCH)/include/asm $@
+endif
+
+include/asm-l4/$(LINSRCARCH)-arch/mach:
+	@echo '  Creating asm-l4/$(LINSRCARCH)-arch/mach symlink'
+	$(Q)mkdir -p $(@D)
+	$(Q)ln -s $(src)/include/asm-l4/arch-$(LINSRCARCH)/mach $@
 
 include/asm-l4/l4-arch/asm:
 	@echo '  Creating asm-l4/l4-arch/asm symlink'
@@ -309,7 +323,8 @@ include/asm-l4/mach-types.h: $(srctree)/arch/arm/tools/gen-mach-types $(srctree)
 	$(Q)$(AWK) -f $< include/asm-l4/mach-types.list > $@ || { rm -f $@; /bin/false; }
 	$(Q)rm -f include/asm-l4/mach-types.list
 
-symlinks_arm  = include/asm-l4/mach-types.h
+symlinks_arm  = include/asm-l4/mach-types.h \
+		include/asm-l4/$(LINSRCARCH)-arch/mach
 
 symlinks      = include/asm-l4/api \
                 include/asm-l4/l4lxapi/impl \
@@ -351,7 +366,7 @@ chkl4conf:
 
 DIS_OPTS := HIGHMEM4G HIGHMEM64G PREEMPT PCI_GOANY PCI_GOBIOS HPET_TIMER \
             X86_MCE X86_MCE MTRR PARAVIRT KEXEC MCA SOFTWARE_SUSPEND APM \
-	    CPU_FREQ HUGETLBFS HUGETLB_PAGE
+	    CPU_FREQ HUGETLBFS HUGETLB_PAGE VM86
 
 check_linux_config:
 	@$(foreach i,$(addprefix CONFIG_,$(DIS_OPTS)),     \

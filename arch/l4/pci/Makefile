@@ -15,4 +15,4 @@ mmconfig-y	:= $(b)/mmconfig.o
 acpi-y		:= $(b)/acpi.o
 init-y		:= $(b)/init.o
 early-y		:= $(b)/early.o
-
+amd_bus-y       := $(b)/amd_bus.o

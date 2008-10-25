@@ -445,7 +445,7 @@ void l4x_idle(void)
 	l4lx_thread_pager_change(idler_thread[cpu], l4_myself());
 	idler_up[cpu] = 1;
 
-	tick_nohz_stop_sched_tick();
+	tick_nohz_stop_sched_tick(1);
 
 	while (1) {
 		per_cpu(l4x_current_proc_run, cpu) = current_thread_info();
@@ -460,7 +460,7 @@ void l4x_idle(void)
 			preempt_enable_no_resched();
 			schedule();
 			preempt_disable();
-			tick_nohz_stop_sched_tick();
+			tick_nohz_stop_sched_tick(1);
 			continue;
 		}
 		check_pgt_cache();
@@ -698,6 +698,8 @@ reply_IPC:
 		 * Actually we could use l4_ipc_call here but for our
 		 * (asynchronous) hybrid apps we need to do an open wait.
 		 */
+
+		local_irq_enable();
 
 		TBUF_LOG_DSP_IPC_IN(fiasco_tbuf_log_3val
 		   ((msg_desc != L4_IPC_SHORT_FPAGE) ? "DSP-inM" : "DSP-inF",

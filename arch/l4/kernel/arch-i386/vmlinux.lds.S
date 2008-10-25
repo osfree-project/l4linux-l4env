@@ -54,6 +54,8 @@ SECTIONS
 	*(.gnu.warning)
   } /* :text */ = 0x9090
 
+  NOTES /*:text :note */
+
   .rel.dyn : AT(ADDR(.rel.dyn) - LOAD_OFFSET) { *(.rel.dyn) }
   _etext = .;			/* End of text section */
 
@@ -62,18 +64,7 @@ SECTIONS
   	__start___ex_table = .;
 	 *(__ex_table)
   	__stop___ex_table = .;
-  }
-
-  NOTES /* :text :note */
-
-  BUG_TABLE /* :text */
-
-  . = ALIGN(4);
-  .tracedata : AT(ADDR(.tracedata) - LOAD_OFFSET) {
-  	__tracedata_start = .;
-	*(.tracedata)
-  	__tracedata_end = .;
-  }
+  } /* :text */ = 0x9090
 
   RODATA
 
@@ -296,3 +287,11 @@ SECTIONS
 
   DWARF_DEBUG
 }
+
+#ifdef CONFIG_KEXEC
+/* Link time checks */
+#include <asm/kexec.h>
+
+ASSERT(kexec_control_code_size <= KEXEC_CONTROL_CODE_MAX_SIZE,
+       "kexec control code size is too big")
+#endif

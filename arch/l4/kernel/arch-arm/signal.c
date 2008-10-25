@@ -705,31 +705,6 @@ do_notify_resume(struct pt_regs *regs, unsigned int thread_flags, int syscall)
 		do_signal(&current->blocked, regs, syscall);
 }
 
-void l4x_sig_current_kill(void)
-{
-	/*
-	 * We're a user process which just got a SIGKILL/SEGV and we're now
-	 * preparing to die...
-	 */
-  
-	/*
-	 * empty queue and only put SIGKILL/SEGV into it so that the process
-	 * gets killed ASAP
-	 */
-	spin_lock_irq(&current->sighand->siglock);
-	flush_signals(current);
-	force_sig(SIGKILL, current);
-	spin_unlock_irq(&current->sighand->siglock);
-
-	/*
-	 * invoke do_signal which will dequeue the signal from the queue
-	 * and feed us further to do_exit
-	 */
-	do_signal(&current->blocked, &current->thread.regs, 0);
-
-	panic("The zombie walks after SIGKILL!");
-}
-
 /* Wrappers to put regs in place */
 asmlinkage int sys_sigreturn_wrapper(void)
 {

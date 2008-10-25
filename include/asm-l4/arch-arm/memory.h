@@ -1,5 +1,5 @@
 /*
- *  linux/include/asm-arm/memory.h
+ *  arch/arm/include/asm/memory.h
  *
  *  Copyright (C) 2000-2002 Russell King
  *  modification for nommu, Hyok S. Choi, 2004
@@ -24,7 +24,7 @@
 #endif
 
 #include <linux/compiler.h>
-#include <asm/arch/memory.h>
+#include <mach/memory.h>
 #include <asm/sizes.h>
 
 #ifdef CONFIG_MMU
@@ -152,6 +152,14 @@
 #ifndef arch_adjust_zones
 #define arch_adjust_zones(node,size,holes) do { } while (0)
 #endif
+
+/*
+ * Amount of memory reserved for the vmalloc() area, and minimum
+ * address for vmalloc mappings.
+ */
+extern unsigned long vmalloc_reserve;
+
+#define VMALLOC_MIN		(void *)(VMALLOC_END - vmalloc_reserve)
 
 /*
  * PFNs are used to describe any physical page; this means
@@ -317,20 +325,6 @@ static inline __deprecated void *bus_to_virt(unsigned long x)
  * For BIO.  "will die".  Kill me when bio_to_phys() and bvec_to_phys() die.
  */
 #define page_to_phys(page)	(page_to_pfn(page) << PAGE_SHIFT)
-
-/*
- * Optional device DMA address remapping. Do _not_ use directly!
- * We should really eliminate virt_to_bus() here - it's deprecated.
- */
-#ifndef __arch_page_to_dma
-#define page_to_dma(dev, page)		((dma_addr_t)__virt_to_bus((unsigned long)page_address(page)))
-#define dma_to_virt(dev, addr)		((void *)__bus_to_virt(addr))
-#define virt_to_dma(dev, addr)		((dma_addr_t)__virt_to_bus((unsigned long)(addr)))
-#else
-#define page_to_dma(dev, page)		(__arch_page_to_dma(dev, page))
-#define dma_to_virt(dev, addr)		(__arch_dma_to_virt(dev, addr))
-#define virt_to_dma(dev, addr)		(__arch_virt_to_dma(dev, addr))
-#endif
 
 /*
  * Optional coherency support.  Currently used only by selected

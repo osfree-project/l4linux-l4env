@@ -218,7 +218,7 @@ asmlinkage unsigned long sys_sigreturn(unsigned long __unused)
 
 badframe:
 	if (show_unhandled_signals && printk_ratelimit()) {
-		printk(KERN_INFO "%s%s[%d] bad frame in sigreturn frame:"
+		printk("%s%s[%d] bad frame in sigreturn frame:"
 			"%p ip:%lx sp:%lx oeax:%lx",
 		    task_pid_nr(current) > 1 ? KERN_INFO : KERN_EMERG,
 		    current->comm, task_pid_nr(current), frame, regs->ip,
@@ -684,44 +684,9 @@ void do_signal(struct pt_regs *regs)
 void
 do_notify_resume(struct pt_regs *regs, void *unused, __u32 thread_info_flags)
 {
-	/* Pending single-step? */
-	if (thread_info_flags & _TIF_SINGLESTEP) {
-		regs->flags |= X86_EFLAGS_TF;
-		clear_thread_flag(TIF_SINGLESTEP);
-	}
-
 	/* deal with pending signal delivery */
 	if (thread_info_flags & _TIF_SIGPENDING)
 		do_signal(regs);
 
-	if (thread_info_flags & _TIF_HRTICK_RESCHED)
-		hrtick_resched();
-
 	clear_thread_flag(TIF_IRET);
 }
-
-void l4x_sig_current_kill(void)
-{
-	/*
-	 * We're a user process which just got a SIGKILL/SEGV and we're now
-	 * preparing to die...
-	 */
-  
-	/*
-	 * empty queue and only put SIGKILL/SEGV into it so that the process
-	 * gets killed ASAP
-	 */
-	spin_lock_irq(&current->sighand->siglock);
-	flush_signals(current);
-	force_sig(SIGKILL, current);
-	spin_unlock_irq(&current->sighand->siglock);
-
-	/*
-	 * invoke do_signal which will dequeue the signal from the queue
-	 * and feed us further to do_exit
-	 */
-	do_signal(&current->thread.regs);
-
-	panic("The zombie walks after SIGKILL!");
-}
-

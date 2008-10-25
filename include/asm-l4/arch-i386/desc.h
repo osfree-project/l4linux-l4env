@@ -30,11 +30,17 @@ static inline void fill_ldt(struct desc_struct *desc,
 extern struct desc_ptr idt_descr;
 extern gate_desc idt_table[];
 
+struct gdt_page {
+	struct desc_struct gdt[GDT_ENTRIES];
+} __attribute__((aligned(PAGE_SIZE)));
+DECLARE_PER_CPU(struct gdt_page, gdt_page);
+
+static inline struct desc_struct *get_cpu_gdt_table(unsigned int cpu)
+{
+	return per_cpu(gdt_page, cpu).gdt;
+}
+
 #ifdef CONFIG_X86_64
-extern struct desc_struct cpu_gdt_table[GDT_ENTRIES];
-extern struct desc_ptr cpu_gdt_descr[];
-/* the cpu gdt accessor */
-#define get_cpu_gdt_table(x) ((struct desc_struct *)cpu_gdt_descr[x].address)
 
 static inline void pack_gate(gate_desc *gate, unsigned type, unsigned long func,
 			     unsigned dpl, unsigned ist, unsigned seg)
@@ -52,16 +58,6 @@ static inline void pack_gate(gate_desc *gate, unsigned type, unsigned long func,
 }
 
 #else
-struct gdt_page {
-	struct desc_struct gdt[GDT_ENTRIES];
-} __attribute__((aligned(PAGE_SIZE)));
-DECLARE_PER_CPU(struct gdt_page, gdt_page);
-
-static inline struct desc_struct *get_cpu_gdt_table(unsigned int cpu)
-{
-	return per_cpu(gdt_page, cpu).gdt;
-}
-
 static inline void pack_gate(gate_desc *gate, unsigned char type,
 			     unsigned long base, unsigned dpl, unsigned flags,
 			     unsigned short seg)
@@ -98,10 +94,10 @@ static inline int desc_empty(const void *ptr)
 
 #define write_ldt_entry(dt, entry, desc)	\
 	native_write_ldt_entry(dt, entry, desc)
-#define write_gdt_entry(dt, entry, desc, type)	\
-	do { (void)dt; } while (0) //native_write_gdt_entry(dt, entry, desc, type)
+#define write_gdt_entry(dt, entry, desc, type)		\
+	native_write_gdt_entry(dt, entry, desc, type)
 #define write_idt_entry(dt, entry, g)		\
-	do {} while (0) //native_write_idt_entry(dt, entry, g)
+	native_write_idt_entry(dt, entry, g)
 #endif
 
 static inline void native_write_idt_entry(gate_desc *idt, int entry,
@@ -296,7 +292,7 @@ static inline void _set_gate(int gate, unsigned type, void *addr,
 			     unsigned dpl, unsigned ist, unsigned seg)
 {
 	gate_desc s;
-	pack_gate(&s, type, (unsigned long)addr, dpl, ist, seg);
+	//pack_gate(&s, type, (unsigned long)addr, dpl, ist, seg);
 	/*
 	 * does not need to be atomic because it is only done once at
 	 * setup time
@@ -314,6 +310,28 @@ static inline void set_intr_gate(unsigned int n, void *addr)
 {
 	BUG_ON((unsigned)n > 0xFF);
 	_set_gate(n, GATE_INTERRUPT, addr, 0, 0, __KERNEL_CS);
+}
+
+#define SYS_VECTOR_FREE		0
+#define SYS_VECTOR_ALLOCED	1
+
+extern int first_system_vector;
+extern char system_vectors[];
+
+static inline void alloc_system_vector(int vector)
+{
+	if (system_vectors[vector] == SYS_VECTOR_FREE) {
+		system_vectors[vector] = SYS_VECTOR_ALLOCED;
+		if (first_system_vector > vector)
+			first_system_vector = vector;
+	} else
+		BUG();
+}
+
+static inline void alloc_intr_gate(unsigned int n, void *addr)
+{
+	alloc_system_vector(n);
+	set_intr_gate(n, addr);
 }
 
 /*

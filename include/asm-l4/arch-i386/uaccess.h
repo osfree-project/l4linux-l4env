@@ -5,6 +5,7 @@
  * User space memory access functions
  */
 #include <linux/errno.h>
+#include <linux/compiler.h>
 #include <linux/thread_info.h>
 #include <linux/prefetch.h>
 #include <linux/string.h>
@@ -24,8 +25,7 @@
 
 #define MAKE_MM_SEG(s)	((mm_segment_t) { (s) })
 
-
-#define KERNEL_DS	MAKE_MM_SEG(0xFFFFFFFFUL)
+#define KERNEL_DS	MAKE_MM_SEG(-1UL)
 #define USER_DS		MAKE_MM_SEG(PAGE_OFFSET)
 
 #define get_ds()	(KERNEL_DS)
@@ -33,15 +33,6 @@
 #define set_fs(x)	(current_thread_info()->addr_limit = (x))
 
 #define segment_eq(a, b)	((a).seg == (b).seg)
-
-/*
- * movsl can be slow when source and dest are not both 8-byte aligned
- */
-#ifdef CONFIG_X86_INTEL_USERCOPY
-extern struct movsl_mask {
-	int mask;
-} ____cacheline_aligned_in_smp movsl_mask;
-#endif
 
 #if 0
 #define __addr_ok(addr)					\
@@ -53,18 +44,19 @@ extern struct movsl_mask {
  * Returns 0 if the range is valid, nonzero otherwise.
  *
  * This is equivalent to the following test:
- * (u33)addr + (u33)size >= (u33)current->addr_limit.seg
+ * (u33)addr + (u33)size >= (u33)current->addr_limit.seg (u65 for x86_64)
  *
- * This needs 33-bit arithmetic. We have a carry...
+ * This needs 33-bit (65-bit for x86_64) arithmetic. We have a carry...
  */
-#define __range_ok(addr, size)						\
+
+#define __range_not_ok(addr, size)					\
 ({									\
 	unsigned long flag, roksum;					\
 	__chk_user_ptr(addr);						\
-	asm("addl %3,%1 ; sbbl %0,%0; cmpl %1,%4; sbbl $0,%0"		\
-	    :"=&r" (flag), "=r" (roksum)				\
-	    :"1" (addr), "g" ((int)(size)),				\
-	    "rm" (current_thread_info()->addr_limit.seg));		\
+	asm("add %3,%1 ; sbb %0,%0 ; cmp %1,%4 ; sbb $0,%0"		\
+	    : "=&r" (flag), "=r" (roksum)				\
+	    : "1" (addr), "g" ((long)(size)),				\
+	      "rm" (current_thread_info()->addr_limit.seg));		\
 	flag;								\
 })
 #endif
@@ -88,7 +80,7 @@ extern struct movsl_mask {
  * checks that the pointer is in the user space range - after calling
  * this function, memory access functions may still return -EFAULT.
  */
-//#define access_ok(type, addr, size) (likely(__range_ok(addr, size) == 0))
+//#define access_ok(type, addr, size) (likely(__range_not_ok(addr, size) == 0))
 #define access_ok(type, addr, size) ((void)(addr), (void)(size), 1)
 
 /*
@@ -285,4 +277,15 @@ long strnlen_user(const char __user *str, long n);
 unsigned long __must_check clear_user(void __user *mem, unsigned long len);
 unsigned long __must_check __clear_user(void __user *mem, unsigned long len);
 
-#endif /* ! __ASM_L4__ARCH_I386__UACCESS_H__ */
+/*
+ * movsl can be slow when source and dest are not both 8-byte aligned
+ */
+#ifdef CONFIG_X86_INTEL_USERCOPY
+extern struct movsl_mask {
+	int mask;
+} ____cacheline_aligned_in_smp movsl_mask;
+#endif
+
+
+#endif
+

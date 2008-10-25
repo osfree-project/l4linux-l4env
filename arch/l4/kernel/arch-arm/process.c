@@ -63,7 +63,7 @@ int thread_create_user(struct task_struct *p, int fork);
 
 static volatile int hlt_counter;
 
-#include <asm/arch/system.h>
+#include <mach/system.h>
 
 void disable_hlt(void)
 {
@@ -146,10 +146,8 @@ static void default_idle(void)
 		cpu_relax();
 	else {
 		local_irq_disable();
-		if (!need_resched()) {
-			timer_dyn_reprogram();
+		if (!need_resched())
 			arch_idle();
-		}
 		local_irq_enable();
 	}
 }
@@ -179,7 +177,7 @@ void cpu_idle(void)
 		if (!idle)
 			idle = default_idle;
 		leds_event(led_idle_start);
-		tick_nohz_stop_sched_tick();
+		tick_nohz_stop_sched_tick(1);
 		while (!need_resched())
 			idle();
 		leds_event(led_idle_end);

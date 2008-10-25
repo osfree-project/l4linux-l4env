@@ -6,7 +6,7 @@ extra-y		:= head.o init_task.o vmlinux.lds
 
 AFLAGS_head.o   := -DARCH_$(L4_MK_ARCH)
 
-obj-y		:= main.o process_gen.o hybrid.o syscall_guard.o
+obj-y		:= main.o process_gen.o hybrid.o syscall_guard.o signal.o
 
 obj-$(CONFIG_EARLY_PRINTK)	+= early_printk.o
 obj-$(CONFIG_L4_TAMED)		+= tamed.o

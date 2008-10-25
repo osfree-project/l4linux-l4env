@@ -29,7 +29,7 @@ static struct console early_kdb_console = {
 static struct console *early_console = &early_kdb_console;
 static int early_console_initialized = 0;
 
-void early_printk(const char *fmt, ...)
+asmlinkage void early_printk(const char *fmt, ...)
 {
 	char buf[512];
 	int n;

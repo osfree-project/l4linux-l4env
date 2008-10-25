@@ -16,7 +16,7 @@
 
 #include <asm/cacheflush.h>
 //#include <asm/hardware/arm_scu.h>
-#include <asm/hardware.h>
+#include <arm-arch/mach/hardware.h>
 #include <asm/io.h>
 #include <asm/mach-types.h>
 

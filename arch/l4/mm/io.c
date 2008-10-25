@@ -279,8 +279,8 @@ __l4x_ioremap(unsigned long phys_addr, size_t size, unsigned long flags)
 	 * pages. That's why we first request the size of the region and
 	 * then request the whole region at once.
 	 */
-	printk("%s: Requested region at %08lx [0x%x Bytes]\n",
-	       __func__, phys_addr, size);
+	//printk("%s: Requested region at %08lx [0x%x Bytes]\n",
+	//       __func__, phys_addr, size);
 
 	if ((i = __lookup_ioremap_entry_phys(phys_addr)) != -1) {
 		/* Found already existing entry */
@@ -312,8 +312,8 @@ __l4x_ioremap(unsigned long phys_addr, size_t size, unsigned long flags)
 
 	offset += phys_addr - reg_start;
 
-	printk("%s: Mapping physaddr %08lx [0x%x Bytes, %08lx+%06x] to %08lx+%06lx\n",
-	       __func__, phys_addr, size, reg_start, reg_len, (unsigned long)addr, offset);
+	//printk("%s: Mapping physaddr %08lx [0x%x Bytes, %08lx+%06x] to %08lx+%06lx\n",
+	//       __func__, phys_addr, size, reg_start, reg_len, (unsigned long)addr, offset);
 
 	return (void __iomem *) (offset + (char *)addr);
 }

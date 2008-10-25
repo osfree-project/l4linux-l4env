@@ -191,6 +191,7 @@ l4_utcb_t *l4x_utcb_pointer[L4X_UTCB_POINTERS];
 unsigned long io_apic_irqs;
 unsigned char trampoline_data [1];
 unsigned char trampoline_end  [1];
+void disable_8259A_irq(unsigned int irq) { } // to avoid changing nmi.c (and others)
 #endif
 
 #endif /* x86 */
@@ -670,8 +671,8 @@ static void l4x_setup_upage(void)
 	}
 
 	memcpy((void *)upage_addr,
-	       &vdso32_default_start,
-	       &vdso32_default_end - &vdso32_default_start);
+	       &vdso32_int80_start,
+	       &vdso32_int80_end - &vdso32_int80_start);
 }
 #endif
 
@@ -770,9 +771,6 @@ void __init setup_l4env_memory(char *cmdl,
 	l4_uint32_t memory_area_id;
 	l4_addr_t memory_area_addr;
 	l4_size_t poolsize, poolfree;
-#ifdef ARCH_x86
-	extern unsigned long init_pg_tables_end;
-#endif
 	l4_uint32_t dm_flags = L4DM_CONTIGUOUS | L4DM_PINNED;
 	l4_uint32_t rm_flags = L4DM_RW;
 
@@ -913,10 +911,6 @@ void __init setup_l4env_memory(char *cmdl,
 		*isa_dma_mem_size  = l4x_isa_dma_size;
 	}
 
-#ifdef ARCH_x86
-	init_pg_tables_end = memory_area_addr;
-#endif
-
 	if (!l4dm_is_invalid_ds(l4x_ds_isa_dma))
 		l4env_register_region(l4x_isa_dma_memory_start, l4x_isa_dma_size,
 		                      0, "ISA DMA memory");
@@ -945,7 +939,9 @@ void __init setup_l4env_memory(char *cmdl,
 
 unsigned long l4x_get_isa_dma_memory_end(void)
 {
-	return (unsigned long)l4x_isa_dma_memory_start + l4x_isa_dma_size;
+	if (l4x_isa_dma_memory_start)
+		return (unsigned long)l4x_isa_dma_memory_start + l4x_isa_dma_size;
+	return 0;
 }
 
 void l4x_setup_thread_stack(void)
@@ -1086,9 +1082,8 @@ static L4_CV void __cpu_starter(void *x)
 #ifdef ARCH_x86
 	l4x_load_percpu_gdt_descriptor(get_cpu_gdt_table(cpu));
 #endif
-
 #ifdef ARCH_x86
-	asm volatile ("jmp initialize_secondary");
+	asm volatile ("movl (stack_start), %esp; jmp *(initial_code)");
 #endif
 #ifdef ARCH_arm
 	asm volatile ("b l4x_secondary_start_kernel");
@@ -1162,6 +1157,12 @@ void do_l4x_smp_process_IPI(int vector, struct pt_regs *regs)
 	if (vector == CALL_FUNCTION_VECTOR) {
 		extern fastcall void smp_call_function_interrupt(struct pt_regs *);
 		smp_call_function_interrupt(regs);
+		return;
+	}
+
+	if (vector == CALL_FUNCTION_SINGLE_VECTOR) {
+		extern fastcall void smp_call_function_single_interrupt(struct pt_regs *);
+		smp_call_function_single_interrupt(regs);
 		return;
 	}
 
@@ -2187,7 +2188,6 @@ static inline void l4x_handle_pagefault(l4_threadid_t id, l4_utcb_t *u)
 		l4x_forward_pf(l4_utcb_exc_pfa(u),
 			       l4_utcb_exc_pc(u), 0);
 }
-
 static int l4x_default(l4_threadid_t *src_id, l4_umword_t *dw0,
                        l4_umword_t *dw1, l4_msgtag_t *tag)
 {
