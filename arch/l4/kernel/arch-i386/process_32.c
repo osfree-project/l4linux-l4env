@@ -89,6 +89,7 @@ unsigned long thread_saved_pc(struct task_struct *tsk)
 
 static void cpu_exit_clear(void)
 {
+#if 0
 	int cpu = raw_smp_processor_id();
 
 	idle_task_exit();
@@ -101,6 +102,7 @@ static void cpu_exit_clear(void)
 
 	numa_remove_cpu(cpu);
 	c1e_remove_cpu(cpu);
+#endif
 }
 
 /* We don't actually take CPU down, just spin without interrupts. */

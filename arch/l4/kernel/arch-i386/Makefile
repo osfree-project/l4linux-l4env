@@ -7,7 +7,7 @@ obj-y		:= dispatch.o entry.o i387.o ioport.o irq.o irq_l4.o \
 		   setup.o signal.o sys_i386.o time.o traps_32.o e820.o \
 		   unimpl.o topology.o alternative.o tsc.o \
 		   tls.o step.o rtc.o ds.o io_delay.o memory.o \
-		   setup_percpu.o probe_roms_32.o
+		   setup_percpu.o probe_roms_32.o kdebugfs.o
 
 obj-$(CONFIG_STACKTRACE)	+= stacktrace.o
 obj-y				+= cpu/
@@ -46,6 +46,7 @@ trampoline-y	+= $(b)/trampoline.o
 setup_percpu-y  += $(b)/setup_percpu.o
 probe_roms_32-y	+= $(b)/probe_roms_32.o
 early-quirks-y	+= $(b)/early-quirks.o
+kdebugfs-y	+= $(b)/kdebugfs.o
 
 # get sigframe_32.h for signal.c
 KBUILD_CFLAGS	+= -Iarch/x86/kernel
