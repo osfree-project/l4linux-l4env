@@ -170,7 +170,9 @@ L4_EXTERNAL_FUNC(l4io_request_region);
 L4_EXTERNAL_FUNC(l4io_release_mem_region);
 L4_EXTERNAL_FUNC(l4io_request_mem_region);
 
+#ifdef CONFIG_L4_EXTERNAL_RTC
 L4_EXTERNAL_FUNC(l4rtc_get_seconds_since_1970);
+#endif
 #else
 #include "../boot/startup.c"
 #endif
