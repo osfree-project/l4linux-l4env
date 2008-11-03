@@ -339,10 +339,7 @@ static void __init relocate_initrd(void)
 static void __init reserve_initrd(void)
 {
 #ifdef CONFIG_L4_L4ENV
-  LOG_printf("%s %d\n", __func__, __LINE__);
 	l4env_load_initrd(boot_command_line);
-  LOG_printf("%s %d\n", __func__, __LINE__);
-	reserve_early(initrd_start, initrd_end, "INITRD");
 #else
 	u64 ramdisk_image = boot_params.hdr.ramdisk_image;
 	u64 ramdisk_size  = boot_params.hdr.ramdisk_size;
