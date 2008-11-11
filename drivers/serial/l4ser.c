@@ -218,7 +218,7 @@ static void l4ser_irq_dummy_void(unsigned int irq)
 }
 
 struct irq_chip l4ser_irq_type = {
-	.name		= "L4Ore IRQ",
+	.name		= "L4Ser IRQ",
 	.startup	= l4ser_irq_startup,
 	.shutdown	= l4ser_irq_dummy_void,
 	.enable		= l4ser_irq_dummy_void,
