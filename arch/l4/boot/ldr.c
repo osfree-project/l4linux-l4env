@@ -21,18 +21,7 @@
 
 char LOG_tag[9] = "l4lx";
 
-extern char image_vmlinux_start[];
-extern char image_vmlinux_end[];
-
-asm(
-".p2align 12                     \n"
-".globl image_vmlinux_start      \n"
-"image_vmlinux_start:            \n"
-".incbin \"" VMLINUX_IMAGE "\"   \n"
-".globl image_vmlinux_end        \n"
-"image_vmlinux_end:              \n"
-".p2align 12                     \n"
-);
+extern const char image_vmlinux_start[];
 
 struct shared_data {
 	unsigned long (*external_resolver)(void);

@@ -19,7 +19,7 @@ vmlinuz$(SUFFIX): $(if $(CONFIG_L4_LDR),ldr)Image FORCE
 	$(call if_changed,gzip)
 	$(call cmd,localinst)
 
-objects-$(CONFIG_L4_LDR) := ldr.o startup.o res.o
+objects-$(CONFIG_L4_LDR) := ldr.o startup.o res.o image.o
 
 targets	:= $(objects-y)
 
@@ -29,11 +29,15 @@ KBUILD_CFLAGS	:= -m32 $(L4INC) -I$(L4OBJ)/include/uclibc \
 		   -DVMLINUX_IMAGE=\"Image\" \
 		   -I$(obj)
 
+KBUILD_AFLAGS   := -DVMLINUX_IMAGE=\"Image\"
+
 $(obj)/ldr.o: Image
 $(obj)/res.o: $(obj)/func_list.h
 
+$(obj)/image.o: Image
+
 $(obj)/func_list.h: vmlinux
-	$(Q)objcopy -j .data.l4externals.str -O binary $< $@.tmp
+	$(Q)$(OBJCOPY) -j .data.l4externals.str -O binary $< $@.tmp
 	$(Q)perl -p -e 's/(.+?)\0/EF($$1)\n/g' $@.tmp > $@
 
 OBJS := $(addprefix $(obj)/,$(objects-y))
