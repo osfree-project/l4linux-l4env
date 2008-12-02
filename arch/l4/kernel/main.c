@@ -189,6 +189,8 @@ void ia32_sysenter_target(void) {}
 
 l4_utcb_t *l4x_utcb_pointer[L4X_UTCB_POINTERS];
 
+unsigned long upage_addr;
+
 #ifdef CONFIG_SMP
 unsigned long io_apic_irqs;
 unsigned char trampoline_data [1];
@@ -227,7 +229,6 @@ unsigned long l4env_vmalloc_memory_start;
 static l4env_infopage_t *l4x_l4env_infopage;
 l4_kernel_info_t *l4lx_kinfo;
 unsigned int l4x_kernel_taskno __nosavedata;
-unsigned long upage_addr;
 
 int l4x_debug_show_exceptions;
 int l4x_debug_show_ghost_regions;
@@ -2603,6 +2604,7 @@ int l4x_peek_upage(unsigned long addr,
                    unsigned long __user *datap,
                    int *ret)
 {
+#ifdef ARCH_x86
 	unsigned long tmp;
 
 	if (addr >= UPAGE_USER_ADDRESS
@@ -2612,6 +2614,7 @@ int l4x_peek_upage(unsigned long addr,
 		*ret = put_user(tmp, datap);
 		return 1;
 	}
+#endif
 	return 0;
 }
 

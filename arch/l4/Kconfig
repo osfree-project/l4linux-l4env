@@ -209,13 +209,13 @@ config L4_DEBUG_REGISTER_NAMES
 	  information.
 
 config L4_DEBUG_SEGFAULTS
-	bool "Print error information on user program sefaults"
+	bool "Print error information on user program segfaults"
 	depends on L4_DEBUG
 	default n
 	help
 	  When this option is turned on additional information is printed
 	  when a program causes a page fault that cannot be resolved (a
-	  segementation fault).
+	  segmentation fault).
 
 config L4_DEBUG_STATS
 	bool "Do some statistics"

@@ -223,10 +223,12 @@ static inline int l4x_handle_page_fault(struct task_struct *p,
 #endif
 	} else {
 		/* page fault in upage */
+#ifdef ARCH_x86
 		if ((pfa & PAGE_MASK) == UPAGE_USER_ADDRESS && !(pfa & 2)) {
 			*d1 = l4_fpage(upage_addr, L4_LOG2_PAGESIZE,
 			               L4_FPAGE_RO, L4_FPAGE_MAP).fpage;
 		} else
+#endif
 			return 1;   /* invalid access */
 
 		*d0 &= PAGE_MASK;
