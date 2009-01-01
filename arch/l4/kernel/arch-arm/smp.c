@@ -301,6 +301,7 @@ asmlinkage void __cpuinit secondary_start_kernel(void)
 	/*
 	 * Enable local interrupts.
 	 */
+	notify_cpu_starting(cpu);
 	//l4/local_irq_enable();
 	//l4/local_fiq_enable();
 

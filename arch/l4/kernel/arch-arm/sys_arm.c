@@ -27,8 +27,7 @@
 #include <linux/file.h>
 #include <linux/utsname.h>
 #include <linux/ipc.h>
-
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 
 #include <l4/sys/kdebug.h>
 

@@ -1,6 +1,5 @@
 #ifndef __ASM_L4__ARCH_I386__UACCESS_H__
 #define __ASM_L4__ARCH_I386__UACCESS_H__
-
 /*
  * User space memory access functions
  */

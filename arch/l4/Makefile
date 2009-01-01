@@ -237,7 +237,7 @@ else
   libs-y			+= $(L4LIBS-y)
 endif
 
-MACH_INC_i386	:= -Iinclude/asm-l4/$(LINSRCARCH)-arch/asm/mach-default
+MACH_INC_i386	:= -I$(src)/arch/x86/include/asm/mach-default
 L4_CRT0		:= $(L4OBJ)/lib/$(L4_MK_ARCH)_$(L4_MK_CPU)/crt0.o
 L4_DYNLINK	:= --dynamic-linker libld-l4.s.so $(L4_CRT0) \
                    -lloader.s $(L4LX_E_L_O-y) -z now
@@ -254,7 +254,9 @@ else
 endif
 
 KBUILD_CPPFLAGS	+= -Iinclude/asm-l4/l4-arch \
+		   -I$(src)/arch/$(LINSRCARCH)/include \
 		   -Iinclude/asm-l4/$(LINSRCARCH)-arch \
+		   -Iinclude/asm-l4/orig-arch \
                    -Iinclude/asm-l4 \
 		   $(MACH_INC_$(BASEARCH)) \
                    $(L4INC) $(CPPFLAGS_SYSENTER-y) \
@@ -274,18 +276,6 @@ lImage: vmlinux
 mtags:
 	(cd $(srctree) && $(MAKE) tags > /dev/null 2>&1; \
 	sort tags > .tags.sorting && mv .tags.sorting tags )
-
-ifeq ($(LINSRCARCH),x86)
-include/asm-l4/$(LINSRCARCH)-arch/asm:
-	@echo '  Creating asm-l4/$(BASEARCH)-arch/asm symlink'
-	$(Q)mkdir -p $(@D)
-	$(Q)ln -s $(src)/include/asm-$(LINSRCARCH) $@
-else
-include/asm-l4/$(LINSRCARCH)-arch/asm:
-	@echo '  Creating asm-l4/$(LINSRCARCH)-arch/asm symlink'
-	$(Q)mkdir -p $(@D)
-	$(Q)ln -s $(src)/arch/$(LINSRCARCH)/include/asm $@
-endif
 
 include/asm-l4/$(LINSRCARCH)-arch/mach:
 	@echo '  Creating asm-l4/$(LINSRCARCH)-arch/mach symlink'
@@ -317,6 +307,11 @@ include/asm-l4/l4lxapi/impl:
 	$(Q)mkdir -p $(@D)
 	$(Q)ln -s $(src)/arch/l4/l4lxlib/l4env $@
 
+include/asm-l4/orig-arch:
+	@echo '  Creating asm-l4/orig-arch symlink'
+	$(Q)mkdir -p $@
+	$(Q)ln -s $(src)/arch/$(LINSRCARCH)/include/asm $@/asm-$(LINSRCARCH) 
+
 include/asm-l4/mach-types.h: $(srctree)/arch/arm/tools/gen-mach-types $(srctree)/arch/arm/tools/mach-types
 	$(Q)cp $(srctree)/arch/arm/tools/mach-types include/asm-l4/mach-types.list
 	$(Q)echo "l4	MACH_L4	L4	9999" >> include/asm-l4/mach-types.list
@@ -330,7 +325,7 @@ symlinks      = include/asm-l4/api \
                 include/asm-l4/l4lxapi/impl \
 		include/asm-l4/l4x \
 		include/asm-l4/l4-arch/asm \
-		include/asm-l4/$(LINSRCARCH)-arch/asm \
+		include/asm-l4/orig-arch \
                 $(symlinks_$(BASEARCH))
 
 MRPROPER_FILES	+= $(symlinks)

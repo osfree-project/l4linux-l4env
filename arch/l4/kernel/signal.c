@@ -10,6 +10,7 @@
 int l4x_deliver_signal(int exception_nr, int errcode)
 {
 	// look at arm example??
+	printk("nr = %d  errcode = %d\n", exception_nr, errcode);
 	enter_kdebug("l4x_deliver_signal");
 	return 0;
 }

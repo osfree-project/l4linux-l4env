@@ -299,4 +299,4 @@ BUILDIO(b, b, char)
 BUILDIO(w, w, short)
 BUILDIO(l, , int)
 
-#endif
+#endif /* _ASM_X86_IO_32_H */

@@ -1,5 +1,5 @@
-#ifndef _ASM_X86_SYSTEM_H_
-#define _ASM_X86_SYSTEM_H_
+#ifndef _ASM_X86_SYSTEM_H
+#define _ASM_X86_SYSTEM_H
 
 #include <asm/asm.h>
 #include <asm/segment.h>
@@ -64,7 +64,10 @@ do {									\
 		       							\
 		       /* regparm parameters for __switch_to(): */	\
 		       [prev]     "a" (prev),				\
-		       [next]     "d" (next));				\
+		       [next]     "d" (next)				\
+									\
+		     : /* reloaded segment registers */			\
+			"memory");					\
 } while (0)
 
 extern void l4x_switch_to(struct task_struct *prev, struct task_struct *next);
@@ -87,7 +90,8 @@ extern void l4x_switch_to(struct task_struct *prev, struct task_struct *next);
 	: "=b" (last), "=m" (prev->thread.sp)				\
 	: "m" (next->thread.sp),					\
 	  "a" (prev), "b" (prev), "c"(next)				\
-	);								\
+		     : /* reloaded segment registers */			\
+			"memory");					\
 } while (0)
 
 /*
@@ -444,4 +448,4 @@ static inline void rdtsc_barrier(void)
 	alternative(ASM_NOP3, "lfence", X86_FEATURE_LFENCE_RDTSC);
 }
 
-#endif
+#endif /* _ASM_X86_SYSTEM_H */

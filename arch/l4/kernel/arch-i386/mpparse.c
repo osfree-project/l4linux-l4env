@@ -399,7 +399,9 @@ static int __init smp_read_mpc(struct mp_config_table *mpc, unsigned early)
        generic_bigsmp_probe();
 #endif
 
+#ifdef CONFIG_X86_32
 	setup_apic_routing();
+#endif
 	if (!num_processors)
 		printk(KERN_ERR "MPTABLE: no processors registered!\n");
 	return num_processors;
@@ -604,6 +606,9 @@ static void __init __get_smp_config(unsigned int early)
 		printk(KERN_INFO "Using ACPI for processor (LAPIC) "
 		       "configuration information\n");
 
+	if (!mpf)
+		return;
+
 	printk(KERN_INFO "Intel MultiProcessor Specification v1.%d\n",
 	       mpf->mpf_specification);
 #if defined(CONFIG_X86_LOCAL_APIC) && defined(CONFIG_X86_32)
@@ -678,30 +683,8 @@ static void __init __get_smp_config(unsigned int early)
 		boot_cpu_physical_apicid = 0;
 		apic_version[0] = 0x10;
 
-		for (i = 0; i < l4x_nr_cpus; i++) {
+		for (i = 0; i < l4x_nr_cpus; i++)
 			generic_processor_info(i, 0x10);
-#if 0
-			physid_mask_t phys_cpu;
-			phys_cpu = apicid_to_cpu_present(i);
-			physids_or(phys_cpu_present_map, phys_cpu_present_map, phys_cpu);
-
-			if (num_processors >= NR_CPUS) {
-				printk(KERN_WARNING "WARNING: NR_CPUS limit of %i reached."
-				                    "  Processor ignored.\n", NR_CPUS);
-				continue;
-			}
-
-			if (num_processors >= maxcpus) {
-				printk(KERN_WARNING "WARNING: maxcpus limit of %i reached."
-				                    " Processor ignored.\n", maxcpus);
-				continue;
-			}
-
-			cpu_set(num_processors, cpu_possible_map);
-			num_processors++;
-#endif
-
-		}
 	}
 
 

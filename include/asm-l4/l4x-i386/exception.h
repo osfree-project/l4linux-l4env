@@ -30,6 +30,14 @@ static inline unsigned long l4x_get_cpu_mode(struct pt_regs *r)
 	return r->cs & 3;
 }
 
+static inline void l4x_make_up_kernel_regs(struct pt_regs *r)
+{
+	l4x_set_cpu_mode(r, L4X_MODE_KERNEL);
+	r->ip = (unsigned long)__builtin_return_address(0);
+	r->sp = current_stack_pointer;
+	r->flags = native_save_fl();
+}
+
 #define U2P(p, pr, u, ur)   do { p->pr = u->exc.ur; } while (0)
 static inline void utcb_to_ptregs(l4_utcb_t *utcb, struct pt_regs *ptregs)
 {

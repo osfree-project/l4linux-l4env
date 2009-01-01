@@ -52,6 +52,7 @@
 #include <asm/desc.h>
 #include <asm/nmi.h>
 #include <asm/irq.h>
+#include <asm/idle.h>
 #include <asm/smp.h>
 #include <asm/trampoline.h>
 #include <asm/cpu.h>
@@ -90,7 +91,7 @@ static DEFINE_PER_CPU(struct task_struct *, idle_thread_array);
 #define get_idle_for_cpu(x)      (per_cpu(idle_thread_array, x))
 #define set_idle_for_cpu(x, p)   (per_cpu(idle_thread_array, x) = (p))
 #else
-struct task_struct *idle_thread_array[NR_CPUS] __cpuinitdata ;
+static struct task_struct *idle_thread_array[NR_CPUS] __cpuinitdata ;
 #define get_idle_for_cpu(x)      (idle_thread_array[(x)])
 #define set_idle_for_cpu(x, p)   (idle_thread_array[(x)] = (p))
 #endif
@@ -125,13 +126,12 @@ EXPORT_PER_CPU_SYMBOL(cpu_info);
 
 static atomic_t init_deasserted;
 
-static int boot_cpu_logical_apicid;
 
 /* representing cpus for which sibling maps can be computed */
 static cpumask_t cpu_sibling_setup_map;
 
 /* Set if we find a B stepping CPU */
-int __cpuinitdata smp_b_stepping;
+static int __cpuinitdata smp_b_stepping;
 
 #if defined(CONFIG_NUMA) && defined(CONFIG_X86_32)
 
@@ -167,6 +167,8 @@ static void unmap_cpu_to_node(int cpu)
 #endif
 
 #ifdef CONFIG_X86_32
+static int boot_cpu_logical_apicid;
+
 u8 cpu_2_logical_apicid[NR_CPUS] __read_mostly =
 					{ [0 ... NR_CPUS-1] = BAD_APICID };
 
@@ -259,6 +261,7 @@ static void __cpuinit smp_callin(void)
 	end_local_APIC_setup();
 	map_cpu_to_logical_apicid();
 
+	notify_cpu_starting(cpuid);
 	/*
 	 * Get our bogomips.
 	 *
@@ -281,6 +284,8 @@ static void __cpuinit smp_callin(void)
 	cpu_set(cpuid, cpu_callin_map);
 }
 
+static int __cpuinitdata unsafe_smp;
+
 /*
  * Activate a secondary processor.
  */
@@ -291,9 +296,7 @@ static void __cpuinit start_secondary(void *unused)
 	 * fragile that we want to limit the things done here to the
 	 * most necessary things.
 	 */
-#ifdef CONFIG_VMI
 	vmi_bringup();
-#endif
 	l4x_cpu_ipi_thread_start(smp_processor_id());
 	cpu_init();
 	preempt_disable();
@@ -336,13 +339,16 @@ static void __cpuinit start_secondary(void *unused)
 	 * does not change while we are assigning vectors to cpus.  Holding
 	 * this lock ensures we don't half assign or remove an irq from a cpu.
 	 */
-	ipi_call_lock_irq();
+	ipi_call_lock();
 	lock_vector_lock();
 	__setup_vector_irq(smp_processor_id());
 	cpu_set(smp_processor_id(), cpu_online_map);
 	unlock_vector_lock();
-	ipi_call_unlock_irq();
+	ipi_call_unlock();
 	per_cpu(cpu_state, smp_processor_id()) = CPU_ONLINE;
+
+	/* enable local interrupts */
+	local_irq_enable();
 
 	setup_secondary_clock();
 
@@ -396,7 +402,7 @@ static void __cpuinit smp_apply_quirks(struct cpuinfo_x86 *c)
 				goto valid_k7;
 
 		/* If we get here, not a certified SMP capable AMD system. */
-		add_taint(TAINT_UNSAFE_SMP);
+		unsafe_smp = 1;
 	}
 
 valid_k7:
@@ -413,12 +419,10 @@ static void __cpuinit smp_checks(void)
 	 * Don't taint if we are running SMP kernel on a single non-MP
 	 * approved Athlon
 	 */
-	if (tainted & TAINT_UNSAFE_SMP) {
-		if (num_online_cpus())
-			printk(KERN_INFO "WARNING: This combination of AMD"
-				"processors is not suitable for SMP.\n");
-		else
-			tainted &= ~TAINT_UNSAFE_SMP;
+	if (unsafe_smp && num_online_cpus() > 1) {
+		printk(KERN_INFO "WARNING: This combination of AMD"
+			"processors is not suitable for SMP.\n");
+		add_taint(TAINT_UNSAFE_SMP);
 	}
 }
 
@@ -542,10 +546,10 @@ static inline void __inquire_remote_apic(int apicid)
 	int timeout;
 	u32 status;
 
-	printk(KERN_INFO "Inquiring remote APIC #%d...\n", apicid);
+	printk(KERN_INFO "Inquiring remote APIC 0x%x...\n", apicid);
 
 	for (i = 0; i < ARRAY_SIZE(regs); i++) {
-		printk(KERN_INFO "... APIC #%d %s: ", apicid, names[i]);
+		printk(KERN_INFO "... APIC 0x%x %s: ", apicid, names[i]);
 
 		/*
 		 * Wait for idle.
@@ -555,8 +559,7 @@ static inline void __inquire_remote_apic(int apicid)
 			printk(KERN_CONT
 			       "a previous APIC delivery may have failed\n");
 
-		apic_write(APIC_ICR2, SET_APIC_DEST_FIELD(apicid));
-		apic_write(APIC_ICR, APIC_DM_REMRD | regs[i]);
+		apic_icr_write(APIC_DM_REMRD | regs[i], apicid);
 
 		timeout = 0;
 		do {
@@ -589,11 +592,9 @@ wakeup_secondary_cpu(int logical_apicid, unsigned long start_eip)
 	int maxlvt;
 
 	/* Target chip */
-	apic_write(APIC_ICR2, SET_APIC_DEST_FIELD(logical_apicid));
-
 	/* Boot on the stack */
 	/* Kick the second */
-	apic_write(APIC_ICR, APIC_DM_NMI | APIC_DEST_LOGICAL);
+	apic_icr_write(APIC_DM_NMI | APIC_DEST_LOGICAL, logical_apicid);
 
 	pr_debug("Waiting for send to finish...\n");
 	send_status = safe_apic_wait_icr_idle();
@@ -602,10 +603,12 @@ wakeup_secondary_cpu(int logical_apicid, unsigned long start_eip)
 	 * Give the other CPU some time to accept the IPI.
 	 */
 	udelay(200);
-	maxlvt = lapic_get_maxlvt();
-	if (maxlvt > 3)			/* Due to the Pentium erratum 3AP.  */
-		apic_write(APIC_ESR, 0);
-	accept_status = (apic_read(APIC_ESR) & 0xEF);
+	if (APIC_INTEGRATED(apic_version[phys_apicid])) {
+		maxlvt = lapic_get_maxlvt();
+		if (maxlvt > 3)			/* Due to the Pentium erratum 3AP.  */
+			apic_write(APIC_ESR, 0);
+		accept_status = (apic_read(APIC_ESR) & 0xEF);
+	}
 	pr_debug("NMI sent.\n");
 
 	if (send_status)
@@ -646,13 +649,11 @@ wakeup_secondary_cpu(int phys_apicid, unsigned long start_eip)
 	/*
 	 * Turn INIT on target chip
 	 */
-	apic_write(APIC_ICR2, SET_APIC_DEST_FIELD(phys_apicid));
-
 	/*
 	 * Send IPI
 	 */
-	apic_write(APIC_ICR,
-		   APIC_INT_LEVELTRIG | APIC_INT_ASSERT | APIC_DM_INIT);
+	apic_icr_write(APIC_INT_LEVELTRIG | APIC_INT_ASSERT | APIC_DM_INIT,
+		       phys_apicid);
 
 	pr_debug("Waiting for send to finish...\n");
 	send_status = safe_apic_wait_icr_idle();
@@ -662,10 +663,8 @@ wakeup_secondary_cpu(int phys_apicid, unsigned long start_eip)
 	pr_debug("Deasserting INIT.\n");
 
 	/* Target chip */
-	apic_write(APIC_ICR2, SET_APIC_DEST_FIELD(phys_apicid));
-
 	/* Send IPI */
-	apic_write(APIC_ICR, APIC_INT_LEVELTRIG | APIC_DM_INIT);
+	apic_icr_write(APIC_INT_LEVELTRIG | APIC_DM_INIT, phys_apicid);
 
 	pr_debug("Waiting for send to finish...\n");
 	send_status = safe_apic_wait_icr_idle();
@@ -708,11 +707,10 @@ wakeup_secondary_cpu(int phys_apicid, unsigned long start_eip)
 		 */
 
 		/* Target chip */
-		apic_write(APIC_ICR2, SET_APIC_DEST_FIELD(phys_apicid));
-
 		/* Boot on the stack */
 		/* Kick the second */
-		apic_write(APIC_ICR, APIC_DM_STARTUP | (start_eip >> 12));
+		apic_icr_write(APIC_DM_STARTUP | (start_eip >> 12),
+			       phys_apicid);
 
 		/*
 		 * Give the other CPU some time to accept the IPI.
@@ -893,7 +891,7 @@ do_rest:
 	l4x_cpu_release(cpu);
 
 	/* So we see what's up   */
-	printk(KERN_INFO "Booting processor %d/%d ip %lx\n",
+	printk(KERN_INFO "Booting processor %d APIC 0x%x ip 0x%lx\n",
 			  cpu, apicid, start_ip);
 
 	/*
@@ -913,9 +911,11 @@ do_rest:
 		smpboot_setup_warm_reset_vector(start_ip);
 		/*
 		 * Be paranoid about clearing APIC errors.
-	 	*/
-		apic_write(APIC_ESR, 0);
-		apic_read(APIC_ESR);
+		*/
+		if (APIC_INTEGRATED(apic_version[boot_cpu_physical_apicid])) {
+			apic_write(APIC_ESR, 0);
+			apic_read(APIC_ESR);
+		}
 	}
 #endif
 
@@ -990,7 +990,7 @@ restore_state:
 int __cpuinit native_cpu_up(unsigned int cpu)
 {
 	int apicid = cpu_present_to_apicid(cpu);
-	unsigned long flags;
+	//l4/unsigned long flags;
 	int err;
 
 	WARN_ON(irqs_disabled());
@@ -1038,7 +1038,6 @@ int __cpuinit native_cpu_up(unsigned int cpu)
 		return -EIO;
 	}
 
-	printk("%s %d\n", __func__, __LINE__);
 	/*
 	 * Check TSC synchronization with the AP (keep irqs disabled
 	 * while doing so):
@@ -1049,12 +1048,10 @@ int __cpuinit native_cpu_up(unsigned int cpu)
 	local_irq_restore(flags);
 #endif
 
-	printk("%s %d\n", __func__, __LINE__);
 	while (!cpu_online(cpu)) {
 		l4_sleep(10); //cpu_relax();
 		touch_nmi_watchdog();
 	}
-	printk("%s %d\n", __func__, __LINE__);
 
 	return 0;
 }
@@ -1207,9 +1204,16 @@ void __init native_smp_prepare_cpus(unsigned int max_cpus)
 	 * Setup boot CPU information
 	 */
 	smp_store_cpu_info(0); /* Final full version of the data */
+#ifdef CONFIG_X86_32
 	boot_cpu_logical_apicid = 0; //l4/logical_smp_processor_id();
+#endif
 	current_thread_info()->cpu = 0;  /* needed? */
 	set_cpu_sibling_map(0);
+
+#ifdef CONFIG_X86_64
+	enable_IR_x2apic();
+	setup_apic_routing();
+#endif
 
 	if (smp_sanity_check(max_cpus) < 0) {
 		printk(KERN_INFO "SMP disabled\n");
@@ -1219,9 +1223,9 @@ void __init native_smp_prepare_cpus(unsigned int max_cpus)
 
 #ifdef NOT_FOR_L4
 	preempt_disable();
-	if (GET_APIC_ID(read_apic_id()) != boot_cpu_physical_apicid) {
+	if (read_apic_id() != boot_cpu_physical_apicid) {
 		panic("Boot APIC ID in local APIC unexpected (%d vs %d)",
-		     GET_APIC_ID(read_apic_id()), boot_cpu_physical_apicid);
+		     read_apic_id(), boot_cpu_physical_apicid);
 		/* Or can we switch back to PIC here? */
 	}
 	preempt_enable();
@@ -1290,6 +1294,44 @@ void __init native_smp_cpus_done(unsigned int max_cpus)
 	check_nmi_watchdog();
 }
 
+/*
+ * cpu_possible_map should be static, it cannot change as cpu's
+ * are onlined, or offlined. The reason is per-cpu data-structures
+ * are allocated by some modules at init time, and dont expect to
+ * do this dynamically on cpu arrival/departure.
+ * cpu_present_map on the other hand can change dynamically.
+ * In case when cpu_hotplug is not compiled, then we resort to current
+ * behaviour, which is cpu_possible == cpu_present.
+ * - Ashok Raj
+ *
+ * Three ways to find out the number of additional hotplug CPUs:
+ * - If the BIOS specified disabled CPUs in ACPI/mptables use that.
+ * - The user can overwrite it with additional_cpus=NUM
+ * - Otherwise don't reserve additional CPUs.
+ * We do this because additional CPUs waste a lot of memory.
+ * -AK
+ */
+__init void prefill_possible_map(void)
+{
+	int i, possible;
+
+	/* no processor from mptable or madt */
+	if (!num_processors)
+		num_processors = 1;
+
+	possible = num_processors + disabled_cpus;
+	if (possible > NR_CPUS)
+		possible = NR_CPUS;
+
+	printk(KERN_INFO "SMP: Allowing %d CPUs, %d hotplug CPUs\n",
+		possible, max_t(int, possible - num_processors, 0));
+
+	for (i = 0; i < possible; i++)
+		cpu_set(i, cpu_possible_map);
+
+	nr_cpu_ids = possible;
+}
+
 #ifdef CONFIG_HOTPLUG_CPU
 
 static void remove_siblinginfo(int cpu)
@@ -1315,63 +1357,6 @@ static void remove_siblinginfo(int cpu)
 	cpu_clear(cpu, cpu_sibling_setup_map);
 }
 
-static int additional_cpus __initdata = -1;
-
-static __init int setup_additional_cpus(char *s)
-{
-	return s && get_option(&s, &additional_cpus) ? 0 : -EINVAL;
-}
-early_param("additional_cpus", setup_additional_cpus);
-
-/*
- * cpu_possible_map should be static, it cannot change as cpu's
- * are onlined, or offlined. The reason is per-cpu data-structures
- * are allocated by some modules at init time, and dont expect to
- * do this dynamically on cpu arrival/departure.
- * cpu_present_map on the other hand can change dynamically.
- * In case when cpu_hotplug is not compiled, then we resort to current
- * behaviour, which is cpu_possible == cpu_present.
- * - Ashok Raj
- *
- * Three ways to find out the number of additional hotplug CPUs:
- * - If the BIOS specified disabled CPUs in ACPI/mptables use that.
- * - The user can overwrite it with additional_cpus=NUM
- * - Otherwise don't reserve additional CPUs.
- * We do this because additional CPUs waste a lot of memory.
- * -AK
- */
-__init void prefill_possible_map(void)
-{
-	int i;
-	int possible;
-
-	/* no processor from mptable or madt */
-	if (!num_processors)
-		num_processors = 1;
-
-#ifdef CONFIG_HOTPLUG_CPU
-	if (additional_cpus == -1) {
-		if (disabled_cpus > 0)
-			additional_cpus = disabled_cpus;
-		else
-			additional_cpus = 0;
-	}
-#else
-	additional_cpus = 0;
-#endif
-	possible = num_processors + additional_cpus;
-	if (possible > NR_CPUS)
-		possible = NR_CPUS;
-
-	printk(KERN_INFO "SMP: Allowing %d CPUs, %d hotplug CPUs\n",
-		possible, max_t(int, possible - num_processors, 0));
-
-	for (i = 0; i < possible; i++)
-		cpu_set(i, cpu_possible_map);
-
-	nr_cpu_ids = possible;
-}
-
 static void __ref remove_cpu_from_maps(int cpu)
 {
 	cpu_clear(cpu, cpu_online_map);
@@ -1382,7 +1367,29 @@ static void __ref remove_cpu_from_maps(int cpu)
 	numa_remove_cpu(cpu);
 }
 
-int __cpu_disable(void)
+void cpu_disable_common(void)
+{
+	int cpu = smp_processor_id();
+	/*
+	 * HACK:
+	 * Allow any queued timer interrupts to get serviced
+	 * This is only a temporary solution until we cleanup
+	 * fixup_irqs as we do for IA64.
+	 */
+	local_irq_enable();
+	mdelay(1);
+
+	local_irq_disable();
+	remove_siblinginfo(cpu);
+
+	/* It's now safe to remove this processor from the online map */
+	lock_vector_lock();
+	remove_cpu_from_maps(cpu);
+	unlock_vector_lock();
+	fixup_irqs(cpu_online_map);
+}
+
+int native_cpu_disable(void)
 {
 	int cpu = smp_processor_id();
 
@@ -1401,27 +1408,11 @@ int __cpu_disable(void)
 		stop_apic_nmi_watchdog(NULL);
 	clear_local_APIC();
 
-	/*
-	 * HACK:
-	 * Allow any queued timer interrupts to get serviced
-	 * This is only a temporary solution until we cleanup
-	 * fixup_irqs as we do for IA64.
-	 */
-	local_irq_enable();
-	mdelay(1);
-
-	local_irq_disable();
-	remove_siblinginfo(cpu);
-
-	/* It's now safe to remove this processor from the online map */
-	lock_vector_lock();
-	remove_cpu_from_maps(cpu);
-	unlock_vector_lock();
-	fixup_irqs(cpu_online_map);
+	cpu_disable_common();
 	return 0;
 }
 
-void __cpu_die(unsigned int cpu)
+void native_cpu_die(unsigned int cpu)
 {
 	/* We don't do anything here: idle task is faking death itself. */
 	unsigned int i;
@@ -1438,15 +1429,45 @@ void __cpu_die(unsigned int cpu)
 	}
 	printk(KERN_ERR "CPU %u didn't die...\n", cpu);
 }
+
+void play_dead_common(void)
+{
+	idle_task_exit();
+	reset_lazy_tlbstate();
+	irq_ctx_exit(raw_smp_processor_id());
+	c1e_remove_cpu(raw_smp_processor_id());
+
+	mb();
+	/* Ack it */
+	__get_cpu_var(cpu_state) = CPU_DEAD;
+
+	/*
+	 * With physical CPU hotplug, we should halt the cpu
+	 */
+	local_irq_disable();
+}
+
+void native_play_dead(void)
+{
+	play_dead_common();
+	wbinvd_halt();
+}
+
 #else /* ... !CONFIG_HOTPLUG_CPU */
-int __cpu_disable(void)
+int native_cpu_disable(void)
 {
 	return -ENOSYS;
 }
 
-void __cpu_die(unsigned int cpu)
+void native_cpu_die(unsigned int cpu)
 {
 	/* We said "no" in __cpu_disable */
 	BUG();
 }
+
+void native_play_dead(void)
+{
+	BUG();
+}
+
 #endif

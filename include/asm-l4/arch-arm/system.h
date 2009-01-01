@@ -49,11 +49,10 @@ struct pt_regs *l4x_fp_get_user_regs(void);
 #define CR_U	(1 << 22)	/* Unaligned access operation		*/
 #define CR_XP	(1 << 23)	/* Extended page tables			*/
 #define CR_VE	(1 << 24)	/* Vectored interrupts			*/
-
-#define CPUID_ID	0
-#define CPUID_CACHETYPE	1
-#define CPUID_TCM	2
-#define CPUID_TLBTYPE	3
+#define CR_EE	(1 << 25)	/* Exception (Big) Endian		*/
+#define CR_TRE	(1 << 28)	/* TEX remap enable			*/
+#define CR_AFE	(1 << 29)	/* Access flag enable			*/
+#define CR_TE	(1 << 30)	/* Thumb exception enable		*/
 
 /*
  * This is used to ensure the compiler did actually allocate the register we
@@ -68,40 +67,7 @@ struct pt_regs *l4x_fp_get_user_regs(void);
 #ifndef __ASSEMBLY__
 
 #include <linux/linkage.h>
-#include <linux/stringify.h>
 #include <linux/irqflags.h>
-
-#ifdef CONFIG_CPU_CP15
-#define read_cpuid(reg)							\
-	({								\
-		unsigned int __val;					\
-		if (reg == CPUID_ID) /* Done here for perf reasons. */	\
-	 		__val = 0x860f0001;				\
-		else if (reg == CPUID_CACHETYPE)			\
-			__val = 0x1c192992;				\
-	 	else							\
-		asm("mrc	p15, 0, %0, c0, c0, " __stringify(reg)	\
-		    : "=r" (__val)					\
-		    :							\
-		    : "cc");						\
-		__val;							\
-	})
-#else
-extern unsigned int processor_id;
-#define read_cpuid(reg) (processor_id)
-#endif
-
-/*
- * The CPU ID never changes at run time, so we might as well tell the
- * compiler that it's constant.  Use this function to read the CPU ID
- * rather than directly reading processor_id or read_cpuid() directly.
- */
-static inline unsigned int read_cpuid_id(void) __attribute_const__;
-
-static inline unsigned int read_cpuid_id(void)
-{
-	return read_cpuid(CPUID_ID);
-}
 
 #define __exception	__attribute__((section(".exception.text")))
 
@@ -142,31 +108,6 @@ extern void cpu_init(void);
 
 void arm_machine_restart(char mode);
 extern void (*arm_pm_restart)(char str);
-
-/*
- * Intel's XScale3 core supports some v6 features (supersections, L2)
- * but advertises itself as v5 as it does not support the v6 ISA.  For
- * this reason, we need a way to explicitly test for this type of CPU.
- */
-#ifndef CONFIG_CPU_XSC3
-#define cpu_is_xsc3()	0
-#else
-static inline int cpu_is_xsc3(void)
-{
-	extern unsigned int processor_id;
-
-	if ((processor_id & 0xffffe000) == 0x69056000)
-		return 1;
-
-	return 0;
-}
-#endif
-
-#if !defined(CONFIG_CPU_XSCALE) && !defined(CONFIG_CPU_XSC3)
-#define	cpu_is_xscale()	0
-#else
-#define	cpu_is_xscale()	1
-#endif
 
 #define UDBG_UNDEFINED	(1 << 0)
 #define UDBG_SYSCALL	(1 << 1)

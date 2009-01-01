@@ -1,5 +1,5 @@
-#ifndef __ASM_X86_PROCESSOR_H
-#define __ASM_X86_PROCESSOR_H
+#ifndef _ASM_X86_PROCESSOR_H
+#define _ASM_X86_PROCESSOR_H
 
 #include <asm/processor-flags.h>
 
@@ -20,6 +20,7 @@ struct mm_struct;
 #include <asm/msr.h>
 #include <asm/desc_defs.h>
 #include <asm/nops.h>
+#include <asm/ds.h>
 
 #include <linux/personality.h>
 #include <linux/cpumask.h>
@@ -82,11 +83,11 @@ struct cpuinfo_x86 {
 	int			 x86_tlbsize;
 	__u8			x86_virt_bits;
 	__u8			x86_phys_bits;
+#endif
 	/* CPUID returned core id bits: */
 	__u8			x86_coreid_bits;
 	/* Max extended CPUID function supported: */
 	__u32			extended_cpuid_level;
-#endif
 	/* Maximum supported CPUID level, -1=no CPUID: */
 	int			cpuid_level;
 	__u32			x86_capability[NCAPINTS];
@@ -147,6 +148,8 @@ DECLARE_PER_CPU(struct cpuinfo_x86, cpu_info);
 #define current_cpu_data	boot_cpu_data
 #endif
 
+extern const struct seq_operations cpuinfo_op;
+
 static inline int hlt_works(int cpu)
 {
 #ifdef CONFIG_X86_32
@@ -160,6 +163,8 @@ static inline int hlt_works(int cpu)
 
 extern void cpu_detect(struct cpuinfo_x86 *c);
 
+extern struct pt_regs *idle_regs(struct pt_regs *);
+
 extern void early_cpu_init(void);
 extern void identify_boot_cpu(void);
 extern void identify_secondary_cpu(struct cpuinfo_x86 *);
@@ -168,11 +173,8 @@ extern void init_scattered_cpuid_features(struct cpuinfo_x86 *c);
 extern unsigned int init_intel_cacheinfo(struct cpuinfo_x86 *c);
 extern unsigned short num_cache_leaves;
 
-#if defined(CONFIG_X86_HT) || defined(CONFIG_X86_64)
+extern void detect_extended_topology(struct cpuinfo_x86 *c);
 extern void detect_ht(struct cpuinfo_x86 *c);
-#else
-static inline void detect_ht(struct cpuinfo_x86 *c) {}
-#endif
 
 static inline void native_cpuid(unsigned int *eax, unsigned int *ebx,
 				unsigned int *ecx, unsigned int *edx)
@@ -329,7 +331,12 @@ struct i387_fxsave_struct {
 	/* 16*16 bytes for each XMM-reg = 256 bytes:			*/
 	u32			xmm_space[64];
 
-	u32			padding[24];
+	u32			padding[12];
+
+	union {
+		u32		padding1[12];
+		u32		sw_reserved[12];
+	};
 
 } __attribute__((aligned(16)));
 
@@ -353,10 +360,23 @@ struct i387_soft_struct {
 	u32			entry_eip;
 };
 
+struct xsave_hdr_struct {
+	u64 xstate_bv;
+	u64 reserved1[2];
+	u64 reserved2[5];
+} __attribute__((packed));
+
+struct xsave_struct {
+	struct i387_fxsave_struct i387;
+	struct xsave_hdr_struct xsave_hdr;
+	/* new processor state extensions will go here */
+} __attribute__ ((packed, aligned (64)));
+
 union thread_xstate {
 	struct i387_fsave_struct	fsave;
 	struct i387_fxsave_struct	fxsave;
 	struct i387_soft_struct		soft;
+	struct xsave_struct		xsave;
 };
 
 #ifdef CONFIG_X86_64
@@ -561,41 +581,6 @@ static inline void clear_in_cr4(unsigned long mask)
 	cr4 &= ~mask;
 	write_cr4(cr4);
 }
-
-struct microcode_header {
-	unsigned int		hdrver;
-	unsigned int		rev;
-	unsigned int		date;
-	unsigned int		sig;
-	unsigned int		cksum;
-	unsigned int		ldrver;
-	unsigned int		pf;
-	unsigned int		datasize;
-	unsigned int		totalsize;
-	unsigned int		reserved[3];
-};
-
-struct microcode {
-	struct microcode_header	hdr;
-	unsigned int		bits[0];
-};
-
-typedef struct microcode	microcode_t;
-typedef struct microcode_header	microcode_header_t;
-
-/* microcode format is extended from prescott processors */
-struct extended_signature {
-	unsigned int		sig;
-	unsigned int		pf;
-	unsigned int		cksum;
-};
-
-struct extended_sigtable {
-	unsigned int		count;
-	unsigned int		cksum;
-	unsigned int		reserved[3];
-	struct extended_signature sigs[0];
-};
 
 typedef struct {
 	unsigned long		seg;
@@ -950,4 +935,4 @@ extern void start_thread(struct pt_regs *regs, unsigned long new_ip,
 extern int get_tsc_mode(unsigned long adr);
 extern int set_tsc_mode(unsigned int val);
 
-#endif
+#endif /* _ASM_X86_PROCESSOR_H */

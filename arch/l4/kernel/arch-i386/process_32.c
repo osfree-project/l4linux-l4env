@@ -37,6 +37,7 @@
 #include <linux/tick.h>
 #include <linux/percpu.h>
 #include <linux/prctl.h>
+#include <linux/dmi.h>
 
 #include <asm/uaccess.h>
 #include <asm/pgtable.h>
@@ -55,6 +56,9 @@
 #include <asm/tlbflush.h>
 #include <asm/cpu.h>
 #include <asm/kdebug.h>
+#include <asm/idle.h>
+#include <asm/syscalls.h>
+#include <asm/smp.h>
 
 #include <asm/api/macros.h>
 #include <asm/api/ids.h>
@@ -84,49 +88,12 @@ unsigned long thread_saved_pc(struct task_struct *tsk)
 	return ((unsigned long *)tsk->thread.sp)[0];
 }
 
-#ifdef CONFIG_HOTPLUG_CPU
-#include <asm/nmi.h>
-
-static void cpu_exit_clear(void)
-{
-#if 0
-	int cpu = raw_smp_processor_id();
-
-	idle_task_exit();
-
-	cpu_uninit();
-	irq_ctx_exit(cpu);
-
-	cpu_clear(cpu, cpu_callout_map);
-	cpu_clear(cpu, cpu_callin_map);
-
-	numa_remove_cpu(cpu);
-	c1e_remove_cpu(cpu);
-#endif
-}
-
-/* We don't actually take CPU down, just spin without interrupts. */
-static inline void play_dead(void)
-{
-	/* This must be done before dead CPU ack */
-	cpu_exit_clear();
-	mb();
-	/* Ack it */
-	__get_cpu_var(cpu_state) = CPU_DEAD;
-
-	/*
-	 * With physical CPU hotplug, we should halt the cpu
-	 */
-	local_irq_disable();
-	/* mask all interrupts, flush any and all caches, and halt */
-	wbinvd_halt();
-}
-#else
+#ifndef CONFIG_SMP
 static inline void play_dead(void)
 {
 	BUG();
 }
-#endif /* CONFIG_HOTPLUG_CPU */
+#endif
 
 /*
  * The idle thread. There's no useful work to be
@@ -140,7 +107,7 @@ void cpu_idle(void)
 		l4x_idle();
 }
 
-void __show_registers(struct pt_regs *regs, int all)
+void __show_regs(struct pt_regs *regs, int all)
 {
 #ifdef NOT_FOR_L4
 	unsigned long cr0 = 0L, cr2 = 0L, cr3 = 0L, cr4 = 0L;
@@ -148,6 +115,7 @@ void __show_registers(struct pt_regs *regs, int all)
 #endif
 	unsigned long sp;
 	unsigned short ss, gs;
+	const char *board;
 
 	if (user_mode_vm(regs)) {
 		sp = regs->sp;
@@ -160,11 +128,15 @@ void __show_registers(struct pt_regs *regs, int all)
 	}
 
 	printk("\n");
-	printk("Pid: %d, comm: %s %s (%s %.*s)\n",
+
+	board = dmi_get_system_info(DMI_PRODUCT_NAME);
+	if (!board)
+		board = "";
+	printk("Pid: %d, comm: %s %s (%s %.*s) %s\n",
 			task_pid_nr(current), current->comm,
 			print_tainted(), init_utsname()->release,
 			(int)strcspn(init_utsname()->version, " "),
-			init_utsname()->version);
+			init_utsname()->version, board);
 
 	printk("EIP: %04x:[<%08lx>] EFLAGS: %08lx CPU: %d\n",
 			(u16)regs->cs, regs->ip, regs->flags,
@@ -205,7 +177,7 @@ void __show_registers(struct pt_regs *regs, int all)
 
 void show_regs(struct pt_regs *regs)
 {
-	__show_registers(regs, 1);
+	__show_regs(regs, 1);
 	{
 		unsigned long foo; /* regs->sp is not on the stack */
 		show_trace(NULL, regs, &foo, regs->bp);
@@ -445,20 +417,37 @@ void flush_thread(void)
 }
 
 
-void hard_disable_TSC(void)
+#ifdef NOT_FOR_L4
+static void hard_disable_TSC(void)
 {
+//	write_cr4(read_cr4() | X86_CR4_TSD);
 }
+#endif
 
 void disable_TSC(void)
 {
+#ifdef NOT_FOR_L4
+	preempt_disable();
+	if (!test_and_set_thread_flag(TIF_NOTSC))
+		/*
+		 * Must flip the CPU state synchronously with
+		 * TIF_NOTSC in the current running context.
+		 */
+		hard_disable_TSC();
+	preempt_enable();
+#endif
 }
 
-void hard_enable_TSC(void)
+#ifdef NOT_FOR_L4
+static void hard_enable_TSC(void)
 {
+//	write_cr4(read_cr4() & ~X86_CR4_TSD);
 }
+#endif
 
 static void enable_TSC(void)
 {
+#ifdef NOT_FOR_L4
 	preempt_disable();
 	if (test_and_clear_thread_flag(TIF_NOTSC))
 		/*
@@ -467,6 +456,7 @@ static void enable_TSC(void)
 		 */
 		hard_enable_TSC();
 	preempt_enable();
+#endif
 }
 
 int get_tsc_mode(unsigned long adr)
@@ -495,13 +485,13 @@ int set_tsc_mode(unsigned int val)
 
 /* fork/exec system calls (copied from arch/i386/kernel/process.c) */
 
-asmlinkage int sys_fork(void)
+asmlinkage int sys_fork(struct pt_regs r)
 {
 	struct pt_regs *regs = &current->thread.regs;
 	return do_fork(SIGCHLD, regs->sp, regs, COPY_THREAD_STACK_SIZE___FLAG_USER, NULL, NULL);
 }
 
-asmlinkage int sys_clone(void)
+asmlinkage int sys_clone(struct pt_regs r)
 {
 	struct pt_regs *regs = &current->thread.regs;
 	unsigned long clone_flags;
@@ -529,7 +519,7 @@ asmlinkage int sys_clone(void)
  * do not have enough call-clobbered registers to hold all
  * the information you need.
  */
-asmlinkage int sys_vfork(void)
+asmlinkage int sys_vfork(struct pt_regs r)
 {
 	struct pt_regs *regs = &current->thread.regs;
 
@@ -540,17 +530,18 @@ asmlinkage int sys_vfork(void)
  * sys_execve() executes a new program.
  */
 /* sys_*(bx, cx, dx, si, di); */
-asmlinkage int sys_execve(char *name, char **argv, char **envp)
+asmlinkage int sys_execve(struct pt_regs regs)
 {
 	int error;
 	char * filename;
 
-	filename = getname(name);
+	filename = getname((char __user *) regs.bx);
 	error = PTR_ERR(filename);
 	if (IS_ERR(filename))
 		goto out;
-
-	error = do_execve(filename, argv, envp,
+	error = do_execve(filename,
+			(char __user * __user *) regs.cx,
+			(char __user * __user *) regs.dx,
 			&current->thread.regs);
 	if (error == 0) {
 		/* Make sure we don't return using sysenter.. */
@@ -611,14 +602,14 @@ asmlinkage int l4_kernelinternal_execve(char * file, char ** argv, char ** envp)
 
 unsigned long get_wchan(struct task_struct *p)
 {
-	unsigned long ebp, esp, eip;
+	unsigned long bp, sp, ip;
 	unsigned long stack_page;
 	int count = 0;
 	if (!p || p == current || p->state == TASK_RUNNING)
 		return 0;
 	stack_page = (unsigned long)task_stack_page(p);
-	esp = p->thread.sp;
-	if (!stack_page || esp < stack_page || esp > top_esp+stack_page)
+	sp = p->thread.sp;
+	if (!stack_page || sp < stack_page || sp > top_esp+stack_page)
 		return 0;
 
 	/* L4Linux has a different layout in switch_to(), but
@@ -627,17 +618,17 @@ unsigned long get_wchan(struct task_struct *p)
 	 *  reflect that. And we leave the different name for
 	 *  esp to catch direct usage of thread data. */
 
-	esp = p->thread.sp + 4;/* add 4 to remove return address */
+	sp += 4;/* add 4 to remove return address */
 
-	/* include/asm-i386/system.h:switch_to() pushes ebp last. */
-	ebp = *(unsigned long *) esp;
+	/* include/asm-i386/system.h:switch_to() pushes bp last. */
+	bp = *(unsigned long *) sp;
 	do {
-		if (ebp < stack_page || ebp > top_ebp+stack_page)
+		if (bp < stack_page || bp > top_ebp+stack_page)
 			return 0;
-		eip = *(unsigned long *) (ebp+4);
-		if (!in_sched_functions(eip))
-			return eip;
-		ebp = *(unsigned long *) ebp;
+		ip = *(unsigned long *) (bp+4);
+		if (!in_sched_functions(ip))
+			return ip;
+		bp = *(unsigned long *) bp;
 	} while (count++ < 16);
 	return 0;
 }

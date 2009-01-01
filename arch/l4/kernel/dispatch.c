@@ -131,7 +131,7 @@ static inline int l4x_handle_page_fault(struct task_struct *p,
 		if (phy == (l4_umword_t)(-EFAULT)) {
 			l4_umword_t pfe_old = pferror;
 
-			if (l4x_do_page_fault(pfa, pferror)) {
+			if (l4x_do_page_fault(pfa, &p->thread.regs, pferror)) {
 #ifdef CONFIG_L4_DEBUG_SEGFAULTS
 				LOG_printf("segfault for %s(%d) [" PRINTF_L4TASK_FORM "] "
 				           "at %08lx, ip=%08lx, pferror = %lx\n",

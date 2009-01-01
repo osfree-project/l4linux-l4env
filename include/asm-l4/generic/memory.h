@@ -5,6 +5,8 @@
 #include <linux/mm.h>
 #include <linux/sched.h>
 
+#include <asm/l4x/exception.h>
+
 #include <l4/sys/types.h>
 
 //#define DEBUG_LOOKUP_PTABS 1
@@ -27,7 +29,7 @@
 /* __bss_stop is not defined in asm-generic/sections.h */
 extern char __bss_stop[];
 
-int l4x_do_page_fault(unsigned long address, unsigned long error_code);
+int l4x_do_page_fault(unsigned long address, struct pt_regs *regs, unsigned long error_code);
 
 static inline pte_t *lookup_pte(pgd_t *page_dir, unsigned long address)
 {
@@ -92,7 +94,9 @@ static inline unsigned long parse_ptabs_read(unsigned long address,
 #endif
 
 	if ((ptep == NULL) || !pte_present(*ptep)) {
-		if (l4x_do_page_fault(address,
+		struct pt_regs regs;
+		l4x_make_up_kernel_regs(&regs);
+		if (l4x_do_page_fault(address, &regs,
 		                      PF_EKERNEL|PF_EREAD|PF_ENOTPRESENT) == -1)
 			return -EFAULT;
 
@@ -110,6 +114,9 @@ static inline unsigned long parse_ptabs_write(unsigned long address,
                                               unsigned long *offset)
 {
 	pte_t *ptep = lookup_pte((pgd_t *)current->mm->pgd, address);
+	struct pt_regs regs;
+
+	l4x_make_up_kernel_regs(&regs);
 
 #ifdef DEBUG_PARSE_PTABS_WRITE
 	printk("ppw: pdir: %p, address: %lx, ptep: %p\n",
@@ -117,11 +124,11 @@ static inline unsigned long parse_ptabs_write(unsigned long address,
 #endif
 
 	if ((ptep == NULL) || !pte_present(*ptep)) {
-		if (l4x_do_page_fault(address,
+		if (l4x_do_page_fault(address, &regs,
 		                     PF_EKERNEL|PF_EWRITE|PF_ENOTPRESENT) == -1)
 			return -EFAULT;
 	} else if (!pte_write(*ptep)) {
-		if (l4x_do_page_fault(address,
+		if (l4x_do_page_fault(address, &regs,
 		                     PF_EKERNEL|PF_EWRITE|PF_EPROTECTION) == -1)
 			return -EFAULT;
 	}

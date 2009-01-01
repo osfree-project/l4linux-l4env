@@ -11,6 +11,7 @@
 #include <asm/io.h>
 #include <asm/unistd.h>
 #include <asm/i387.h>
+#include <asm/traps.h>
 
 #include <l4/sys/ipc.h>
 #include <l4/sys/kdebug.h>
@@ -79,9 +80,6 @@
 #define TBUF_LOG_HYB_RETURN(x)
 
 #endif
-
-asmregparm long syscall_trace_enter(struct pt_regs *regs);
-asmregparm long syscall_trace_leave(struct pt_regs *regs);
 
 static DEFINE_PER_CPU(int, l4x_fpu_enabled);
 static inline int l4x_msgtag_fpu(void)
@@ -666,9 +664,16 @@ static inline int l4x_dispatch_exception(struct task_struct *p,
 		/* Fall through otherwise */
 	}
 
-	if (t->trap_no == 3)
+	if (t->trap_no == 3) {
 		if (l4x_kdebug_emulation(regs))
 			return 0; /* known and handled */
+		do_int3(regs, t->error_code);
+		if (signal_pending(p))
+			l4x_do_signal(regs, 0);
+		if (need_resched())
+			schedule();
+		return 0;
+	}
 
 	if (l4x_port_emulation(regs))
 		return 0; /* known and handled */

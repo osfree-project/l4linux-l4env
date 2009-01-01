@@ -2,12 +2,16 @@
 # arch/l4/kernel/arch-i386/Makefile
 #
 
-obj-y		:= dispatch.o entry.o i387.o ioport.o irq.o irq_l4.o \
+obj-y		:= dispatch.o entry.o ioport.o \
 		   ldt.o mach_setup.o pci-dma.o pci-nommu.o process.o process_32.o ptrace.o reboot.o \
-		   setup.o signal.o sys_i386.o time.o traps_32.o e820.o \
+		   setup.o signal.o sys_i386.o time.o traps.o e820.o \
 		   unimpl.o topology.o alternative.o tsc.o \
-		   tls.o step.o rtc.o ds.o io_delay.o memory.o \
+		   tls.o step.o rtc.o io_delay.o memory.o \
 		   setup_percpu.o probe_roms_32.o kdebugfs.o
+
+obj-y				+= i387.o xsave.o
+obj-y				+= dumpstack_32.o
+obj-y				+= irq.o irq_32.o irq_l4.o irqinit_32.o
 
 obj-$(CONFIG_STACKTRACE)	+= stacktrace.o
 obj-y				+= cpu/
@@ -16,6 +20,7 @@ obj-$(CONFIG_MODULES)		+= module.o
 obj-$(CONFIG_KPROBES)		+= kprobes.o
 obj-$(CONFIG_K8_NB)		+= k8.o
 obj-$(CONFIG_PCI)               += early-quirks.o
+obj-$(CONFIG_X86_DS)		+= ds.o
 obj-$(CONFIG_SMP)		+= mpparse.o nmi.o apic.o io_apic.o smp.o \
                                    ipi.o tlb_32.o smpboot.o smpcommon.o \
                                    trampoline.o
@@ -34,6 +39,7 @@ pci-dma-y	:= $(b)/pci-dma.o
 sys_i386-y	:= $(b)/sys_i386_32.o
 topology-y	:= $(b)/topology.o
 i387-y		:= $(b)/i387.o
+xsave-y		:= $(b)/xsave.o
 nmi-y		:= $(b)/nmi.o
 smpcommon-y	:= $(b)/smpcommon.o
 k8-y		+= $(b)/k8.o
@@ -47,6 +53,8 @@ setup_percpu-y  += $(b)/setup_percpu.o
 probe_roms_32-y	+= $(b)/probe_roms_32.o
 early-quirks-y	+= $(b)/early-quirks.o
 kdebugfs-y	+= $(b)/kdebugfs.o
+dumpstack_32-y	+= $(b)/dumpstack_32.o
+irq-y		+= $(b)/irq.o
 
 # get sigframe_32.h for signal.c
 KBUILD_CFLAGS	+= -Iarch/x86/kernel

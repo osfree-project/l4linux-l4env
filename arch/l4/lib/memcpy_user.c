@@ -13,6 +13,14 @@
 //#define DEBUG_KDEBUG_EFAULT
 ////#define DEBUG_LOG_EFAULT
 
+// from user_copy_32.c
+#ifdef CONFIG_X86_INTEL_USERCOPY
+/*
+ * Alignment at which movsl is preferred for bulk memory copies.
+ */
+struct movsl_mask movsl_mask __read_mostly;
+#endif
+
 #ifdef DEBUG_LOG_EFAULT
 static void log_efault(const char *str, const void *user_addr,
 		       const void *kernel_addr, unsigned long size)

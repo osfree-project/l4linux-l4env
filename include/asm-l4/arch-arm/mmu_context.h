@@ -15,6 +15,7 @@
 
 #include <linux/compiler.h>
 #include <asm/cacheflush.h>
+#include <asm/cachetype.h>
 #include <asm/proc-fns.h>
 #ifdef __L4LINUX_USES_THE_HOOKS__
 #include <asm-generic/mm_hooks.h>

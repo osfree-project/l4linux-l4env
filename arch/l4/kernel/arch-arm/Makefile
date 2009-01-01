@@ -4,7 +4,7 @@
 
 obj-y		:= process.o sys_arm.o time.o traps.o \
 		   switch_to.o setup.o l4.o signal.o irq.o \
-		   ptrace.o entry.o dispatch.o mach_setup.o io.o
+		   ptrace.o entry.o dispatch.o mach_setup.o io.o elf.o
 
 obj-$(CONFIG_SMP)				+= smp.o platsmp.o
 obj-$(CONFIG_MODULES)				+= armksyms.o module.o
@@ -16,6 +16,7 @@ irq-y		:= ../../../arm/kernel/irq.o
 module-y	:= ../../../arm/kernel/module.o
 time-y		:= ../../../arm/kernel/time.o
 io-y		:= ../../../arm/kernel/io.o
+elf-y		:= ../../../arm/kernel/elf.o
 
 KBUILD_CPPFLAGS	+= -I$(srctree)/arch/arm/kernel
 

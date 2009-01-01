@@ -33,6 +33,7 @@ static inline void pgtable_cache_init(void) { }
 static inline void check_pgt_cache(void) { }
 void paging_init(void);
 
+extern void set_pmd_pfn(unsigned long, unsigned long, pgprot_t);
 
 /*
  * The Linux x86 paging architecture is 'compile-time dual-mode', it
@@ -57,13 +58,13 @@ void paging_init(void);
  * The vmalloc() routines leaves a hole of 4kB between each vmalloced
  * area for the same reason. ;)
  */
+#define VMALLOC_OFFSET	(8 * 1024 * 1024)
 #ifdef CONFIG_L4_L4ENV
 #define VMALLOC_START   l4env_vmalloc_memory_start
 #define VMALLOC_END     (l4env_vmalloc_memory_start + __VMALLOC_RESERVE)
+#define MAXMEM		0xa0000000UL
 #else /* ! CONFIG_L4_L4ENV */
-#define VMALLOC_OFFSET	(8 * 1024 * 1024)
-#define VMALLOC_START	(((unsigned long)high_memory + 2 * VMALLOC_OFFSET - 1) \
-			 & ~(VMALLOC_OFFSET - 1))
+#define VMALLOC_START	((unsigned long)high_memory + VMALLOC_OFFSET)
 #ifdef CONFIG_X86_PAE
 #define LAST_PKMAP 512
 #else
@@ -78,7 +79,11 @@ void paging_init(void);
 #else
 # define VMALLOC_END	(FIXADDR_START - 2 * PAGE_SIZE)
 #endif
+
+#define MAXMEM	(VMALLOC_END - PAGE_OFFSET - __VMALLOC_RESERVE)
+
 #endif /* CONFIG_L4_L4ENV */
+
 
 /*
  * Define this if things work differently on an i386 and an i486:
@@ -238,4 +243,4 @@ do {						\
 #define io_remap_pfn_range(vma, vaddr, pfn, size, prot)	\
 	remap_pfn_range(vma, vaddr, pfn, size, prot)
 
-#endif /* _I386_PGTABLE_H */
+#endif /* _ASM_X86_PGTABLE_32_H */

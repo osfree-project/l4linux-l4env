@@ -2081,7 +2081,13 @@ static void l4x_arm_set_reg(l4_utcb_t *u, int num, unsigned long val)
 
 static int l4x_arm_instruction_emu(l4_utcb_t *u)
 {
-	unsigned long op = *(unsigned long *)u->exc.pc;
+	unsigned long pc = u->exc.pc;
+	unsigned long op;
+
+	if (pc < (unsigned long)&_stext || pc > (unsigned long)&_etext)
+		return 1; // not for us
+
+	op = *(unsigned long *)pc;
 
 	if ((op & 0xff000000) == 0xee000000) {
 		// always, mrc
@@ -2089,22 +2095,27 @@ static int l4x_arm_instruction_emu(l4_utcb_t *u)
 
 		op &= 0x00ffffff;
 		reg = (op >> 12) & 0xf;
+		// see also cputype.h!
 		if ((op & 0x00ff0fff) == 0x00100f30) {
-			// currently done directly in system.h because
-			// called to often
 			LOG_printf("Read Cache Type Register, to r%d\n", reg);
 			u->exc.pc += 4;
 			// 32kb i/d cache
 			l4x_arm_set_reg(u, reg, 0x1c192992);
 			return 0;
 		} else if ((op & 0x00ff0fff) == 0x100f10) {
-			// currently done directly in system.h because
-			// called to often
+			// mrc     15, 0, xx, cr0, cr0, {0}
 			LOG_printf("Read ID code register, to r%d\n", reg);
 			u->exc.pc += 4;
 			l4x_arm_set_reg(u, reg, 0x860f0001);
 			return 0;
+		} else if ((op & 0x00ff0fff) == 0x00100f91) {
+			// mrc     15, 0, xx, cr0, cr1, {4}
+			LOG_printf("Read memory model feature reg0 to r%d\n", reg);
+			u->exc.pc += 4;
+			l4x_arm_set_reg(u, reg, 0);
+			return 0;
 		}
+		LOG_printf("Unknown MRC: %lx at %lx\n", op, u->exc.pc);
 	}
 
 #if 0

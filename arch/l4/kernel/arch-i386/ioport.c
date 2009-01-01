@@ -1,6 +1,6 @@
 /*
  * This contains the io-permission bitmap code - written by obz, with changes
- * by Linus.
+ * by Linus. 32/64 bits code unification by Miguel Botón.
  */
 
 #include <linux/sched.h>
@@ -14,6 +14,7 @@
 #include <linux/slab.h>
 #include <linux/thread_info.h>
 #include <linux/syscalls.h>
+#include <asm/syscalls.h>
 
 #include <l4/sys/ipc.h>
 #include <l4/sys/syscalls.h>
@@ -401,7 +402,7 @@ asmlinkage long sys_ioperm(unsigned long from, unsigned long num, int turn_on)
 /**
  * The same security policy as in arch/i386/kernel/ioport.c.
  */
-asmlinkage int sys_iopl(unsigned long level)
+asmlinkage long sys_iopl(unsigned long level)
 {
 	struct task_struct *task = current;
 	int old, ret;
