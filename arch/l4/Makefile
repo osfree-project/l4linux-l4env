@@ -253,11 +253,11 @@ else
   endif
 endif
 
-KBUILD_CPPFLAGS	+= -Iinclude/asm-l4/l4-arch \
+KBUILD_CPPFLAGS	+= -Iarch/l4/include/asm/l4-arch \
 		   -I$(src)/arch/$(LINSRCARCH)/include \
-		   -Iinclude/asm-l4/$(LINSRCARCH)-arch \
-		   -Iinclude/asm-l4/orig-arch \
-                   -Iinclude/asm-l4 \
+		   -Iarch/l4/include/asm/$(LINSRCARCH)-arch \
+		   -Iarch/l4/include/asm/orig-arch \
+                   -Iarch/l4/include \
 		   $(MACH_INC_$(BASEARCH)) \
                    $(L4INC) $(CPPFLAGS_SYSENTER-y) \
 		   $(L4BID_CPPFLAGS_SYSCALLS-y)
@@ -277,55 +277,55 @@ mtags:
 	(cd $(srctree) && $(MAKE) tags > /dev/null 2>&1; \
 	sort tags > .tags.sorting && mv .tags.sorting tags )
 
-include/asm-l4/$(LINSRCARCH)-arch/mach:
+arch/l4/include/asm/$(LINSRCARCH)-arch/mach:
 	@echo '  Creating asm-l4/$(LINSRCARCH)-arch/mach symlink'
 	$(Q)mkdir -p $(@D)
-	$(Q)ln -s $(src)/include/asm-l4/arch-$(LINSRCARCH)/mach $@
+	$(Q)ln -s $(src)/arch/l4/include/asm/arch-$(LINSRCARCH)/mach $@
 
-include/asm-l4/l4-arch/asm:
+arch/l4/include/asm/l4-arch/asm:
 	@echo '  Creating asm-l4/l4-arch/asm symlink'
 	$(Q)mkdir -p $(@D)
-	$(Q)ln -s $(src)/include/asm-l4/arch-$(BASEARCH) $@
+	$(Q)ln -s $(src)/arch/l4/include/asm/arch-$(BASEARCH) $@
 
-include/asm-l4/arch:
+arch/l4/include/asm/arch:
 	@echo '  Creating asm-l4/arch-$(BASEARCH)/arch -> asm/arch symlink'
 	$(Q)mkdir -p $(@D)
-	$(Q)ln -s $(src)/include/asm-l4/arch-$(BASEARCH)/arch $@
+	$(Q)ln -s $(src)/arch/l4/include/asm/arch-$(BASEARCH)/arch $@
 
-include/asm-l4/api:
+arch/l4/include/asm/api:
 	@echo '  Creating asm-l4/api-$(BASEENV) -> asm/api symlink'
 	$(Q)mkdir -p $(@D)
-	$(Q)ln -s $(src)/include/asm-l4/api-$(BASEENV) $@
+	$(Q)ln -s $(src)/arch/l4/include/asm/api-$(BASEENV) $@
 
-include/asm-l4/l4x:
+arch/l4/include/asm/l4x:
 	@echo '  Creating asm-l4/l4x-$(BASEARCH) -> asm/l4x symlink'
 	$(Q)mkdir -p $(@D)
-	$(Q)ln -s $(src)/include/asm-l4/l4x-$(BASEARCH) $@
+	$(Q)ln -s $(src)/arch/l4/include/asm/l4x-$(BASEARCH) $@
 
-include/asm-l4/l4lxapi/impl:
+arch/l4/include/asm/l4lxapi/impl:
 	@echo '  Creating asm-l4/l4lxapi/impl symlink'
 	$(Q)mkdir -p $(@D)
 	$(Q)ln -s $(src)/arch/l4/l4lxlib/l4env $@
 
-include/asm-l4/orig-arch:
+arch/l4/include/asm/orig-arch:
 	@echo '  Creating asm-l4/orig-arch symlink'
 	$(Q)mkdir -p $@
 	$(Q)ln -s $(src)/arch/$(LINSRCARCH)/include/asm $@/asm-$(LINSRCARCH) 
 
-include/asm-l4/mach-types.h: $(srctree)/arch/arm/tools/gen-mach-types $(srctree)/arch/arm/tools/mach-types
-	$(Q)cp $(srctree)/arch/arm/tools/mach-types include/asm-l4/mach-types.list
+arch/l4/include/asm/mach-types.h: $(srctree)/arch/arm/tools/gen-mach-types $(srctree)/arch/arm/tools/mach-types
+	$(Q)cp $(srctree)/arch/arm/tools/mach-types arch/l4/include/asm/mach-types.list
 	$(Q)echo "l4	MACH_L4	L4	9999" >> include/asm-l4/mach-types.list
-	$(Q)$(AWK) -f $< include/asm-l4/mach-types.list > $@ || { rm -f $@; /bin/false; }
-	$(Q)rm -f include/asm-l4/mach-types.list
+	$(Q)$(AWK) -f $< arch/l4/include/asm/mach-types.list > $@ || { rm -f $@; /bin/false; }
+	$(Q)rm -f arch/l4/include/asm/mach-types.list
 
-symlinks_arm  = include/asm-l4/mach-types.h \
-		include/asm-l4/$(LINSRCARCH)-arch/mach
+symlinks_arm  = arch/l4/include/asm/mach-types.h \
+		arch/l4/include/asm/$(LINSRCARCH)-arch/mach
 
-symlinks      = include/asm-l4/api \
-                include/asm-l4/l4lxapi/impl \
-		include/asm-l4/l4x \
-		include/asm-l4/l4-arch/asm \
-		include/asm-l4/orig-arch \
+symlinks      = arch/l4/include/asm/api \
+                arch/l4/include/asm/l4lxapi/impl \
+		arch/l4/include/asm/l4x \
+		arch/l4/include/asm/l4-arch/asm \
+		arch/l4/include/asm/orig-arch \
                 $(symlinks_$(BASEARCH))
 
 MRPROPER_FILES	+= $(symlinks)
