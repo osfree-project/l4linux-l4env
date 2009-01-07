@@ -183,9 +183,13 @@ void l4x_vmalloc_unmap_vm_area(unsigned long address, unsigned long end)
 
 	for (; address < end; address += PAGE_SIZE) {
 		/* check whether we are really flushing a vm page */
-		if (address < (unsigned long)high_memory) {
+		if (address < (unsigned long)high_memory
+#ifdef ARCH_arm
+		    && !(address >= MODULES_VADDR && address < MODULES_END)
+#endif
+		    ) {
 			printk("flushing wrong page, addr: %lx\n", address);
-			enter_kdebug("l4_unmap_virtual_mem");
+			enter_kdebug("l4x_vmalloc_unmap_vm_area");
 			continue;
 		}
 		l4x_virtual_mem_unregister(address);

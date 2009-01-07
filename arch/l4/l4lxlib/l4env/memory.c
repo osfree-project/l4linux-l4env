@@ -12,6 +12,15 @@
 #include <l4/l4rm/l4rm.h>
 #include <l4/env/errno.h>
 
+static inline l4_uint32_t get_area_id(unsigned long address)
+{
+#ifdef ARCH_arm
+	if (address >= MODULES_VADDR && address < MODULES_END)
+		return l4env_modules_areaid;
+#endif
+	return l4env_vmalloc_areaid;
+}
+
 int l4lx_memory_map_virtual_page(unsigned long address, unsigned long page)
 {
 	int res;
@@ -30,7 +39,7 @@ int l4lx_memory_map_virtual_page(unsigned long address, unsigned long page)
 
 	if ((res = l4rm_area_attach_to_region
 	             (&ds,                              /* dataspace */
-	              l4env_vmalloc_areaid,             /* area id */
+	              get_area_id(address),             /* area id */
 	              (void *)(address & PAGE_MASK),    /* address */
 	              PAGE_SIZE,                        /* size */
 	              (page & PAGE_MASK) - map_addr,    /* offset */

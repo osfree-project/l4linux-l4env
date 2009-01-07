@@ -225,6 +225,9 @@ l4dm_dataspace_t l4x_ds_isa_dma __nosavedata;
 static void *l4x_main_memory_start;
 static void *l4x_isa_dma_memory_start;
 l4_uint32_t l4env_vmalloc_areaid __nosavedata;
+#ifdef ARCH_arm
+l4_uint32_t l4env_modules_areaid __nosavedata;
+#endif
 unsigned long l4env_vmalloc_memory_start;
 static l4env_infopage_t *l4x_l4env_infopage;
 l4_kernel_info_t *l4lx_kinfo;
@@ -604,6 +607,12 @@ static void l4x_map_below_mainmem(void)
 	/* Loop through free address space before mainmem */
 	LOG_printf("mainmem = %lx\n", (unsigned long)l4x_main_memory_start);
 	for (i = L4_PAGESIZE; i < (unsigned long)l4x_main_memory_start; i += i_inc) {
+#ifdef ARCH_arm
+		if (i == MODULES_VADDR) {
+			i_inc = MODULES_END - MODULES_VADDR;
+			continue;
+		}
+#endif
 		ret = l4rm_lookup((void *)i, &map_addr, &map_size,
 		                  &ds, &off, &dthr);
 		if (ret > 0) {
@@ -650,8 +659,14 @@ static void l4x_map_below_mainmem(void)
 
 	/* Touch page so that we get the PF now */
 	for (i = L4_PAGESIZE; i < (unsigned long)l4x_main_memory_start;
-	     i += L4_PAGESIZE)
-		l4x_forward_pf(i, 0, l4x_is_writable_area(i));
+	     i += L4_PAGESIZE) {
+#ifdef ARCH_arm
+		if (i == MODULES_VADDR)
+			i = MODULES_END - L4_PAGESIZE;
+		else
+#endif
+			l4x_forward_pf(i, 0, l4x_is_writable_area(i));
+	}
 }
 
 #ifdef ARCH_x86
@@ -939,6 +954,15 @@ void __init setup_l4env_memory(char *cmdl,
 
 	l4env_register_pointer_section((void *)((unsigned long)&_end - 1), 0, "end");
 }
+
+#ifdef ARCH_arm
+static void setup_module_area(void)
+{
+	if (l4rm_area_reserve_region(MODULES_VADDR, MODULES_END - MODULES_VADDR,
+	                             0, &l4env_modules_areaid))
+		LOG_printf("Could not reserve module area, modules won't work!\n");
+}
+#endif
 
 unsigned long l4x_get_isa_dma_memory_end(void)
 {
@@ -1715,6 +1739,10 @@ int __init_refok L4_CV main(int argc, char **argv)
 #endif /* ARCH_x86 */
 
 	l4x_l4io_init();
+
+#ifdef ARCH_arm
+	setup_module_area();
+#endif
 
 	/* Set name of startup thread */
 	l4lx_thread_name_set(l4x_start_thread_id, "l4env-start");

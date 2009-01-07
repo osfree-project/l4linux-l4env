@@ -21,8 +21,7 @@ SECTIONS
 #ifdef CONFIG_XIP_KERNEL
 	. = XIP_VIRT_ADDR(CONFIG_XIP_PHYS_ADDR);
 #else
-	/*. = PAGE_OFFSET + TEXT_OFFSET; */
-	. = 0x00200000; /* MB aligned */
+	. = PAGE_OFFSET + TEXT_OFFSET;
 #endif
 	PROVIDE(_prog_img_start = .);
 	.text.head : {

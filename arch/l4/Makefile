@@ -266,6 +266,10 @@ KBUILD_CPPFLAGS	+= -Iarch/l4/include/asm/l4-arch \
 # for DICE
 KBUILD_CPPFLAGS	+= -DL4API_$(L4_MK_API)
 
+ifneq ($(CONFIG_L4_ARCH_ARM),)
+KBUILD_CPPFLAGS += -DTEXT_OFFSET=0x1100000
+endif
+
 all: lImage
 
 boot := arch/l4/boot

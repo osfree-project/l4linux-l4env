@@ -44,16 +44,13 @@
  * The module space lives between the addresses given by TASK_SIZE
  * and PAGE_OFFSET - it must be within 32MB of the kernel text.
  */
-#if 0
-#define MODULES_END		(PAGE_OFFSET)
+/*l4: #define MODULES_END		(PAGE_OFFSET) */
+#define MODULES_END		(TEXT_OFFSET)
 #define MODULES_VADDR		(MODULES_END - 16*1048576)
 
-#if TASK_SIZE > MODULES_VADDR
+#if 0 && TASK_SIZE > MODULES_VADDR
 #error Top of user space clashes with start of module space
 #endif
-#endif
-#define MODULES_END		(l4env_vmalloc_memory_start + 16*1048576)
-#define MODULES_VADDR		(l4env_vmalloc_memory_start)
 
 /*
  * The XIP kernel gets mapped at the bottom of the module vm area.
