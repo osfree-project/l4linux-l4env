@@ -31,7 +31,7 @@ else
 
 # x86 selection
 L4API		:= v2
-BASEARCH	:= i386
+BASEARCH	:= x86
 LINSRCARCH      := x86
 
 L4_MK_ARCH	:= x86
@@ -60,7 +60,7 @@ endif
 BASEENV		:= l4env
 
 ifdef CONFIG_RELOCATABLE
-LDFLAGS_vmlinux_i386 := --emit-relocs
+LDFLAGS_vmlinux_x86  := --emit-relocs
 endif
 LDFLAGS_vmlinux_arm  := --no-warn-mismatch
 LDFLAGS_vmlinux	:= $(LDFLAGS_vmlinux_$(BASEARCH))
@@ -108,7 +108,7 @@ ifeq ($(CONFIG_X86_32),y)
 	KBUILD_CFLAGS += -ffreestanding
 endif
 
-ifeq ($(BASEARCH),i386)
+ifeq ($(BASEARCH),x86)
 # Stackpointer is addressed different for 32 bit and 64 bit x86
 sp-$(CONFIG_X86_32) := esp
 sp-$(CONFIG_X86_64) := rsp
@@ -217,9 +217,9 @@ core-y				+= arch/l4/kernel/			\
 core-$(CONFIG_L4_ARCH_X86)	+= arch/x86/crypto/
 core-$(CONFIG_L4_ARCH_X86)	+= arch/x86/vdso/
 
-ifeq ($(BASEARCH),i386)
+ifeq ($(BASEARCH),x86)
 drivers-$(CONFIG_PCI)		+= arch/l4/pci/
-drivers-$(CONFIG_PM)		+= arch/l4/power/arch-i386/
+drivers-$(CONFIG_PM)		+= arch/l4/power/arch-x86/
 endif
 
 ifeq ($(BASEARCH),arm)
@@ -237,7 +237,7 @@ else
   libs-y			+= $(L4LIBS-y)
 endif
 
-MACH_INC_i386	:= -I$(src)/arch/x86/include/asm/mach-default
+MACH_INC_x86	:= -I$(src)/arch/x86/include/asm/mach-default
 L4_CRT0		:= $(L4OBJ)/lib/$(L4_MK_ARCH)_$(L4_MK_CPU)/crt0.o
 L4_DYNLINK	:= --dynamic-linker libld-l4.s.so $(L4_CRT0) \
                    -lloader.s $(L4LX_E_L_O-y) -z now
