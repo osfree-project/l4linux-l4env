@@ -673,6 +673,7 @@ static void __init __iomem *__early_ioremap(unsigned long phys_addr, unsigned lo
 	/* L4 specific thing start */
 	if (phys_addr == 0xf0000)
 		return (void __iomem *)0xf0000;
+	printk("%s(%lx, %ld, -)\n", __func__, phys_addr, size);
 	/* L4 specific thing end */
 	enter_kdebug("__early_ioremap");
 
