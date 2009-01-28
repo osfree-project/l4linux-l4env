@@ -158,6 +158,15 @@ copy_from_user(void *to, const void __user *from, unsigned long n)
 }
 EXPORT_SYMBOL(copy_from_user);
 
+#ifdef ARCH_x86
+unsigned long
+__copy_from_user_ll_nozero(void *to, const void __user *from, unsigned long n)
+{
+	return copy_from_user(to, from, n);
+}
+EXPORT_SYMBOL(__copy_from_user_ll_nozero);
+#endif
+
 static inline int __clear_user_page(void * address, unsigned long n)
 {
 	unsigned long page, offset;
