@@ -338,7 +338,7 @@ CLEAN_FILES	+= Makeconf.l4conf
 ifeq ($(config-targets),0)
 ifneq ($(wildcard .config),)
 $(objtree)/Makeconf.l4conf: $(srctree)/arch/l4/Makefile.l4conf $(srctree)/arch/l4/Makefile
-	$(Q)$(MAKE) $(if $(L4DIR),-C $(L4DIR),) -f $< O=$(L4OBJ) OUTPUT=$@
+	$(Q)$(if $(L4DIR),PWD=$(L4DIR),) $(MAKE) $(if $(L4DIR),-C $(L4DIR),) -f $< O=$(L4OBJ) OUTPUT=$@
 
 archprepare: check_linux_config $(symlinks) $(objtree)/Makeconf.l4conf
 	$(Q)mkdir -p arch/$(BASEARCH)/lib
