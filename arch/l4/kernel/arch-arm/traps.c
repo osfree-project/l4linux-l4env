@@ -534,7 +534,7 @@ asmlinkage int arm_syscall(int no, struct pt_regs *regs)
 		val -= regs->ARM_r0;
 		if (val == 0) {
 			//l4//*(unsigned long *)addr = regs->ARM_r1;
-			put_user(val, (unsigned long *)addr);
+			put_user(regs->ARM_r1, (unsigned long *)addr);
 			regs->ARM_cpsr |= PSR_C_BIT;
 		}
 		pte_unmap_unlock(pte, ptl);
