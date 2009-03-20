@@ -63,11 +63,7 @@ l4_threadid_t l4lx_task_number_allocate(void)
 {
 	l4_threadid_t task;
 
-#ifdef CONFIG_L4_USE_TS
-	if (l4ts_allocate_task(0, &task))
-#else
 	if (l4ts_allocate_task2(0, &task))
-#endif
 		return L4_NIL_ID;
 
 	return task;
@@ -143,20 +139,8 @@ int l4lx_task_number_free(l4_threadid_t task)
 	spin_unlock(&thread_state_lock);
 
 	/* Delete task if all threads are gone */
-	if (idx == -1) {
-#ifndef CONFIG_L4_USE_TS
-		// return ownership
-		l4_threadid_t ret;
-		ret = l4_task_new(task, (unsigned)l4ts_server().raw, 0, 0, L4_NIL_ID);
-		if (l4_is_nil_id(ret))
-			return -1;
-		if (l4ts_free2_task(&task))
-			return -1;
-#else
-		if (l4ts_free_task(&task))
-			return -1;
-#endif
-	}
+	if (idx == -1 && l4ts_free2_task(&task))
+		return -1;
 
 	return 0;
 }

@@ -634,6 +634,13 @@ static inline int l4x_handle_page_fault_with_exception(struct thread_struct *t)
 		return 1; // handled
 	}
 
+	// __kuser_get_tls
+	if (l4x_l4pfa(t) == 0xffff0fe0 && t->regs.ARM_pc == 0xffff0fe0) {
+		t->regs.ARM_r0 = current_thread_info()->tp_value;
+		t->regs.ARM_pc = t->regs.ARM_lr;
+		return 1; // handled
+	}
+
 	if (t->regs.ARM_pc == 0xffff0fc0 && l4x_l4pfa(t) == 0xffff0fc0) {
 		asmlinkage int arm_syscall(int no, struct pt_regs *regs);
 		t->regs.ARM_r0 = arm_syscall(0x9ffff0 | __NR_SYSCALL_BASE, &t->regs);
