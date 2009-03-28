@@ -137,9 +137,10 @@ static inline unsigned long parse_ptabs_write(unsigned long address,
 		ptep = lookup_pte((pgd_t *)current->mm->pgd, address);
 
 #ifdef DEBUG_PARSE_PTABS_WRITE
-	printk("%s %d pte_val = 0x%x\n", __func__, __LINE__, pte_val(*ptep));
-	printk("pte_present(*ptep) = %x pte_write(*ptep) = %x\n",
-		pte_present(*ptep), pte_write(*ptep));
+	printk("%s %d pte_val = 0x%lx\n", __func__, __LINE__, ptep ?  pte_val(*ptep) : 0);
+	if (ptep)
+		printk("pte_present(*ptep) = %lx pte_write(*ptep) = %x\n",
+		       pte_present(*ptep), pte_write(*ptep));
 #endif
 
 	if ((ptep == NULL) || !pte_present(*ptep) || !pte_write(*ptep))

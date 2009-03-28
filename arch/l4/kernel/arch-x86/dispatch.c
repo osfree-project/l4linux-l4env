@@ -231,24 +231,17 @@ static inline void // from process.c
 __switch_to_xtra(struct task_struct *prev_p, struct task_struct *next_p,
                  struct tss_struct *tss)
 {
+#ifdef NOT_FOR_L4
 	struct thread_struct *prev, *next;
-	//unsigned long debugctl;
 
 	prev = &prev_p->thread;
 	next = &next_p->thread;
 
-#ifdef NOT_FOR_L4
-	debugctl = prev->debugctlmsr;
-	if (next->ds_area_msr != prev->ds_area_msr) {
-		/* we clear debugctl to make sure DS
-		 * is not in use when we change it */
-		debugctl = 0;
-		wrmsrl(MSR_IA32_DEBUGCTLMSR, 0);
-		wrmsr(MSR_IA32_DS_AREA, next->ds_area_msr, 0);
-	}
-
-	if (next->debugctlmsr != debugctl)
-		wrmsr(MSR_IA32_DEBUGCTLMSR, next->debugctlmsr, 0);
+	if (test_tsk_thread_flag(next_p, TIF_DS_AREA_MSR) ||
+	    test_tsk_thread_flag(prev_p, TIF_DS_AREA_MSR))
+		ds_switch_to(prev_p, next_p);
+	else if (next->debugctlmsr != prev->debugctlmsr)
+		update_debugctlmsr(next->debugctlmsr);
 
 	if (test_tsk_thread_flag(next_p, TIF_DEBUG)) {
 		set_debugreg(next->debugreg0, 0);
@@ -260,7 +253,6 @@ __switch_to_xtra(struct task_struct *prev_p, struct task_struct *next_p,
 		set_debugreg(next->debugreg7, 7);
 	}
 
-#ifdef CONFIG_SECCOMP
 	if (test_tsk_thread_flag(prev_p, TIF_NOTSC) ^
 	    test_tsk_thread_flag(next_p, TIF_NOTSC)) {
 		/* prev and next are different */
@@ -269,18 +261,7 @@ __switch_to_xtra(struct task_struct *prev_p, struct task_struct *next_p,
 		else
 			hard_enable_TSC();
 	}
-#endif
-#endif
 
-#ifdef X86_BTS
-	if (test_tsk_thread_flag(prev_p, TIF_BTS_TRACE_TS))
-		ptrace_bts_take_timestamp(prev_p, BTS_TASK_DEPARTS);
-
-	if (test_tsk_thread_flag(next_p, TIF_BTS_TRACE_TS))
-		ptrace_bts_take_timestamp(next_p, BTS_TASK_ARRIVES);
-#endif
-
-#ifdef NOT_FOR_L4
 	if (!test_tsk_thread_flag(next_p, TIF_IO_BITMAP)) {
 		/*
 		 * Disable the bitmap via an invalid offset. We still cache
@@ -436,8 +417,8 @@ static inline void dispatch_system_call(struct task_struct *p)
 	}
 	if (likely((is_lx_syscall(syscall))
 		   && ((syscall_fn = sys_call_table[syscall])))) {
-		if (!p->user)
-			enter_kdebug("dispatch_system_call: !p->user");
+		//if (!p->user)
+		//	enter_kdebug("dispatch_system_call: !p->user");
 
 		/* valid system call number.. */
 		if (unlikely(current_thread_info()->flags

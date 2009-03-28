@@ -1,6 +1,9 @@
 #ifndef ASMARM_ARCH_SMP_H
 #define ASMARM_ARCH_SMP_H
 
+#include <l4/sys/ipc.h>
+#include <l4/log/l4log.h>
+
 l4_threadid_t l4x_cpu_ipi_thread_get(unsigned cpu);
 int l4x_cpu_cpu_get(void);
 

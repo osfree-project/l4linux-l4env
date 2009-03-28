@@ -385,7 +385,7 @@ static void __exit l4x_ore_exit(void)
 		struct l4x_ore_netdev *nd
 		  = list_entry(p, struct l4x_ore_netdev, list);
 		struct net_device *dev = nd->dev;
-		l4ore_close(((struct l4x_ore_priv *)dev->priv)->handle);
+		l4ore_close(((struct l4x_ore_priv *)netdev_priv(dev))->handle);
 		unregister_netdev(dev);
 		free_netdev(dev);
 		list_del(p);

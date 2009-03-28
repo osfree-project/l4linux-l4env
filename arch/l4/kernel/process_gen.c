@@ -55,4 +55,8 @@ void exit_thread(void)
 	//enter_kdebug("exit thread");
 
 	l4x_iodb_free(current);
+
+#ifdef CONFIG_X86_DS
+	ds_exit_thread(current);
+#endif
 }

@@ -7,6 +7,7 @@
 #include <linux/kernel.h>
 #include <linux/mm.h>
 #include <linux/string.h>
+#include <linux/highmem.h>
 
 #include <asm/elf.h>
 #include <asm/page.h>
@@ -91,14 +92,22 @@ void  __attribute__((noreturn)) l4x_cpu_reset(unsigned long addr)
 }
 
 
-void v4_mc_copy_user_page(void *dst, const void *src, unsigned long vaddr)
+void v4_mc_copy_user_highpage(struct page *to, struct page *from, unsigned long vaddr)
 {
-	copy_page(dst, src);
+	void *kto, *kfrom;
+
+        kfrom = kmap_atomic(from, KM_USER0);
+        kto = kmap_atomic(to, KM_USER1);
+        copy_page(kto, kfrom);
+        kunmap_atomic(kto, KM_USER1);
+        kunmap_atomic(kfrom, KM_USER0);
 }
 
-void v4_mc_clear_user_page(void *addr, unsigned long vaddr)
+void v4_mc_clear_user_highpage(struct page *page, unsigned long vaddr)
 {
-	clear_page(addr);
+	void *kaddr = kmap_atomic(page, KM_USER0);
+	clear_page(kaddr);
+	kunmap_atomic(kaddr, KM_USER0);
 }
 
 void v4wb_flush_user_tlb_range(unsigned long start, unsigned long end,
@@ -188,8 +197,8 @@ static struct cpu_tlb_fns l4_tlb_fns = {
 };
 
 static struct cpu_user_fns l4_cpu_user_fns = {
-	.cpu_clear_user_page = v4_mc_clear_user_page,
-	.cpu_copy_user_page  = v4_mc_copy_user_page,
+	.cpu_clear_user_highpage = v4_mc_clear_user_highpage,
+	.cpu_copy_user_highpage  = v4_mc_copy_user_highpage,
 };
 
 static struct cpu_cache_fns l4_cpu_cache_fns = {

@@ -35,13 +35,9 @@ static inline int irq_canonicalize(int irq)
 # endif
 #endif
 
-#ifdef CONFIG_IRQBALANCE
-extern int irqbalance_disable(char *str);
-#endif
-
 #ifdef CONFIG_HOTPLUG_CPU
 #include <linux/cpumask.h>
-extern void fixup_irqs(cpumask_t map);
+extern void fixup_irqs(void);
 #endif
 
 extern unsigned int do_IRQ(int irq, struct pt_regs *regs);
@@ -50,5 +46,6 @@ extern void native_init_IRQ(void);
 
 /* Interrupt vector management */
 extern DECLARE_BITMAP(used_vectors, NR_VECTORS);
+extern int vector_used_by_percpu_irq(unsigned int vector);
 
 #endif /* __ASM_L4__ARCH_I386__IRQ_H__ */

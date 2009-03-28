@@ -12,6 +12,7 @@ obj-y		:= dispatch.o entry.o ioport.o \
 obj-y				+= i387.o xsave.o
 obj-y				+= dumpstack_32.o
 obj-y				+= irq.o irq_32.o irq_l4.o irqinit_32.o
+obj-y				+= dumpstack.o dumpstack_32.o
 
 obj-$(CONFIG_STACKTRACE)	+= stacktrace.o
 obj-y				+= cpu/
@@ -55,9 +56,10 @@ early-quirks-y	+= $(b)/early-quirks.o
 kdebugfs-y	+= $(b)/kdebugfs.o
 dumpstack_32-y	+= $(b)/dumpstack_32.o
 irq-y		+= $(b)/irq.o
-
-# get sigframe_32.h for signal.c
-KBUILD_CFLAGS	+= -Iarch/x86/kernel
+dumpstack-y	+= $(b)/dumpstack.o
+dumpstack_32-y	+= $(b)/dumpstack_32.o
 
 # syscall_table_32.S
 KBUILD_AFLAGS	+= -Iarch/x86/kernel
+# headers
+KBUILD_CFLAGS	+= -Iarch/x86/kernel

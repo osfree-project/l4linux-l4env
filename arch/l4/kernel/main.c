@@ -2694,7 +2694,7 @@ void l4x_prepare_irq_thread(struct thread_info *ti, unsigned _cpu)
 void l4x_show_process(struct task_struct *t)
 {
 #ifdef ARCH_x86
-	printk("%2d: %s tsk st: %lx thrd flgs: %lx " PRINTF_L4TASK_FORM " esp: %08lx\n",
+	printk("%2d: %s tsk st: %lx thrd flgs: %x " PRINTF_L4TASK_FORM " esp: %08lx\n",
 	       t->pid, t->comm, t->state, task_thread_info(t)->flags,
 	       PRINTF_L4TASK_ARG(t->thread.user_thread_id),
 	       t->thread.sp);
@@ -2812,7 +2812,7 @@ struct clock_event_device l4_clockevent = {
 
 void setup_pit_timer(void)
 {
-	l4_clockevent.cpumask = cpumask_of_cpu(0);
+	l4_clockevent.cpumask = cpumask_of(0);
 	clockevents_register_device(&l4_clockevent);
 	global_clock_event = &l4_clockevent;
 }

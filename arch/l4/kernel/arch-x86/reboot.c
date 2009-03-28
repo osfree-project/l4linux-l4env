@@ -17,6 +17,8 @@ EXPORT_SYMBOL(pm_power_off);
 
 int reboot_force;
 
+bool port_cf9_safe = false;
+
 void machine_halt(void)
 {
 	local_irq_disable();

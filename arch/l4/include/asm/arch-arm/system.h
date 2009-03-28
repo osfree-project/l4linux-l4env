@@ -10,8 +10,6 @@ struct pt_regs *l4x_fp_get_user_regs(void);
 
 #ifdef __KERNEL__
 
-#include <asm/memory.h>
-
 #define CPU_ARCH_UNKNOWN	0
 #define CPU_ARCH_ARMv3		1
 #define CPU_ARCH_ARMv4		2

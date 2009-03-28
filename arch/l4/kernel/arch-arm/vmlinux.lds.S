@@ -130,7 +130,7 @@ SECTIONS
 
 	_sdata = .;
 	.data : AT(__data_loc) {
-		__data_start = .;	/* address in memory */
+		_data = .;		/* address in memory */
 
 		/*
 		 * first, the init task union, aligned

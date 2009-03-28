@@ -1,5 +1,5 @@
 /*
- *  linux/include/asm-arm/mmu_context.h
+ *  arch/arm/include/asm/mmu_context.h
  *
  *  Copyright (C) 1996 Russell King.
  *
@@ -14,6 +14,7 @@
 #define __ASM_ARM_MMU_CONTEXT_H
 
 #include <linux/compiler.h>
+#include <linux/sched.h>
 #include <asm/cacheflush.h>
 #include <asm/cachetype.h>
 #include <asm/proc-fns.h>

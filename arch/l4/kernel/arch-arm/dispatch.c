@@ -320,8 +320,8 @@ static inline void call_system_call_args(unsigned long syscall,
 
 	if (likely(is_lx_syscall(syscall))
 	           && ((syscall_fn = sys_call_table[syscall]))) {
-		if (unlikely(!current->user))
-			enter_kdebug("call_system_call_args: !current->user");
+		//if (unlikely(!current->user))
+		//	enter_kdebug("call_system_call_args: !current->user");
 
 		/* valid system call number.. */
 		if (likely(!test_tsk_thread_flag(current, TIF_SYSCALL_TRACE))) {

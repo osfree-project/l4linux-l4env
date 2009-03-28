@@ -10,9 +10,6 @@
  */
 #define PHYS_OFFSET	(0x0UL)
 
-#define __virt_to_bus(x)	 __virt_to_phys(x)
-#define __bus_to_virt(x)	 __phys_to_virt(x)
-
 #ifdef CONFIG_DISCONTIGMEM
 /*
  * The nodes are matched with the physical SDRAM banks as follows:

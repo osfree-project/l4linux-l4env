@@ -189,7 +189,7 @@ void v4wb_dma_flush_range(const void *start, const void *end)
 
 #include <linux/profile.h>
 
-void __cpuinit local_timer_setup(unsigned int cpu)
+void __cpuinit local_timer_setup(void)
 {
 }
 

@@ -8,12 +8,7 @@
 
 #define IO_SPACE_LIMIT 0xd0000000
 
-static inline void __iomem *__io(unsigned long addr)
-{
-	return (void __iomem *)addr;
-}
-
-#define __io(a)			__io(a)
+#define __io(a)			__typesafe_io(a)
 #define __mem_pci(a)		(a)
 
 #endif /* ! __ASM_L4__ARCH_ARM__ARCH__IO_H__ */
