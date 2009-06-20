@@ -14,8 +14,7 @@
 
 #include <l4/sys/ipc.h>
 
-/* called by do_exit(); kills the Linux user thread */
-void exit_thread(void)
+void l4x_exit_thread(void)
 {
 	int ret;
 	int i;

@@ -163,11 +163,11 @@ void l4x_vmalloc_map_vm_area(unsigned long address, unsigned long end)
 		pte_t *ptep = lookup_pte(swapper_pg_dir, address);
 
 		if (!ptep || !pte_present(*ptep) || !pte_write(*ptep)) {
-			printk("%s: Bad PTE for %08lx?!"
-			       " (ptep: %p, pte: %08lx\n",
-			       __func__, address,
-			       ptep, pte_val(*ptep));
-			enter_kdebug("no PTE?!");
+			if (0)
+				printk("%s: No (valid) PTE for %08lx?!"
+			               " (ptep: %p, pte: %08lx\n",
+			               __func__, address,
+			               ptep, pte_val(*ptep));
 			continue;
 		}
 		l4x_virtual_mem_register(address, pte_val(*ptep));

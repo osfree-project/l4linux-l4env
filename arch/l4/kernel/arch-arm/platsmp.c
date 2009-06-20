@@ -12,10 +12,12 @@
 #include <linux/errno.h>
 #include <linux/delay.h>
 #include <linux/device.h>
+#include <linux/jiffies.h>
 #include <linux/smp.h>
+#include <linux/io.h>
 
 #include <asm/cacheflush.h>
-#include <asm/io.h>
+#include <mach/hardware.h>
 #include <asm/mach-types.h>
 
 #include <asm/generic/smp.h>
@@ -28,13 +30,26 @@ extern void realview_secondary_startup(void);
  */
 volatile int __cpuinitdata pen_release = -1;
 
+#ifdef NOT_FOR_L4
+static void __iomem *scu_base_addr(void)
+{
+	if (machine_is_realview_eb_mp())
+		return __io_address(REALVIEW_EB11MP_SCU_BASE);
+	else if (machine_is_realview_pb11mp())
+		return __io_address(REALVIEW_TC11MP_SCU_BASE);
+	else
+		return (void __iomem *)0;
+}
+#endif
+
 static unsigned int __init get_core_count(void)
 {
 #if 0
 	unsigned int ncores;
+	void __iomem *scu_base = scu_base_addr();
 
-	if (machine_is_realview_eb() && core_tile_eb11mp()) {
-		ncores = __raw_readl(__io_address(REALVIEW_EB11MP_SCU_BASE) + SCU_CONFIG);
+	if (scu_base) {
+		ncores = __raw_readl(scu_base + SCU_CONFIG);
 		ncores = (ncores & 0x03) + 1;
 	} else
 		ncores = 1;
@@ -44,23 +59,33 @@ static unsigned int __init get_core_count(void)
 	return l4x_nr_cpus;
 }
 
+/*
+ * Setup the SCU
+ */
+static void scu_enable(void)
+{
+#ifdef NOT_FOR_L4
+	u32 scu_ctrl;
+	void __iomem *scu_base = scu_base_addr();
+
+	scu_ctrl = __raw_readl(scu_base + SCU_CTRL);
+	scu_ctrl |= 1;
+	__raw_writel(scu_ctrl, scu_base + SCU_CTRL);
+#endif
+}
+
 static DEFINE_SPINLOCK(boot_lock);
 
 void __cpuinit platform_secondary_init(unsigned int cpu)
 {
-	/*
-	 * the primary core may have used a "cross call" soft interrupt
-	 * to get this processor out of WFI in the BootMonitor - make
-	 * sure that we are no longer being sent this soft interrupt
-	 */
-	smp_cross_call_done(cpumask_of_cpu(cpu));
+	trace_hardirqs_off();
 
 	/*
 	 * if any interrupts are already enabled for the primary
 	 * core (e.g. timer irq), then they will not have been enabled
 	 * for us: do so
 	 */
-	//gic_cpu_init(0, __io_address(REALVIEW_GIC_CPU_BASE));
+	//l4/gic_cpu_init(0, gic_cpu_base_addr);
 
 	/*
 	 * let the primary processor know we're out of the
@@ -107,7 +132,7 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 	 * Use smp_cross_call() for this, since there's little
 	 * point duplicating the code here
 	 */
-	//smp_cross_call(cpumask_of_cpu(cpu));
+	//l4/smp_cross_call(cpumask_of(cpu));
 	l4x_cpu_release(cpu);
 
 #if 0
@@ -198,14 +223,11 @@ void __init smp_prepare_cpus(unsigned int max_cpus)
 	if (max_cpus > ncores)
 		max_cpus = ncores;
 
-#ifdef CONFIG_LOCAL_TIMERS
+#if defined(CONFIG_LOCAL_TIMERS) || defined(CONFIG_GENERIC_CLOCKEVENTS_BROADCAST)
 	/*
-	 * Enable the local timer for primary CPU. If the device is
-	 * dummy (!CONFIG_LOCAL_TIMERS), it was already registers in
-	 * realview_timer_init
+	 * Enable the local timer or broadcast device for the boot CPU.
 	 */
-	if (machine_is_realview_eb() && core_tile_eb11mp())
-		local_timer_setup(cpu);
+	local_timer_setup();
 #endif
 
 	/*
@@ -216,11 +238,14 @@ void __init smp_prepare_cpus(unsigned int max_cpus)
 		cpu_set(i, cpu_present_map);
 
 	/*
-	 * Do we need any more CPUs? If so, then let them know where
-	 * to start. Note that, on modern versions of MILO, the "poke"
-	 * doesn't actually do anything until each individual core is
-	 * sent a soft interrupt to get it out of WFI
+	 * Initialise the SCU if there are more than one CPU and let
+	 * them know where to start. Note that, on modern versions of
+	 * MILO, the "poke" doesn't actually do anything until each
+	 * individual core is sent a soft interrupt to get it out of
+	 * WFI
 	 */
-	if (max_cpus > 1)
+	if (max_cpus > 1) {
+		scu_enable();
 		poke_milo();
+	}
 }

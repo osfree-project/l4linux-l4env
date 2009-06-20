@@ -157,6 +157,18 @@ extern long __get_user_bad(void);
 	__ret_gu;							\
 })
 
+#define __get_user_size_ex(x, ptr, size)				\
+do {									\
+	__chk_user_ptr(ptr);						\
+	switch(size) {							\
+	case 1:  __get_user_1((unsigned char      *)&x,ptr); break;		\
+	case 2:  __get_user_2((unsigned short     *)&x,ptr); break;		\
+	case 4:  __get_user_4((unsigned int       *)&x,ptr); break;		\
+	case 8:  __get_user_8((unsigned long long *)&x,ptr); break;		\
+	default: __get_user_bad(); break;			\
+	}								\
+} while (0)
+
 
 
 extern long __put_user_1(unsigned char 	    val, const void *address);
@@ -229,6 +241,20 @@ struct __large_struct { unsigned long buf[100]; };
 #define __m(x) (*(struct __large_struct __user *)(x))
 
 
+/*
+ * uaccess_try and catch
+ */
+#define uaccess_try	do {						\
+	int prev_err = current_thread_info()->uaccess_err;		\
+	current_thread_info()->uaccess_err = 0;				\
+	barrier();
+
+#define uaccess_catch(err)						\
+	(err) |= current_thread_info()->uaccess_err;			\
+	current_thread_info()->uaccess_err = prev_err;			\
+} while (0)
+
+
 #define __copy_to_user copy_to_user
 #define __copy_from_user copy_from_user
 #define __copy_to_user_inatomic copy_to_user
@@ -275,6 +301,46 @@ long __must_check __strncpy_from_user(char *dst,
 long strnlen_user(const char __user *str, long n);
 unsigned long __must_check clear_user(void __user *mem, unsigned long len);
 unsigned long __must_check __clear_user(void __user *mem, unsigned long len);
+
+/*
+ * {get|put}_user_try and catch
+ *
+ * get_user_try {
+ *	get_user_ex(...);
+ * } get_user_catch(err)
+ */
+#define get_user_try		uaccess_try
+#define get_user_catch(err)	uaccess_catch(err)
+
+#define get_user_ex(x, ptr)	do {					\
+	unsigned long __gue_val;					\
+	__get_user_size_ex((__gue_val), (ptr), (sizeof(*(ptr))));	\
+	(x) = (__force __typeof__(*(ptr)))__gue_val;			\
+} while (0)
+
+//l4/#ifdef CONFIG_X86_WP_WORKS_OK
+#ifdef TAKE_THE_OTHER_FOR_L4
+
+#define put_user_try		uaccess_try
+#define put_user_catch(err)	uaccess_catch(err)
+
+#define put_user_ex(x, ptr)						\
+	__put_user_size_ex((__typeof__(*(ptr)))(x), (ptr), sizeof(*(ptr)))
+
+#else /* !CONFIG_X86_WP_WORKS_OK */
+
+#define put_user_try		do {		\
+	int __uaccess_err = 0;
+
+#define put_user_catch(err)			\
+	(err) |= __uaccess_err;			\
+} while (0)
+
+#define put_user_ex(x, ptr)	do {		\
+	__uaccess_err |= __put_user(x, ptr);	\
+} while (0)
+
+#endif /* CONFIG_X86_WP_WORKS_OK */
 
 /*
  * movsl can be slow when source and dest are not both 8-byte aligned

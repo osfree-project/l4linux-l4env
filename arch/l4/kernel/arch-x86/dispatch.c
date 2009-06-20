@@ -227,74 +227,6 @@ void l4x_setup_user_dispatcher_after_fork(struct task_struct *p)
 	l4x_setup_next_exec(p, (unsigned long)ret_from_fork);
 }
 
-static inline void // from process.c
-__switch_to_xtra(struct task_struct *prev_p, struct task_struct *next_p,
-                 struct tss_struct *tss)
-{
-#ifdef NOT_FOR_L4
-	struct thread_struct *prev, *next;
-
-	prev = &prev_p->thread;
-	next = &next_p->thread;
-
-	if (test_tsk_thread_flag(next_p, TIF_DS_AREA_MSR) ||
-	    test_tsk_thread_flag(prev_p, TIF_DS_AREA_MSR))
-		ds_switch_to(prev_p, next_p);
-	else if (next->debugctlmsr != prev->debugctlmsr)
-		update_debugctlmsr(next->debugctlmsr);
-
-	if (test_tsk_thread_flag(next_p, TIF_DEBUG)) {
-		set_debugreg(next->debugreg0, 0);
-		set_debugreg(next->debugreg1, 1);
-		set_debugreg(next->debugreg2, 2);
-		set_debugreg(next->debugreg3, 3);
-		/* no 4 and 5 */
-		set_debugreg(next->debugreg6, 6);
-		set_debugreg(next->debugreg7, 7);
-	}
-
-	if (test_tsk_thread_flag(prev_p, TIF_NOTSC) ^
-	    test_tsk_thread_flag(next_p, TIF_NOTSC)) {
-		/* prev and next are different */
-		if (test_tsk_thread_flag(next_p, TIF_NOTSC))
-			hard_disable_TSC();
-		else
-			hard_enable_TSC();
-	}
-
-	if (!test_tsk_thread_flag(next_p, TIF_IO_BITMAP)) {
-		/*
-		 * Disable the bitmap via an invalid offset. We still cache
-		 * the previous bitmap owner and the IO bitmap contents:
-		 */
-		tss->x86_tss.io_bitmap_base = INVALID_IO_BITMAP_OFFSET;
-		return;
-	}
-
-	if (likely(next == tss->io_bitmap_owner)) {
-		/*
-		 * Previous owner of the bitmap (hence the bitmap content)
-		 * matches the next task, we dont have to do anything but
-		 * to set a valid offset in the TSS:
-		 */
-		tss->x86_tss.io_bitmap_base = IO_BITMAP_OFFSET;
-		return;
-	}
-	/*
-	 * Lazy TSS's I/O bitmap copy. We set an invalid offset here
-	 * and we let the task to get a GPF in case an I/O instruction
-	 * is performed.  The handler of the GPF will verify that the
-	 * faulting task has a valid I/O bitmap and, it true, does the
-	 * real copy and restart the instruction.  This will save us
-	 * redundant copies when the currently switched task does not
-	 * perform any I/O during its timeslice.
-	 */
-	tss->x86_tss.io_bitmap_base = INVALID_IO_BITMAP_OFFSET_LAZY;
-#endif
-}
-
-
-
 #include <asm/generic/stack_id.h>
 
 void l4x_switch_to(struct task_struct *prev, struct task_struct *next)
@@ -315,7 +247,7 @@ void l4x_switch_to(struct task_struct *prev, struct task_struct *next)
 		__switch_to_xtra(prev, next, NULL);
 
 
-	x86_write_percpu(current_task, next);
+	percpu_write(current_task, next);
 
 #ifdef CONFIG_SMP
 	next->thread.user_thread_id = next->thread.user_thread_ids[smp_processor_id()];

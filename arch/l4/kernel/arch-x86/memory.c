@@ -17,21 +17,23 @@
 char * __init memory_setup(void)
 {
 	unsigned long mem_start, mem_size, isa_start, isa_size;
-	extern unsigned long init_pg_tables_end;
 
 	LOG_printf("memory_setup: %s\n", boot_command_line);
 
 	setup_l4env_memory(boot_command_line, &mem_start, &mem_size,
 	                   &isa_start, &isa_size);
 
-	init_pg_tables_end = mem_start + mem_size;
-        max_pfn_mapped = init_pg_tables_end >> PAGE_SHIFT;
+	max_pfn_mapped = (mem_start + mem_size + ((1 << 12) - 1)) >> 12;
+
+	e820.nr_map = 0;
 
         /* minimum 2 pages required */
         e820_add_region(0, PAGE_SIZE, E820_RAM);
 	if (isa_size)
 		e820_add_region(isa_start, isa_size, E820_RAM);
 	e820_add_region(mem_start, mem_size, E820_RAM);
+
+	sanitize_e820_map(e820.map, ARRAY_SIZE(e820.map), &e820.nr_map);
 
 	LOG_printf("memory_setup done\n");
 	return "L4Lx-Memory";

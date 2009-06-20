@@ -2,14 +2,14 @@
 # arch/l4/kernel/arch-arm/Makefile
 #
 
-obj-y		:= process.o sys_arm.o time.o traps.o \
+obj-y		:= process.o sys_arm.o time.o traps.o stacktrace.o \
 		   switch_to.o setup.o l4.o signal.o irq.o \
 		   ptrace.o entry.o dispatch.o mach_setup.o io.o elf.o
 
 obj-$(CONFIG_SMP)				+= smp.o platsmp.o
 obj-$(CONFIG_MODULES)				+= armksyms.o module.o
 obj-$(CONFIG_ISA_DMA_API)			+= dma.o
-obj-$(CONFIG_L4_ARM_PLATFORM_ISG)		+= mach_isg.o
+obj-$(CONFIG_ARM_UNWIND)			+= unwind.o
 
 dma-y		:= ../../../arm/kernel/dma.o
 irq-y		:= ../../../arm/kernel/irq.o
@@ -17,6 +17,8 @@ module-y	:= ../../../arm/kernel/module.o
 time-y		:= ../../../arm/kernel/time.o
 io-y		:= ../../../arm/kernel/io.o
 elf-y		:= ../../../arm/kernel/elf.o
+unwind-y	:= ../../../arm/kernel/unwind.o
+stacktrace-y	:= ../../../arm/kernel/stacktrace.o
 
 KBUILD_CPPFLAGS	+= -I$(srctree)/arch/arm/kernel
 

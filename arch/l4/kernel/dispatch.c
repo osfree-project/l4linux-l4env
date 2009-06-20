@@ -157,7 +157,13 @@ static inline int l4x_handle_page_fault(struct task_struct *p,
 			} else if (phy > 0xffff0000) {
 				pte_t *ptep = lookup_pte(p->mm->pgd, pfa);
 				printk("%s: phy=%lx pfa=%lx pferror=%lx pte_val=%lx "
-				       "present=%ld\n    old_pferror=%lx %s(%d)\n",
+				       "present="
+#ifdef ARCH_x86
+				       "%d"
+#else
+				       "%ld"
+#endif
+				       "\n    old_pferror=%lx %s(%d)\n",
 				       __func__, phy, pfa, pferror, pte_val(*ptep),
 				       pte_present(*ptep), pfe_old,
 				       p->comm, p->pid);

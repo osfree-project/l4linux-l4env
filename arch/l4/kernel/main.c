@@ -1778,6 +1778,30 @@ int __init_refok L4_CV main(int argc, char **argv)
 }
 
 #ifdef ARCH_x86
+
+/*
+ * System calls that need a pt_regs pointer.
+ */
+#define PTREGSCALL(name)				\
+long ptregs_##name(void);				\
+long sys_##name(struct pt_regs *regs);			\
+long ptregs_##name(void)				\
+{							\
+	struct pt_regs *regs = &current->thread.regs;	\
+	return sys_##name(regs);			\
+}
+
+PTREGSCALL(iopl)
+PTREGSCALL(fork)
+PTREGSCALL(clone)
+PTREGSCALL(vfork)
+PTREGSCALL(execve)
+PTREGSCALL(sigaltstack)
+PTREGSCALL(sigreturn)
+PTREGSCALL(rt_sigreturn)
+PTREGSCALL(vm86)
+PTREGSCALL(vm86old)
+
 static void l4x_setup_die_utcb(void)
 {
 	struct pt_regs regs;
@@ -1825,6 +1849,7 @@ asmlinkage static void l4x_do_intra_iret(struct pt_regs regs)
 	 "popl %%eax		\t\n"
 	 "addl $8, %%esp	\t\n" /* keep ds, es */
 	 "popl %%fs		\t\n"
+	 "popl %%gs		\t\n"
 	 "addl $4, %%esp	\t\n" /* keep orig_eax */
 	 "iret			\t\n"
 	 : : "r" (&regs));

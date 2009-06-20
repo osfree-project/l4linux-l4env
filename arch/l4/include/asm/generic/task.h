@@ -24,4 +24,6 @@ void l4x_sig_current_kill(void);
 
 DECLARE_PER_CPU(struct task_struct *, l4x_current_process);
 
+void l4x_exit_thread(void);
+
 #endif /* ! __ASM_L4__GENERIC__TASK_H__ */

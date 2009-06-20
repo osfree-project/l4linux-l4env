@@ -102,7 +102,7 @@ static irqreturn_t l4_timer_interrupt_handler(int irq, void *dev_id)
 
 	//l4_kprintf("%s: %d\n", __func__, smp_processor_id());
 #if defined(CONFIG_SMP)  && !defined(CONFIG_LOCAL_TIMERS)
-	smp_send_timer();
+	l4x_smp_broadcast_timer();
 	update_process_times(user_mode(get_irq_regs()));
 #endif
 

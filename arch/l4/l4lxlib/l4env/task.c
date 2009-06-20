@@ -272,7 +272,7 @@ int l4lx_task_delete(l4_threadid_t task, unsigned option)
 		r = l4_task_new(task, l4_myself().raw, 0, 0, L4_NIL_ID);
 		if (l4_is_nil_id(r))
 			return 0;
-		return 1;
+		return L4LX_TASK_DELETE_SPACE;
 #endif
 	}
 

@@ -11,6 +11,7 @@
 
 #include <stdarg.h>
 
+#include <linux/stackprotector.h>
 #include <linux/cpu.h>
 #include <linux/errno.h>
 #include <linux/sched.h>
@@ -67,10 +68,9 @@
 #include <asm/generic/sched.h>
 #include <asm/generic/dispatch.h>
 #include <asm/generic/upage.h>
-#include <asm/generic/task.h>
 #include <asm/generic/assert.h>
+#include <asm/generic/task.h>
 #include <asm/generic/stack_id.h>
-#include <asm/generic/hybrid.h>
 
 #include <asm/l4lxapi/task.h>
 #include <asm/l4x/iodb.h>
@@ -78,15 +78,12 @@
 DEFINE_PER_CPU(struct task_struct *, current_task) = &init_task;
 EXPORT_PER_CPU_SYMBOL(current_task);
 
-DEFINE_PER_CPU(int, cpu_number);
-EXPORT_PER_CPU_SYMBOL(cpu_number);
-
 /*
  * Return saved PC of a blocked thread.
  */
 unsigned long thread_saved_pc(struct task_struct *tsk)
 {
-	return ((unsigned long *)tsk->thread.sp)[0];
+	return ((unsigned long *)tsk->thread.sp)[3];
 }
 
 #ifndef CONFIG_SMP
@@ -121,7 +118,7 @@ void __show_regs(struct pt_regs *regs, int all)
 	if (user_mode_vm(regs)) {
 		sp = regs->sp;
 		ss = regs->ss & 0xffff;
-		savesegment(gs, gs);
+		gs = get_user_gs(regs);
 	} else {
 		sp = (unsigned long) (&regs->sp);
 		savesegment(ss, ss);
@@ -200,6 +197,7 @@ int kernel_thread(int (*fn)(void *), void *arg, unsigned long flags)
 	regs.ds = __USER_DS;
 	regs.es = __USER_DS;
 	regs.fs = __KERNEL_PERCPU;
+	regs.gs = __KERNEL_STACK_CANARY;
 	regs.orig_ax = -1;
 	//regs.ip = (unsigned long) kernel_thread_helper;
 	regs.cs = __KERNEL_CS | get_kernel_rpl();
@@ -210,9 +208,6 @@ int kernel_thread(int (*fn)(void *), void *arg, unsigned long flags)
 }
 EXPORT_SYMBOL(kernel_thread);
 
-/*
- * Called by release_task in kernel/exit.c
- */
 void release_thread(struct task_struct *dead_task)
 {
 	//outstring("release_thread\n");
@@ -290,7 +285,7 @@ void prepare_to_copy(struct task_struct *tsk)
 	unlazy_fpu(tsk);
 }
 
-int copy_thread(int nr, unsigned long clone_flags, unsigned long sp,
+int copy_thread(unsigned long clone_flags, unsigned long sp,
 	unsigned long stack_size___used_for_inkernel_process_flag,
 	struct task_struct *p, struct pt_regs *regs)
 {
@@ -326,6 +321,13 @@ int copy_thread(int nr, unsigned long clone_flags, unsigned long sp,
 		err = do_set_thread_area(p, -1,
 			(struct user_desc __user *)childregs->si, 0);
 
+#ifdef NOT_FOR_L4
+	if (err && p->thread.io_bitmap_ptr) {
+		kfree(p->thread.io_bitmap_ptr);
+		p->thread.io_bitmap_max = 0;
+	}
+#endif
+
 	ds_copy_thread(p, current);
 
 	clear_tsk_thread_flag(p, TIF_DEBUGCTLMSR);
@@ -340,7 +342,7 @@ int copy_thread(int nr, unsigned long clone_flags, unsigned long sp,
 void
 start_thread(struct pt_regs *regs, unsigned long new_ip, unsigned long new_sp)
 {
-	//__asm__("movl %0, %%gs" : : "r"(0));
+	//set_user_gs(regs, 0);
 	regs->fs		= 0;
 	set_fs(USER_DS);
 	//regs->ds		= __USER_DS;
@@ -363,142 +365,8 @@ start_thread(struct pt_regs *regs, unsigned long new_ip, unsigned long new_sp)
 }
 EXPORT_SYMBOL(start_thread);
 
-/*
- * called by do_execve()/.../flush_old_exec(); should recycle the thread so
- * that a new process can run in it
- */
-void flush_thread(void)
+int sys_clone(struct pt_regs *regs)
 {
-	struct task_struct *tsk = current;
-	int ret = 0, i;
-
-	//LOG_printf("%s\n", __func__);
-	//enter_kdebug("flush thread");
-
-	memset(tsk->thread.tls_array, 0, sizeof(tsk->thread.tls_array));
-	clear_tsk_thread_flag(tsk, TIF_DEBUG);
-
-	/* When processes are started from kernel threads there's no
-	 * process to flush */
-	if (!current->thread.started)
-		return;
-
-	current->mm->context.l4x_unmap_mode = L4X_UNMAP_MODE_IMMEDIATELY;
-
-	for (i = 0; i < NR_CPUS; i++) {
-		l4_threadid_t id = tsk->thread.user_thread_ids[i];
-
-		//LOG_printf("flush of " PRINTF_L4TASK_FORM "\n", PRINTF_L4TASK_ARG(id));
-		if (l4_thread_equal(id, L4_NIL_ID))
-			continue;
-
-		if (!(ret = l4lx_task_delete(id, l4x_hybrid_list_task_exists(id))))
-			do_exit(9);
-
-		if (ret == L4LX_TASK_DELETE_THREAD)
-			l4x_hybrid_list_thread_remove(id);
-		else {
-			l4lx_task_number_free(id);
-			l4x_hybrid_list_task_remove(id);
-		}
-
-		current->thread.user_thread_ids[i] = L4_NIL_ID;
-	}
-	current->thread.started = 0;
-	current->thread.threads_up = 0;
-	current->thread.user_thread_id = L4_NIL_ID;
-	current->thread.cloner = L4_NIL_ID;
-
-	/* i386 does this in start_thread but we have to do it earlier since
-	   we have to access user space in do_execve */
-	set_fs(USER_DS);
-
-	/*
-	 * Forget coprocessor state..
-	 */
-	tsk->fpu_counter = 0;
-	clear_fpu(tsk);
-	clear_used_math();
-}
-
-
-#ifdef NOT_FOR_L4
-static void hard_disable_TSC(void)
-{
-//	write_cr4(read_cr4() | X86_CR4_TSD);
-}
-#endif
-
-void disable_TSC(void)
-{
-#ifdef NOT_FOR_L4
-	preempt_disable();
-	if (!test_and_set_thread_flag(TIF_NOTSC))
-		/*
-		 * Must flip the CPU state synchronously with
-		 * TIF_NOTSC in the current running context.
-		 */
-		hard_disable_TSC();
-	preempt_enable();
-#endif
-}
-
-#ifdef NOT_FOR_L4
-static void hard_enable_TSC(void)
-{
-//	write_cr4(read_cr4() & ~X86_CR4_TSD);
-}
-#endif
-
-static void enable_TSC(void)
-{
-#ifdef NOT_FOR_L4
-	preempt_disable();
-	if (test_and_clear_thread_flag(TIF_NOTSC))
-		/*
-		 * Must flip the CPU state synchronously with
-		 * TIF_NOTSC in the current running context.
-		 */
-		hard_enable_TSC();
-	preempt_enable();
-#endif
-}
-
-int get_tsc_mode(unsigned long adr)
-{
-	unsigned int val;
-
-	if (test_thread_flag(TIF_NOTSC))
-		val = PR_TSC_SIGSEGV;
-	else
-		val = PR_TSC_ENABLE;
-
-	return put_user(val, (unsigned int __user *)adr);
-}
-
-int set_tsc_mode(unsigned int val)
-{
-	if (val == PR_TSC_SIGSEGV)
-		disable_TSC();
-	else if (val == PR_TSC_ENABLE)
-		enable_TSC();
-	else
-		return -EINVAL;
-
-	return 0;
-}
-
-/* fork/exec system calls (copied from arch/i386/kernel/process.c) */
-
-asmlinkage int sys_fork(struct pt_regs r)
-{
-	struct pt_regs *regs = &current->thread.regs;
-	return do_fork(SIGCHLD, regs->sp, regs, COPY_THREAD_STACK_SIZE___FLAG_USER, NULL, NULL);
-}
-
-asmlinkage int sys_clone(struct pt_regs r)
-{
-	struct pt_regs *regs = &current->thread.regs;
 	unsigned long clone_flags;
 	unsigned long newsp;
 	int __user *parent_tidptr, *child_tidptr;
@@ -509,45 +377,25 @@ asmlinkage int sys_clone(struct pt_regs r)
 	child_tidptr = (int __user *)regs->di;
 	if (!newsp)
 		newsp = regs->sp;
-
 	return do_fork(clone_flags, newsp, regs, COPY_THREAD_STACK_SIZE___FLAG_USER, parent_tidptr, child_tidptr);
-}
-
-
-/*
- * This is trivial, and on the face of it looks like it
- * could equally well be done in user mode.
- *
- * Not so, for quite unobvious reasons - register pressure.
- * In user mode vfork() cannot have a stack frame, and if
- * done by calling the "clone()" system call directly, you
- * do not have enough call-clobbered registers to hold all
- * the information you need.
- */
-asmlinkage int sys_vfork(struct pt_regs r)
-{
-	struct pt_regs *regs = &current->thread.regs;
-
-	return do_fork(CLONE_VFORK | CLONE_VM | SIGCHLD, regs->sp, regs, COPY_THREAD_STACK_SIZE___FLAG_USER, NULL, NULL);
 }
 
 /*
  * sys_execve() executes a new program.
  */
-/* sys_*(bx, cx, dx, si, di); */
-asmlinkage int sys_execve(struct pt_regs regs)
+int sys_execve(struct pt_regs *regs)
 {
 	int error;
 	char *filename;
 
-	filename = getname((char __user *) regs.bx);
+	filename = getname((char __user *) regs->bx);
 	error = PTR_ERR(filename);
 	if (IS_ERR(filename))
 		goto out;
 	error = do_execve(filename,
-			(char __user * __user *) regs.cx,
-			(char __user * __user *) regs.dx,
-			&current->thread.regs);
+			(char __user * __user *) regs->cx,
+			(char __user * __user *) regs->dx,
+			regs);
 	if (error == 0) {
 		/* Make sure we don't return using sysenter.. */
 		//set_thread_flag(TIF_IRET);
@@ -598,12 +446,8 @@ asmlinkage int l4_kernelinternal_execve(char * file, char ** argv, char ** envp)
 	return 0;
 }
 
-/*
- * These bracket the sleeping functions..
- */
-#define top_esp                 (THREAD_SIZE - sizeof(unsigned long))
-#define top_ebp                 (THREAD_SIZE - 2*sizeof(unsigned long))
-
+#define top_esp                (THREAD_SIZE - sizeof(unsigned long))
+#define top_ebp                (THREAD_SIZE - 2*sizeof(unsigned long))
 
 unsigned long get_wchan(struct task_struct *p)
 {

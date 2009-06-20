@@ -402,8 +402,9 @@ asmlinkage long sys_ioperm(unsigned long from, unsigned long num, int turn_on)
 /**
  * The same security policy as in arch/i386/kernel/ioport.c.
  */
-asmlinkage long sys_iopl(unsigned long level)
+long sys_iopl(struct pt_regs *regs)
 {
+	unsigned int level = regs->bx;
 	struct task_struct *task = current;
 	int old, ret;
 

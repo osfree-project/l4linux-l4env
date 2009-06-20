@@ -44,12 +44,19 @@
  * The module space lives between the addresses given by TASK_SIZE
  * and PAGE_OFFSET - it must be within 32MB of the kernel text.
  */
-/*l4: #define MODULES_END		(PAGE_OFFSET) */
-#define MODULES_END		(TEXT_OFFSET)
-#define MODULES_VADDR		(MODULES_END - 16*1048576)
-
-#if 0 && TASK_SIZE > MODULES_VADDR
+#define MODULES_VADDR		(MODULES_END - 16*1024*1024)
+#if 0 /* TASK_SIZE > MODULES_VADDR */
 #error Top of user space clashes with start of module space
+#endif
+
+/*
+ * The highmem pkmap virtual space shares the end of the module area.
+ */
+#ifdef CONFIG_HIGHMEM
+#define MODULES_END		(PAGE_OFFSET - PMD_SIZE)
+#else
+/* #define MODULES_END		(PAGE_OFFSET) */
+#define MODULES_END		(TEXT_OFFSET)
 #endif
 
 /*
@@ -191,6 +198,7 @@ static inline void *phys_to_virt(unsigned long x)
 #ifndef __virt_to_bus
 #define __virt_to_bus	__virt_to_phys
 #define __bus_to_virt	__phys_to_virt
+#define __pfn_to_bus(x)	((x) << PAGE_SHIFT)
 #endif
 
 static inline __deprecated unsigned long virt_to_bus(void *x)

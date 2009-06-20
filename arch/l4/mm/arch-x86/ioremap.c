@@ -615,7 +615,7 @@ static int __init check_early_ioremap_leak(void)
 }
 late_initcall(check_early_ioremap_leak);
 
-static void __init __iomem *__early_ioremap(unsigned long phys_addr, unsigned long size, pgprot_t prot)
+static void __init __iomem *__early_ioremap(resource_size_t phys_addr, unsigned long size, pgprot_t prot)
 {
 	unsigned long offset, last_addr;
 	unsigned int nrpages;
@@ -627,7 +627,7 @@ static void __init __iomem *__early_ioremap(unsigned long phys_addr, unsigned lo
 	/* L4 specific thing start */
 	if (phys_addr == 0xf0000)
 		return (void __iomem *)0xf0000;
-	printk("%s(%lx, %ld, -)\n", __func__, phys_addr, size);
+	printk("%s(%x, %ld, -)\n", __func__, phys_addr, size);
 	/* L4 specific thing end */
 	enter_kdebug("__early_ioremap");
 
@@ -640,14 +640,14 @@ static void __init __iomem *__early_ioremap(unsigned long phys_addr, unsigned lo
 	}
 
 	if (slot < 0) {
-		printk(KERN_INFO "early_iomap(%08lx, %08lx) not found slot\n",
+		printk(KERN_INFO "early_iomap(%08x, %08lx) not found slot\n",
 			 phys_addr, size);
 		WARN_ON(1);
 		return NULL;
 	}
 
 	if (early_ioremap_debug) {
-		printk(KERN_INFO "early_ioremap(%08lx, %08lx) [%d] => ",
+		printk(KERN_INFO "early_ioremap(%08x, %08lx) [%d] => ",
 		       phys_addr, size, slot);
 		dump_stack();
 	}
@@ -695,13 +695,13 @@ static void __init __iomem *__early_ioremap(unsigned long phys_addr, unsigned lo
 }
 
 /* Remap an IO device */
-void __init __iomem *early_ioremap(unsigned long phys_addr, unsigned long size)
+void __init __iomem *early_ioremap(resource_size_t phys_addr, unsigned long size)
 {
 	return __early_ioremap(phys_addr, size, PAGE_KERNEL_IO);
 }
 
 /* Remap memory */
-void __init __iomem *early_memremap(unsigned long phys_addr, unsigned long size)
+void __init __iomem *early_memremap(resource_size_t phys_addr, unsigned long size)
 {
 	return __early_ioremap(phys_addr, size, PAGE_KERNEL);
 }

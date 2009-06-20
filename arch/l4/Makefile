@@ -155,6 +155,10 @@ tune-$(CONFIG_CPU_V6)		:=$(call cc-option,-mtune=arm1136j-s,-mtune=strongarm)
 KBUILD_CFLAGS += $(call cc-option,-mapcs-32,-mabi=apcs-gnu) $(call cc-option,-mno-thumb-interwork,)
 KBUILD_CFLAGS += $(arch-y) $(tune-y)
 
+ifeq ($(CONFIG_ARM_UNWIND),y)
+CFLAGS_ABI	+=-funwind-tables
+endif
+
 endif
 
 
@@ -237,7 +241,6 @@ else
   libs-y			+= $(L4LIBS-y)
 endif
 
-MACH_INC_x86	:= -I$(src)/arch/x86/include/asm/mach-default
 L4_CRT0		:= $(L4OBJ)/lib/$(L4_MK_ARCH)_$(L4_MK_CPU)/crt0.o
 L4_DYNLINK	:= --dynamic-linker libld-l4.s.so $(L4_CRT0) \
                    -lloader.s $(L4LX_E_L_O-y) -z now
@@ -258,7 +261,6 @@ KBUILD_CPPFLAGS	+= -Iarch/l4/include/asm/l4-arch \
 		   -Iarch/l4/include/asm/$(LINSRCARCH)-arch \
 		   -Iarch/l4/include/asm/orig-arch \
                    -Iarch/l4/include \
-		   $(MACH_INC_$(BASEARCH)) \
                    $(L4INC) $(CPPFLAGS_SYSENTER-y) \
 		   $(L4BID_CPPFLAGS_SYSCALLS-y)
 
