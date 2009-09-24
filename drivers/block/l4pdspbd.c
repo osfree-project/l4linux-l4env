@@ -82,15 +82,16 @@ static void request(struct request_queue *q)
 {
 	struct request *req;
 
-	while ((req = elv_next_request(q)) != NULL) {
+	while ((req = blk_peek_request(q)) != NULL) {
 		if (!blk_fs_request(req)) {
 			printk (KERN_NOTICE "Skip non-CMD request\n");
-			end_request(req, 0);
+			blk_end_request_all(req, -EIO);
 			continue;
 		}
-		transfer(&device, req->sector, req->current_nr_sectors,
+		transfer(&device, blk_rq_pos(req),
+		         blk_rq_cur_sectors(req),
 		         req->buffer, rq_data_dir(req));
-		end_request(req, 1);
+		blk_end_request_all(req, 0);
 	}
 }
 

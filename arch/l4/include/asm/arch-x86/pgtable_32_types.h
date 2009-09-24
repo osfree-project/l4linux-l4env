@@ -33,6 +33,9 @@ extern bool __vmalloc_start_set; /* set once high_memory is set */
 #ifdef CONFIG_L4_L4ENV
 #define VMALLOC_START	l4env_vmalloc_memory_start
 #define VMALLOC_END	(l4env_vmalloc_memory_start + __VMALLOC_RESERVE)
+#define MODULES_VADDR	VMALLOC_START
+#define MODULES_END	VMALLOC_END
+#define MODULES_LEN	(MODULES_VADDR - MODULES_END)
 #define MAXMEM		0xa0000000UL
 #else
 #define VMALLOC_START	((unsigned long)high_memory + VMALLOC_OFFSET)
@@ -50,6 +53,10 @@ extern bool __vmalloc_start_set; /* set once high_memory is set */
 #else
 # define VMALLOC_END	(FIXADDR_START - 2 * PAGE_SIZE)
 #endif
+
+#define MODULES_VADDR	VMALLOC_START
+#define MODULES_END	VMALLOC_END
+#define MODULES_LEN	(MODULES_VADDR - MODULES_END)
 
 #define MAXMEM	(VMALLOC_END - PAGE_OFFSET - __VMALLOC_RESERVE)
 #endif /* CONFIG_L4_L4ENV */

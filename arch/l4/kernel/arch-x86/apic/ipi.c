@@ -109,6 +109,9 @@ void default_send_IPI_mask_logical(const struct cpumask *cpumask, int vector)
 	unsigned long mask = cpumask_bits(cpumask)[0];
 	unsigned long flags;
 
+	if (WARN_ONCE(!mask, "empty IPI mask"))
+		return;
+
 	local_irq_save(flags);
 	WARN_ON(mask & ~cpumask_bits(cpu_online_mask)[0]);
 	//l4/__default_send_IPI_dest_field(mask, vector, apic->dest_logical);

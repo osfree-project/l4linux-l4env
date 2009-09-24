@@ -96,13 +96,17 @@ static inline void pte_clear_unmap(pte_t *ptep, int unmap)
 }
 
 #if defined(CONFIG_HIGHPTE)
+#define __KM_PTE			\
+	(in_nmi() ? KM_NMI_PTE : 	\
+	 in_irq() ? KM_IRQ_PTE :	\
+	 KM_PTE0)
 #define pte_offset_map(dir, address)					\
-	((pte_t *)kmap_atomic_pte(pmd_page(*(dir)), KM_PTE0) +		\
+	((pte_t *)kmap_atomic_pte(pmd_page(*(dir)), __KM_PTE) +		\
 	 pte_index((address)))
 #define pte_offset_map_nested(dir, address)				\
 	((pte_t *)kmap_atomic_pte(pmd_page(*(dir)), KM_PTE1) +		\
 	 pte_index((address)))
-#define pte_unmap(pte) kunmap_atomic((pte), KM_PTE0)
+#define pte_unmap(pte) kunmap_atomic((pte), __KM_PTE)
 #define pte_unmap_nested(pte) kunmap_atomic((pte), KM_PTE1)
 #else
 #define pte_offset_map(dir, address)					\

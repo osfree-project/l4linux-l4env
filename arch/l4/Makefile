@@ -63,6 +63,9 @@ ifdef CONFIG_RELOCATABLE
 LDFLAGS_vmlinux_x86  := --emit-relocs
 endif
 LDFLAGS_vmlinux_arm  := --no-warn-mismatch
+ifeq ($(CONFIG_CPU_ENDIAN_BE8),y)
+LDFLAGS_vmlinux_arm += --be8
+endif
 LDFLAGS_vmlinux	:= $(LDFLAGS_vmlinux_$(BASEARCH))
 
 OBJCOPYFLAGS    := -O $(OBJCOPYARCH) -R .note -R .note.gnu.build-id -R .comment -S
@@ -109,6 +112,12 @@ ifeq ($(CONFIG_X86_32),y)
 endif
 
 ifeq ($(BASEARCH),x86)
+
+# Don't unroll struct assignments with kmemcheck enabled
+ifeq ($(CONFIG_KMEMCHECK),y)
+	KBUILD_CFLAGS += $(call cc-option,-fno-builtin-memcpy)
+endif
+
 # Stackpointer is addressed different for 32 bit and 64 bit x86
 sp-$(CONFIG_X86_32) := esp
 sp-$(CONFIG_X86_64) := rsp
@@ -215,20 +224,12 @@ libs-y				+= arch/l4/lib/arch-$(BASEARCH)/	\
 				   arch/l4/l4lxlib/generic/		\
 				   arch/l4/l4lxlib/$(BASEENV)/
 
-core-y				+= arch/l4/kernel/			\
-				   arch/l4/kernel/arch-$(BASEARCH)/	\
-				   arch/l4/mm/arch-$(BASEARCH)/
-core-$(CONFIG_L4_ARCH_X86)	+= arch/x86/crypto/
-core-$(CONFIG_L4_ARCH_X86)	+= arch/x86/vdso/
-
 ifeq ($(BASEARCH),x86)
 drivers-$(CONFIG_PCI)		+= arch/l4/pci/
 drivers-$(CONFIG_PM)		+= arch/l4/power/arch-x86/
 endif
 
-ifeq ($(BASEARCH),arm)
-core-$(CONFIG_FPE_NWFPE)	+= arch/arm/nwfpe/
-endif
+core-y += arch/l4/
 
 L4LIBS-y			:= $(L4LIBS_PATH) -lio-ll -ldm_phys \
 				   -ll4util -ll4sys $(L4LX_E_L-y) \
@@ -367,7 +368,8 @@ chkl4conf:
 
 DIS_OPTS := HIGHMEM4G HIGHMEM64G PREEMPT PCI_GOANY PCI_GOBIOS HPET_TIMER \
             X86_MCE X86_MCE MTRR PARAVIRT KEXEC MCA SOFTWARE_SUSPEND APM \
-	    CPU_FREQ HUGETLBFS HUGETLB_PAGE VM86 X86_DS X86_PTRACE_BTS
+	    CPU_FREQ HUGETLBFS HUGETLB_PAGE VM86 X86_DS X86_PTRACE_BTS   \
+	    HT_IRQ
 
 check_linux_config:
 	@$(foreach i,$(addprefix CONFIG_,$(DIS_OPTS)),     \

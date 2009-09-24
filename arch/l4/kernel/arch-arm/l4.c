@@ -3,6 +3,7 @@
 #include <linux/timex.h>
 #include <linux/list.h>
 #include <linux/interrupt.h>
+#include <linux/clockchips.h>
 #include <linux/irq.h>
 
 #include <asm/mach-types.h>
@@ -14,6 +15,7 @@
 #include <asm/l4lxapi/irq.h>
 #include <asm/api/config.h>
 #include <asm/generic/irq.h>
+#include <asm/generic/setup.h>
 
 #include <l4/sys/cache.h>
 
@@ -96,16 +98,33 @@ static void __init init_irq_l4(void)
 #endif
 }
 
+static void timer_set_mode(enum clock_event_mode mode,
+                           struct clock_event_device *clk)
+{
+	// we only advertise periodic mode
+}
+
+static int timer_set_next_event(unsigned long evt,
+                                struct clock_event_device *unused)
+{
+	LOG_printf("timer_set_next_event\n");
+	return 0;
+}
+
+
+static struct clock_event_device timer0_clockevent = {
+	.name           = "timer0",
+	.shift          = 10,
+	.features       = CLOCK_EVT_FEAT_PERIODIC,
+	.set_mode       = timer_set_mode,
+	.set_next_event = timer_set_next_event,
+	.rating         = 300,
+	.irq            = 0,
+};
+
 static irqreturn_t l4_timer_interrupt_handler(int irq, void *dev_id)
 {
-	timer_tick();
-
-	//l4_kprintf("%s: %d\n", __func__, smp_processor_id());
-#if defined(CONFIG_SMP)  && !defined(CONFIG_LOCAL_TIMERS)
-	l4x_smp_broadcast_timer();
-	update_process_times(user_mode(get_irq_regs()));
-#endif
-
+	timer0_clockevent.event_handler(&timer0_clockevent);
 	return IRQ_HANDLED;
 }
 
@@ -122,6 +141,20 @@ unsigned int do_IRQ(int irq, struct pt_regs *regs)
 	return 0;
 }
 
+static cycle_t kip_read(struct clocksource *cs)
+{
+	return l4lx_kinfo->clock;
+}
+
+static struct clocksource clocksource_l4 =  {
+	.name   = "kip",
+	.rating = 300,
+	.read   = kip_read,
+	.mask   = CLOCKSOURCE_MASK(64),
+	.shift  = 10,
+	.flags  = CLOCK_SOURCE_IS_CONTINUOUS,
+};
+
 static void l4x_timer_init(void)
 {
 	set_irq_chip   (0, &l4_irq_timer_chip);
@@ -129,6 +162,21 @@ static void l4x_timer_init(void)
 	set_irq_flags  (0, IRQF_VALID);
 
 	setup_irq(0, &timer_irq);
+
+	clocksource_l4.mult =
+		clocksource_khz2mult(1000, clocksource_l4.shift);
+	clocksource_register(&clocksource_l4);
+
+
+	timer0_clockevent.irq = 0;
+	timer0_clockevent.mult =
+		div_sc(1000000, NSEC_PER_SEC, timer0_clockevent.shift);
+	timer0_clockevent.max_delta_ns =
+		clockevent_delta2ns(0xffffffff, &timer0_clockevent);
+	timer0_clockevent.min_delta_ns =
+		clockevent_delta2ns(0xf, &timer0_clockevent);
+	timer0_clockevent.cpumask = cpumask_of(0);
+	clockevents_register_device(&timer0_clockevent);
 
 	l4lx_irq_timer_startup(0);
 }
@@ -183,20 +231,3 @@ void v4wb_dma_flush_range(const void *start, const void *end)
 {
 	l4_sys_cache_flush_range((unsigned long)start, (unsigned long)end);
 }
-
-
-#ifdef CONFIG_SMP
-
-#include <linux/profile.h>
-
-void __cpuinit local_timer_setup(void)
-{
-}
-
-void local_timer_interrupt(void)
-{
-	profile_tick(CPU_PROFILING);
-	update_process_times(user_mode(get_irq_regs()));
-}
-
-#endif

@@ -19,6 +19,7 @@
 #include <asm/cacheflush.h>
 #include <mach/hardware.h>
 #include <asm/mach-types.h>
+#include <asm/localtimer.h>
 
 #include <asm/generic/smp.h>
 
@@ -37,41 +38,23 @@ static void __iomem *scu_base_addr(void)
 		return __io_address(REALVIEW_EB11MP_SCU_BASE);
 	else if (machine_is_realview_pb11mp())
 		return __io_address(REALVIEW_TC11MP_SCU_BASE);
+	else if (machine_is_realview_pbx() &&
+		 (core_tile_pbx11mp() || core_tile_pbxa9mp()))
+		return __io_address(REALVIEW_PBX_TILE_SCU_BASE);
 	else
 		return (void __iomem *)0;
 }
 #endif
 
-static unsigned int __init get_core_count(void)
-{
-#if 0
-	unsigned int ncores;
-	void __iomem *scu_base = scu_base_addr();
-
-	if (scu_base) {
-		ncores = __raw_readl(scu_base + SCU_CONFIG);
-		ncores = (ncores & 0x03) + 1;
-	} else
-		ncores = 1;
-
-	return ncores;
-#endif
-	return l4x_nr_cpus;
-}
-
-/*
- * Setup the SCU
- */
-static void scu_enable(void)
+static inline unsigned int get_core_count(void)
 {
 #ifdef NOT_FOR_L4
-	u32 scu_ctrl;
 	void __iomem *scu_base = scu_base_addr();
-
-	scu_ctrl = __raw_readl(scu_base + SCU_CTRL);
-	scu_ctrl |= 1;
-	__raw_writel(scu_ctrl, scu_base + SCU_CTRL);
+	if (scu_base)
+		return scu_get_core_count(scu_base);
+	return 1;
 #endif
+	return l4x_nr_cpus;
 }
 
 static DEFINE_SPINLOCK(boot_lock);
@@ -190,7 +173,7 @@ void __init smp_init_cpus(void)
 	unsigned int i, ncores = get_core_count();
 
 	for (i = 0; i < ncores; i++)
-		cpu_set(i, cpu_possible_map);
+		set_cpu_possible(i, true);
 }
 
 void __init smp_prepare_cpus(unsigned int max_cpus)
@@ -223,19 +206,12 @@ void __init smp_prepare_cpus(unsigned int max_cpus)
 	if (max_cpus > ncores)
 		max_cpus = ncores;
 
-#if defined(CONFIG_LOCAL_TIMERS) || defined(CONFIG_GENERIC_CLOCKEVENTS_BROADCAST)
-	/*
-	 * Enable the local timer or broadcast device for the boot CPU.
-	 */
-	local_timer_setup();
-#endif
-
 	/*
 	 * Initialise the present map, which describes the set of CPUs
 	 * actually populated at the present time.
 	 */
 	for (i = 0; i < max_cpus; i++)
-		cpu_set(i, cpu_present_map);
+		set_cpu_present(i, true);
 
 	/*
 	 * Initialise the SCU if there are more than one CPU and let
@@ -245,7 +221,15 @@ void __init smp_prepare_cpus(unsigned int max_cpus)
 	 * WFI
 	 */
 	if (max_cpus > 1) {
-		scu_enable();
+		/*
+		 * Enable the local timer or broadcast device for the
+		 * boot CPU, but only if we have more than one CPU.
+		 */
+		percpu_timer_setup();
+
+#ifdef NOT_FOR_L4
+		scu_enable(scu_base_addr());
+#endif
 		poke_milo();
 	}
 }

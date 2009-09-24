@@ -11,7 +11,7 @@ obj-y		:= dispatch.o entry.o ioport.o \
 
 obj-y				+= i387.o xsave.o
 obj-y				+= dumpstack_32.o
-obj-y				+= irq.o irq_32.o irq_l4.o irqinit_32.o
+obj-y				+= irq.o irq_32.o irq_l4.o irqinit.o
 obj-y				+= dumpstack.o dumpstack_32.o
 
 obj-$(CONFIG_STACKTRACE)	+= stacktrace.o
@@ -33,7 +33,7 @@ obj-$(CONFIG_PARAVIRT)		+= paravirt.o
 b		:= ../../../x86/kernel
 alternative-y	:= $(b)/alternative.o
 ldt-y		:= $(b)/ldt.o
-module-y	:= $(b)/module_32.o
+module-y	:= $(b)/module.o
 pci-nommu-y	:= $(b)/pci-nommu.o
 pci-dma-y	:= $(b)/pci-dma.o
 sys_i386-y	:= $(b)/sys_i386_32.o

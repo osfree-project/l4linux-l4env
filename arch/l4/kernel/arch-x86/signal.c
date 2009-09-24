@@ -6,7 +6,6 @@
  *  2000-06-20  Pentium III FXSR, SSE support by Gareth Hughes
  *  2000-2002   x86-64 support by Andi Kleen
  */
-
 #include <linux/sched.h>
 #include <linux/mm.h>
 #include <linux/smp.h>
@@ -25,11 +24,11 @@
 #include <asm/ucontext.h>
 #include <asm/i387.h>
 #include <asm/vdso.h>
+#include <asm/mce.h>
 
 #ifdef CONFIG_X86_64
 #include <asm/proto.h>
 #include <asm/ia32_unistd.h>
-#include <asm/mce.h>
 #endif /* CONFIG_X86_64 */
 
 #include <asm/syscall.h>

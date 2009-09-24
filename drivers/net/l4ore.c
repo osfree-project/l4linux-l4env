@@ -282,6 +282,14 @@ static int l4x_ore_parse_instance(int id, char *inst, int instsize,
 	return 0;
 }
 
+static const struct net_device_ops l4ore_netdev_ops = {
+	.ndo_open       = l4x_ore_open,
+	.ndo_start_xmit = l4x_ore_xmit_frame,
+	.ndo_stop       = l4x_ore_close,
+	.ndo_tx_timeout = l4x_ore_tx_timeout,
+	.ndo_get_stats  = l4x_ore_get_stats,
+};
+
 /* Initialize one virtual interface. */
 static int __init l4x_ore_init_device(char *oreinst, char *devname)
 {
@@ -294,12 +302,7 @@ static int __init l4x_ore_init_device(char *oreinst, char *devname)
 	if (!(dev = alloc_etherdev(sizeof(struct l4x_ore_priv))))
 		return -ENOMEM;
 
-	dev->open            = l4x_ore_open;
-	dev->stop            = l4x_ore_close;
-	dev->hard_start_xmit = l4x_ore_xmit_frame;
-	dev->get_stats       = l4x_ore_get_stats;
-	dev->tx_timeout      = l4x_ore_tx_timeout;
-
+	dev->netdev_ops = &l4ore_netdev_ops;
 	priv = netdev_priv(dev);
 
 	priv->config = L4ORE_DEFAULT_CONFIG;

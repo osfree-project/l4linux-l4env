@@ -142,7 +142,8 @@ extern struct cpuinfo_x86	boot_cpu_data;
 extern struct cpuinfo_x86	new_cpu_data;
 
 extern struct tss_struct	doublefault_tss;
-extern __u32			cleared_cpu_caps[NCAPINTS];
+extern __u32			cpu_caps_cleared[NCAPINTS];
+extern __u32			cpu_caps_set[NCAPINTS];
 
 #ifdef CONFIG_SMP
 DECLARE_PER_CPU_SHARED_ALIGNED(struct cpuinfo_x86, cpu_info);
@@ -416,9 +417,6 @@ DECLARE_PER_CPU(unsigned long, stack_canary);
 extern unsigned int xstate_size;
 extern void free_thread_xstate(struct task_struct *);
 extern struct kmem_cache *task_xstate_cachep;
-extern void init_scattered_cpuid_features(struct cpuinfo_x86 *c);
-extern unsigned int init_intel_cacheinfo(struct cpuinfo_x86 *c);
-extern unsigned short num_cache_leaves;
 
 struct thread_struct {
 	/* Cached TLS descriptors: */
@@ -438,14 +436,7 @@ struct thread_struct {
 	unsigned int		hybrid_sc_in_prog : 1;	/* l4 syscall in progress  */
 	unsigned long		hybrid_pf_addr;           /* PF address while hybrid */
 	struct pt_regs		regs;
-	/* floating point and extended processor state */
-	union thread_xstate	*xstate;
 	unsigned long		gs;
-	unsigned long		pfa;
-	unsigned long		pf_count;
-	unsigned long		error_code;
-	unsigned long		trap_no;			/* sigsegv stuff */
-
 	/* Hardware debugging registers: */
 	unsigned long		debugreg0;
 	unsigned long		debugreg1;
@@ -453,15 +444,21 @@ struct thread_struct {
 	unsigned long		debugreg3;
 	unsigned long		debugreg6;
 	unsigned long		debugreg7;
+	/* Fault info: */
+	unsigned long		pfa;
+	unsigned long		trap_no;
+	unsigned long		error_code;
+	/* floating point and extended processor state */
+	union thread_xstate	*xstate;
 
-/* MSR_IA32_DEBUGCTLMSR value to switch in if TIF_DEBUGCTLMSR is set.  */
-	unsigned long	debugctlmsr;
-/* Debug Store - if not 0 points to a DS Save Area configuration;
- *               goes into MSR_IA32_DS_AREA */
-	unsigned long	ds_area_msr;
 
 	/* IO permissions */
 	struct l4x_iodb *iodb;
+
+/* MSR_IA32_DEBUGCTLMSR value to switch in if TIF_DEBUGCTLMSR is set.  */
+	unsigned long	debugctlmsr;
+	/* Debug Store context; see asm/ds.h */
+	struct ds_context	*ds_ctx;
 };
 
 static inline unsigned long native_get_debugreg(int regno)
@@ -791,6 +788,21 @@ static inline unsigned long get_debugctlmsr(void)
     return debugctlmsr;
 }
 
+static inline unsigned long get_debugctlmsr_on_cpu(int cpu)
+{
+	u64 debugctlmsr = 0;
+	u32 val1, val2;
+
+#ifndef CONFIG_X86_DEBUGCTLMSR
+	if (boot_cpu_data.x86 < 6)
+		return 0;
+#endif
+	rdmsr_on_cpu(cpu, MSR_IA32_DEBUGCTLMSR, &val1, &val2);
+	debugctlmsr = val1 | ((u64)val2 << 32);
+
+	return debugctlmsr;
+}
+
 static inline void update_debugctlmsr(unsigned long debugctlmsr)
 {
 #ifndef CONFIG_X86_DEBUGCTLMSR
@@ -798,6 +810,18 @@ static inline void update_debugctlmsr(unsigned long debugctlmsr)
 		return;
 #endif
 	wrmsrl(MSR_IA32_DEBUGCTLMSR, debugctlmsr);
+}
+
+static inline void update_debugctlmsr_on_cpu(int cpu,
+					     unsigned long debugctlmsr)
+{
+#ifndef CONFIG_X86_DEBUGCTLMSR
+	if (boot_cpu_data.x86 < 6)
+		return;
+#endif
+	wrmsr_on_cpu(cpu, MSR_IA32_DEBUGCTLMSR,
+		     (u32)((u64)debugctlmsr),
+		     (u32)((u64)debugctlmsr >> 32));
 }
 
 /*
@@ -810,6 +834,7 @@ extern unsigned int		BIOS_revision;
 
 /* Boot loader type from the setup header: */
 extern int			bootloader_type;
+extern int			bootloader_version;
 
 extern char			ignore_fpu_irq;
 
@@ -871,7 +896,6 @@ static inline void spin_lock_prefetch(const void *x)
 	.vm86_info		= NULL,					  \
 	.sysenter_cs		= __KERNEL_CS,				  \
 	.io_bitmap_ptr		= NULL,					  \
-	.fs			= __KERNEL_PERCPU,			  \
 }
 
 /*
