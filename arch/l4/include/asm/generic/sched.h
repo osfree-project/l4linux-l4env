@@ -30,7 +30,9 @@ static inline void l4x_wakeup_idle_if_needed(void)
 	 * kernel server is idling, wake it up. */
 
 	for_each_online_cpu(cpu) {
-		struct thread_info *t = per_cpu(l4x_current_proc_run, cpu);
+		struct thread_info *t;
+		barrier();
+		t = per_cpu(l4x_current_proc_run, cpu);
 		/* Check if server is waiting and we have work to do */
 		if (t
 #ifdef ARCH_x86

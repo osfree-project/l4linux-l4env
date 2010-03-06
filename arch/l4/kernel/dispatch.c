@@ -458,11 +458,13 @@ void l4x_idle(void)
 	while (1) {
 		per_cpu(l4x_current_proc_run, cpu) = current_thread_info();
 		per_cpu(l4x_idle_running, cpu) = 1;
+		barrier();
 		l4x_dispatch_delete_polling_flag();
 
 		if (need_resched()) {
 			per_cpu(l4x_current_proc_run, cpu) = NULL;
 			per_cpu(l4x_idle_running, cpu) = 0;
+			barrier();
 			l4x_dispatch_set_polling_flag();
 			tick_nohz_restart_sched_tick();
 			preempt_enable_no_resched();
@@ -481,6 +483,7 @@ void l4x_idle(void)
 
 		per_cpu(l4x_current_proc_run, cpu) = NULL;
 		per_cpu(l4x_idle_running, cpu) = 0;
+		barrier();
 		l4x_dispatch_set_polling_flag();
 
 		TBUF_LOG_IDLE(fiasco_tbuf_log_3val("l4x_idle >",
